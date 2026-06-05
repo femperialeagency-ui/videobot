@@ -261,7 +261,7 @@
 
 <header>
   <h1>🎬 VideoBot</h1>
-  <p>Combine la vidéo A + l'audio de B + ton texte → Vidéo C prête à télécharger</p>
+  <p>Upload Vidéo A + Vidéo B → le texte est détecté automatiquement → Vidéo C prête</p>
 </header>
 
 <form id="mainForm">
@@ -281,7 +281,7 @@
         <input type="file" name="video_b" id="inputB" accept="video/*" required />
         <div class="icon">🎵</div>
         <div class="label">Vidéo B</div>
-        <div class="sublabel">Source : audio + texte</div>
+        <div class="sublabel">Source : audio + texte auto-détecté</div>
         <div class="filename" id="nameB"></div>
       </div>
     </div>
@@ -291,13 +291,17 @@
   <div class="card">
     <h2><span class="num">2</span> Texte à incruster</h2>
 
+    <div id="detectStatus" style="display:none;font-size:0.82rem;margin-bottom:12px;padding:8px 12px;border-radius:8px;background:rgba(124,92,252,0.12);color:var(--accent2);">
+      🔍 Détection du texte en cours…
+    </div>
+
     <div class="field">
-      <label>Ligne 1</label>
-      <input type="text" name="line1" id="line1" placeholder='Ex : Can I lowkey call you a "bad boy"' />
+      <label>Ligne 1 <span style="color:var(--muted);font-weight:400">(auto-détectée depuis Vidéo B)</span></label>
+      <input type="text" name="line1" id="line1" placeholder="Sera détecté automatiquement…" />
     </div>
     <div class="field">
-      <label>Ligne 2</label>
-      <input type="text" name="line2" id="line2" placeholder='Ex : without the D and O' />
+      <label>Ligne 2 <span style="color:var(--muted);font-weight:400">(optionnel)</span></label>
+      <input type="text" name="line2" id="line2" placeholder="Sera détecté automatiquement…" />
     </div>
 
     <div class="field-row">
@@ -392,29 +396,72 @@
 <div id="errorBox"></div>
 
 <script>
-  // ── Drop zone UI ──────────────────────────────────────────────
+  // ── Drop zone UI + auto-detect ────────────────────────────────
   ["A","B"].forEach(letter => {
     const input = document.getElementById("input"+letter);
     const zone  = document.getElementById("zone"+letter);
     const name  = document.getElementById("name"+letter);
 
-    input.addEventListener("change", () => {
-      if (input.files[0]) name.textContent = "✓ " + input.files[0].name;
-    });
+    const handleFile = (file) => {
+      if (!file) return;
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      name.textContent = "✓ " + file.name;
+      if (letter === "B") autoDetectText(file);
+    };
+
+    input.addEventListener("change", () => handleFile(input.files[0]));
     zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("drag-over"); });
     zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
     zone.addEventListener("drop", e => {
       e.preventDefault();
       zone.classList.remove("drag-over");
-      const file = e.dataTransfer.files[0];
-      if (file) {
-        const dt = new DataTransfer();
-        dt.items.add(file);
-        input.files = dt.files;
-        name.textContent = "✓ " + file.name;
-      }
+      handleFile(e.dataTransfer.files[0]);
     });
   });
+
+  // ── Auto-detect text from Video B ────────────────────────────
+  async function autoDetectText(file) {
+    const status = document.getElementById("detectStatus");
+    status.style.display = "block";
+    status.style.background = "rgba(124,92,252,0.12)";
+    status.style.color = "var(--accent2)";
+    status.textContent = "🔍 Détection du texte en cours…";
+
+    try {
+      const fd = new FormData();
+      fd.append("video_b", file);
+      const res  = await fetch("/analyze", { method: "POST", body: fd });
+      const data = await res.json();
+
+      if (data.line1 || data.line2) {
+        if (data.line1) document.getElementById("line1").value = data.line1;
+        if (data.line2) document.getElementById("line2").value = data.line2;
+
+        // Apply detected position to sliders
+        if (data.x_pct   != null) { document.getElementById("xPct").value = Math.round(data.x_pct   * 100); syncPct(); document.getElementById("xVal").textContent = Math.round(data.x_pct * 100) + "%"; }
+        if (data.y_pct   != null) { document.getElementById("yPct").value = Math.round(data.y_pct   * 100); syncPct(); document.getElementById("yVal").textContent = Math.round(data.y_pct * 100) + "%"; }
+        if (data.gap_pct != null) { document.getElementById("gapPct").value = Math.round(data.gap_pct * 100); syncGap(); document.getElementById("gapVal").textContent = Math.round(data.gap_pct * 100) + "%"; }
+
+        status.style.background = "rgba(52,211,153,0.12)";
+        status.style.color = "var(--success)";
+        status.textContent = "✅ Texte détecté automatiquement — tu peux corriger si besoin.";
+      } else if (data.ocr_error || data.error) {
+        status.style.background = "rgba(248,113,113,0.1)";
+        status.style.color = "var(--error)";
+        status.textContent = "⚠️ Détection impossible — entre le texte manuellement.";
+      } else {
+        status.style.background = "rgba(248,113,113,0.1)";
+        status.style.color = "var(--error)";
+        status.textContent = "⚠️ Aucun texte trouvé — entre le texte manuellement.";
+      }
+    } catch(_) {
+      status.style.background = "rgba(248,113,113,0.1)";
+      status.style.color = "var(--error)";
+      status.textContent = "⚠️ Détection échouée — entre le texte manuellement.";
+    }
+  }
 
   // ── Hidden field sync ─────────────────────────────────────────
   function syncPct() {
