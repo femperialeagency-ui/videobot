@@ -261,7 +261,7 @@
 
 <header>
   <h1>🎬 VideoBot</h1>
-  <p>Upload Vidéo A + Vidéo B → le texte est détecté automatiquement → Vidéo C prête</p>
+  <p>Upload Vidéo A + Vidéo B → texte copié automatiquement → Vidéo C prête</p>
 </header>
 
 <form id="mainForm">
@@ -287,89 +287,11 @@
     </div>
   </div>
 
-  <!-- STEP 2 : Texte -->
-  <div class="card">
-    <h2><span class="num">2</span> Texte à incruster</h2>
-
-    <div id="detectStatus" style="display:none;font-size:0.82rem;margin-bottom:12px;padding:8px 12px;border-radius:8px;background:rgba(124,92,252,0.12);color:var(--accent2);">
-      🔍 Détection du texte en cours…
-    </div>
-
-    <div class="field">
-      <label>Ligne 1 <span style="color:var(--muted);font-weight:400">(auto-détectée depuis Vidéo B)</span></label>
-      <input type="text" name="line1" id="line1" placeholder="Sera détecté automatiquement…" />
-    </div>
-    <div class="field">
-      <label>Ligne 2 <span style="color:var(--muted);font-weight:400">(optionnel)</span></label>
-      <input type="text" name="line2" id="line2" placeholder="Sera détecté automatiquement…" />
-    </div>
-
-    <div class="field-row">
-      <div class="field">
-        <label>Taille de police</label>
-        <div class="range-wrap">
-          <input type="range" id="fontsize" name="fontsize" min="14" max="100" value="32"
-                 oninput="document.getElementById('fsVal').textContent=this.value" />
-          <span class="val" id="fsVal">32</span>
-        </div>
-      </div>
-      <div class="field">
-        <label>Épaisseur du contour</label>
-        <div class="range-wrap">
-          <input type="range" id="borderw" name="borderw" min="0" max="8" value="3"
-                 oninput="document.getElementById('bwVal').textContent=this.value" />
-          <span class="val" id="bwVal">3</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="field">
-      <label>Couleur du texte</label>
-      <div class="color-row">
-        <input type="color" id="colorPicker" value="#ffffff"
-               oninput="document.getElementById('colorText').value=this.value" />
-        <input type="text" id="colorText" name="fontcolor" value="white"
-               placeholder="white / #ffffff / yellow"
-               oninput="syncColor(this.value)" />
-      </div>
-      <p class="hint">Nom CSS (white, yellow…) ou code hex (#ffffff)</p>
-    </div>
-  </div>
-
-  <!-- STEP 3 : Position -->
-  <div class="card">
-    <h2><span class="num">3</span> Position du texte</h2>
-
-    <div class="field-row">
-      <div class="field">
-        <label>Position horizontale (% depuis gauche)</label>
-        <div class="range-wrap">
-          <input type="range" id="xPct" min="0" max="80" value="4" step="1"
-                 oninput="document.getElementById('xVal').textContent=this.value+'%'; syncPct()" />
-          <span class="val" id="xVal">4%</span>
-        </div>
-        <input type="hidden" name="x_pct" id="xPctHidden" value="0.04" />
-      </div>
-      <div class="field">
-        <label>Position verticale (% depuis le haut)</label>
-        <div class="range-wrap">
-          <input type="range" id="yPct" min="0" max="95" value="71" step="1"
-                 oninput="document.getElementById('yVal').textContent=this.value+'%'; syncPct()" />
-          <span class="val" id="yVal">71%</span>
-        </div>
-        <input type="hidden" name="y_pct" id="yPctHidden" value="0.71" />
-      </div>
-    </div>
-
-    <div class="field">
-      <label>Espacement entre les lignes (% de la hauteur)</label>
-      <div class="range-wrap">
-        <input type="range" id="gapPct" min="2" max="12" value="5" step="1"
-               oninput="document.getElementById('gapVal').textContent=this.value+'%'; syncGap()" />
-        <span class="val" id="gapVal">5%</span>
-      </div>
-      <input type="hidden" name="line_gap_pct" id="gapPctHidden" value="0.055" />
-    </div>
+  <!-- INFO : texte auto -->
+  <div class="card" style="text-align:center;padding:20px 28px;">
+    <div style="font-size:1.5rem;margin-bottom:8px;">✨</div>
+    <div style="font-weight:600;color:var(--accent2);margin-bottom:6px;">Texte copié automatiquement</div>
+    <div style="font-size:0.85rem;color:var(--muted);">Le texte incrusté dans la Vidéo B sera détecté et appliqué pixel-perfect sur la Vidéo C. Aucune saisie nécessaire.</div>
   </div>
 
 </form>
