@@ -3,481 +3,276 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VideoBot — Créateur de Vidéo C</title>
+  <title>VideoBot</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --bg:       #0f0f13;
-      --surface:  #1a1a24;
-      --border:   #2e2e42;
-      --accent:   #7c5cfc;
-      --accent2:  #a78bfa;
-      --text:     #e8e8f0;
-      --muted:    #8888aa;
-      --success:  #34d399;
-      --error:    #f87171;
-      --radius:   12px;
+      --bg: #0f0f13; --surface: #1a1a24; --border: #2e2e42;
+      --accent: #7c5cfc; --accent2: #a78bfa; --text: #e8e8f0;
+      --muted: #8888aa; --success: #34d399; --error: #f87171; --radius: 12px;
     }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 40px 16px 80px;
-    }
-
-    header {
-      text-align: center;
-      margin-bottom: 40px;
-    }
-    header h1 {
-      font-size: 2rem;
-      font-weight: 700;
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; padding: 40px 16px 80px; }
+    header { text-align: center; margin-bottom: 36px; }
+    header h1 { font-size: 2rem; font-weight: 700;
       background: linear-gradient(135deg, var(--accent), var(--accent2));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    header p {
-      color: var(--muted);
-      margin-top: 8px;
-      font-size: 0.95rem;
-    }
-
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 28px;
-      width: 100%;
-      max-width: 680px;
-      margin-bottom: 20px;
-    }
-    .card h2 {
-      font-size: 1rem;
-      font-weight: 600;
-      color: var(--accent2);
-      margin-bottom: 18px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .card h2 .num {
-      background: var(--accent);
-      color: #fff;
-      border-radius: 50%;
-      width: 22px; height: 22px;
-      font-size: 0.75rem;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-
-    /* Drop zones */
-    .drop-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 14px;
-    }
-    .drop-zone {
-      border: 2px dashed var(--border);
-      border-radius: 10px;
-      padding: 24px 16px;
-      text-align: center;
-      cursor: pointer;
-      transition: border-color 0.2s, background 0.2s;
-      position: relative;
-    }
-    .drop-zone:hover, .drop-zone.drag-over {
-      border-color: var(--accent);
-      background: rgba(124,92,252,0.07);
-    }
-    .drop-zone input[type="file"] {
-      position: absolute;
-      inset: 0;
-      opacity: 0;
-      cursor: pointer;
-    }
-    .drop-zone .icon { font-size: 2rem; margin-bottom: 8px; }
-    .drop-zone .label { font-weight: 600; font-size: 0.9rem; }
-    .drop-zone .sublabel { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
-    .drop-zone .filename {
-      margin-top: 8px;
-      font-size: 0.78rem;
-      color: var(--success);
-      word-break: break-all;
-    }
-
-    /* Form fields */
-    .field { margin-bottom: 16px; }
-    .field label {
-      display: block;
-      font-size: 0.85rem;
-      color: var(--muted);
-      margin-bottom: 6px;
-    }
-    .field input[type="text"],
-    .field input[type="number"],
-    .field select {
-      width: 100%;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text);
-      padding: 10px 12px;
-      font-size: 0.9rem;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-    .field input:focus, .field select:focus { border-color: var(--accent); }
-
-    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-
-    /* Range slider */
-    .range-wrap { display: flex; align-items: center; gap: 12px; }
-    .range-wrap input[type="range"] {
-      flex: 1;
-      accent-color: var(--accent);
-    }
-    .range-wrap .val {
-      font-size: 0.85rem;
-      color: var(--accent2);
-      min-width: 32px;
-      text-align: right;
-    }
-
-    /* Color swatch + input */
-    .color-row { display: flex; align-items: center; gap: 10px; }
-    .color-row input[type="color"] {
-      width: 36px; height: 36px;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      background: none;
-      padding: 0;
-    }
-    .color-row input[type="text"] {
-      flex: 1;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text);
-      padding: 8px 12px;
-      font-size: 0.9rem;
-      outline: none;
-    }
-    .color-row input[type="text"]:focus { border-color: var(--accent); }
-
-    /* Submit button */
-    #submitBtn {
-      width: 100%;
-      max-width: 680px;
-      padding: 16px;
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    header p { color: var(--muted); margin-top: 8px; font-size: 0.9rem; }
+    .card { background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px; width: 100%; max-width: 660px; margin-bottom: 16px; }
+    .card h2 { font-size: 0.95rem; font-weight: 600; color: var(--accent2);
+      margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .num { background: var(--accent); color: #fff; border-radius: 50%;
+      width: 20px; height: 20px; font-size: 0.72rem;
+      display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .drop-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .drop-zone { border: 2px dashed var(--border); border-radius: 10px;
+      padding: 20px 12px; text-align: center; cursor: pointer;
+      transition: border-color .2s, background .2s; position: relative; }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent);
+      background: rgba(124,92,252,.07); }
+    .drop-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .drop-zone .icon { font-size: 1.8rem; margin-bottom: 6px; }
+    .drop-zone .lbl { font-weight: 600; font-size: 0.88rem; }
+    .drop-zone .sub { font-size: 0.76rem; color: var(--muted); margin-top: 3px; }
+    .drop-zone .fn  { margin-top: 6px; font-size: 0.76rem; color: var(--success); word-break: break-all; }
+    .status-bar { font-size: 0.82rem; padding: 8px 12px; border-radius: 8px; margin-bottom: 14px; display: none; }
+    .line-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .line-num { font-size: 0.72rem; color: var(--muted); width: 18px; flex-shrink: 0; }
+    .line-row input[type="text"] { flex: 1; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); padding: 8px 10px; font-size: 0.88rem; outline: none;
+      transition: border-color .2s; }
+    .line-row input:focus { border-color: var(--accent); }
+    #noLines { font-size: 0.84rem; color: var(--muted); display: none; }
+    #submitBtn { width: 100%; max-width: 660px; padding: 15px;
       background: linear-gradient(135deg, var(--accent), #9f6fff);
-      border: none;
-      border-radius: var(--radius);
-      color: #fff;
-      font-size: 1rem;
-      font-weight: 700;
-      cursor: pointer;
-      transition: opacity 0.2s, transform 0.1s;
-      margin-bottom: 20px;
-    }
-    #submitBtn:hover:not(:disabled) { opacity: 0.9; }
-    #submitBtn:active:not(:disabled) { transform: scale(0.98); }
-    #submitBtn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    /* Progress */
-    #progressCard {
-      display: none;
-      width: 100%;
-      max-width: 680px;
-    }
-    .progress-bar-wrap {
-      background: var(--border);
-      border-radius: 999px;
-      height: 8px;
-      overflow: hidden;
-      margin: 12px 0;
-    }
-    .progress-bar-fill {
-      height: 100%;
-      background: linear-gradient(90deg, var(--accent), var(--accent2));
-      border-radius: 999px;
-      transition: width 0.4s ease;
-      width: 0%;
-    }
-    #progressStatus { font-size: 0.88rem; color: var(--muted); }
-
-    /* Result */
-    #resultCard { display: none; width: 100%; max-width: 680px; }
-    #downloadBtn {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: var(--success);
-      color: #000;
-      font-weight: 700;
-      padding: 12px 24px;
-      border-radius: 10px;
-      text-decoration: none;
-      font-size: 0.95rem;
-      margin-top: 12px;
-      transition: opacity 0.2s;
-    }
-    #downloadBtn:hover { opacity: 0.85; }
-
-    /* Error */
-    #errorBox {
-      display: none;
-      width: 100%;
-      max-width: 680px;
-      background: rgba(248,113,113,0.1);
-      border: 1px solid var(--error);
-      border-radius: var(--radius);
-      padding: 16px;
-      color: var(--error);
-      font-size: 0.88rem;
-      white-space: pre-wrap;
-      word-break: break-all;
-    }
-
-    /* Tooltip helper */
-    .hint { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
-
-    @media (max-width: 520px) {
-      .drop-row { grid-template-columns: 1fr; }
-      .field-row { grid-template-columns: 1fr; }
-    }
+      border: none; border-radius: var(--radius); color: #fff;
+      font-size: 1rem; font-weight: 700; cursor: pointer;
+      transition: opacity .2s, transform .1s; margin-bottom: 16px; }
+    #submitBtn:hover:not(:disabled) { opacity: .9; }
+    #submitBtn:disabled { opacity: .45; cursor: not-allowed; }
+    #progressCard { display: none; width: 100%; max-width: 660px; }
+    .pbar { background: var(--border); border-radius: 999px; height: 7px; overflow: hidden; margin: 10px 0; }
+    .pbar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 999px; transition: width .4s; width: 0%; }
+    #resultCard { display: none; width: 100%; max-width: 660px; }
+    #downloadBtn { display: inline-flex; align-items: center; gap: 8px;
+      background: var(--success); color: #000; font-weight: 700;
+      padding: 11px 22px; border-radius: 10px; text-decoration: none;
+      font-size: 0.92rem; margin-top: 10px; transition: opacity .2s; }
+    #downloadBtn:hover { opacity: .85; }
+    #errorBox { display: none; width: 100%; max-width: 660px;
+      background: rgba(248,113,113,.1); border: 1px solid var(--error);
+      border-radius: var(--radius); padding: 14px; color: var(--error);
+      font-size: 0.85rem; white-space: pre-wrap; }
   </style>
 </head>
 <body>
-
 <header>
   <h1>🎬 VideoBot</h1>
-  <p>Upload Vidéo A + Vidéo B → texte copié automatiquement → Vidéo C prête</p>
+  <p>Upload Vidéo A + Vidéo B → texte détecté et réécrit → Vidéo C propre</p>
 </header>
 
-<form id="mainForm">
-
-  <!-- STEP 1 : Upload -->
-  <div class="card">
-    <h2><span class="num">1</span> Upload des vidéos</h2>
-    <div class="drop-row">
-      <div class="drop-zone" id="zoneA">
-        <input type="file" name="video_a" id="inputA" accept="video/*" required />
-        <div class="icon">🎥</div>
-        <div class="label">Vidéo A</div>
-        <div class="sublabel">Tes visuels (son remplacé)</div>
-        <div class="filename" id="nameA"></div>
-      </div>
-      <div class="drop-zone" id="zoneB">
-        <input type="file" name="video_b" id="inputB" accept="video/*" required />
-        <div class="icon">🎵</div>
-        <div class="label">Vidéo B</div>
-        <div class="sublabel">Source : audio + texte auto-détecté</div>
-        <div class="filename" id="nameB"></div>
-      </div>
+<!-- Upload -->
+<div class="card">
+  <h2><span class="num">1</span> Upload des vidéos</h2>
+  <div class="drop-row">
+    <div class="drop-zone" id="zoneA">
+      <input type="file" name="video_a" id="inputA" accept="video/*" required />
+      <div class="icon">🎥</div>
+      <div class="lbl">Vidéo A</div>
+      <div class="sub">Tes visuels</div>
+      <div class="fn" id="nameA"></div>
+    </div>
+    <div class="drop-zone" id="zoneB">
+      <input type="file" name="video_b" id="inputB" accept="video/*" required />
+      <div class="icon">🎵</div>
+      <div class="lbl">Vidéo B</div>
+      <div class="sub">Audio + texte source</div>
+      <div class="fn" id="nameB"></div>
     </div>
   </div>
-
-  <!-- INFO : texte auto -->
-  <div class="card" style="text-align:center;padding:20px 28px;">
-    <div style="font-size:1.5rem;margin-bottom:8px;">✨</div>
-    <div style="font-weight:600;color:var(--accent2);margin-bottom:6px;">Texte copié automatiquement</div>
-    <div style="font-size:0.85rem;color:var(--muted);">Le texte incrusté dans la Vidéo B sera détecté et appliqué pixel-perfect sur la Vidéo C. Aucune saisie nécessaire.</div>
-  </div>
-
-</form>
-
-<button id="submitBtn" onclick="submitForm()">⚡ Générer la Vidéo C</button>
-
-<!-- Progress -->
-<div class="card" id="progressCard">
-  <h2>⏳ Traitement en cours…</h2>
-  <div class="progress-bar-wrap">
-    <div class="progress-bar-fill" id="progressFill"></div>
-  </div>
-  <div id="progressStatus">Upload et analyse des vidéos…</div>
 </div>
 
-<!-- Result -->
+<!-- Detected lines -->
+<div class="card">
+  <h2><span class="num">2</span> Texte détecté <span id="lineCount" style="color:var(--muted);font-weight:400;font-size:0.8rem;margin-left:4px"></span></h2>
+  <div class="status-bar" id="detectStatus"></div>
+  <div id="linesContainer"></div>
+  <div id="noLines" style="font-size:0.84rem;color:var(--muted);">Uploade la Vidéo B pour détecter le texte automatiquement.</div>
+  <!-- Hidden: stores full lines data (with positions + font sizes) -->
+  <input type="hidden" id="linesJson" />
+</div>
+
+<button id="submitBtn" onclick="submitForm()" disabled>⚡ Générer la Vidéo C</button>
+
+<div class="card" id="progressCard">
+  <h2>⏳ Traitement en cours…</h2>
+  <div class="pbar"><div class="pbar-fill" id="pFill"></div></div>
+  <div id="pStatus" style="font-size:.85rem;color:var(--muted)">Upload et rendu…</div>
+</div>
+
 <div class="card" id="resultCard">
   <h2>✅ Vidéo C prête !</h2>
-  <p style="color:var(--muted);font-size:0.9rem">Clique pour télécharger ta vidéo finale.</p>
+  <p style="color:var(--muted);font-size:.88rem">Clique pour télécharger.</p>
   <a id="downloadBtn" href="#">⬇️ Télécharger video_C.mp4</a>
 </div>
 
-<!-- Error -->
 <div id="errorBox"></div>
 
 <script>
-  // ── Drop zone UI + auto-detect ────────────────────────────────
-  ["A","B"].forEach(letter => {
-    const input = document.getElementById("input"+letter);
-    const zone  = document.getElementById("zone"+letter);
-    const name  = document.getElementById("name"+letter);
+// ── Drop zones ────────────────────────────────────────────────────
+["A","B"].forEach(letter => {
+  const input = document.getElementById("input"+letter);
+  const zone  = document.getElementById("zone"+letter);
+  const name  = document.getElementById("name"+letter);
+  const handle = file => {
+    if (!file) return;
+    const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files;
+    name.textContent = "✓ " + file.name;
+    if (letter === "B") analyzeVideoB(file);
+  };
+  input.addEventListener("change", () => handle(input.files[0]));
+  zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("drag-over"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
+  zone.addEventListener("drop", e => { e.preventDefault(); zone.classList.remove("drag-over"); handle(e.dataTransfer.files[0]); });
+});
 
-    const handleFile = (file) => {
-      if (!file) return;
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      input.files = dt.files;
-      name.textContent = "✓ " + file.name;
-      if (letter === "B") autoDetectText(file);
-    };
+// ── linesData: array of {text, y_pct, x_pct, fontsize_b} ──────────
+let linesData = [];
 
-    input.addEventListener("change", () => handleFile(input.files[0]));
-    zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("drag-over"); });
-    zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
-    zone.addEventListener("drop", e => {
-      e.preventDefault();
-      zone.classList.remove("drag-over");
-      handleFile(e.dataTransfer.files[0]);
-    });
-  });
+function renderLines() {
+  const container = document.getElementById("linesContainer");
+  const noLines   = document.getElementById("noLines");
+  const count     = document.getElementById("lineCount");
+  const btn       = document.getElementById("submitBtn");
 
-  // ── Auto-detect text from Video B ────────────────────────────
-  async function autoDetectText(file) {
-    const status = document.getElementById("detectStatus");
-    status.style.display = "block";
-    status.style.background = "rgba(124,92,252,0.12)";
-    status.style.color = "var(--accent2)";
-    status.textContent = "🔍 Détection du texte en cours…";
-
-    try {
-      const fd = new FormData();
-      fd.append("video_b", file);
-      const res  = await fetch("/analyze", { method: "POST", body: fd });
-      const data = await res.json();
-
-      if (data.line1 || data.line2) {
-        if (data.line1) document.getElementById("line1").value = data.line1;
-        if (data.line2) document.getElementById("line2").value = data.line2;
-
-        // Apply detected position to sliders
-        if (data.x_pct   != null) { document.getElementById("xPct").value = Math.round(data.x_pct   * 100); syncPct(); document.getElementById("xVal").textContent = Math.round(data.x_pct * 100) + "%"; }
-        if (data.y_pct   != null) { document.getElementById("yPct").value = Math.round(data.y_pct   * 100); syncPct(); document.getElementById("yVal").textContent = Math.round(data.y_pct * 100) + "%"; }
-        if (data.gap_pct != null) { document.getElementById("gapPct").value = Math.round(data.gap_pct * 100); syncGap(); document.getElementById("gapVal").textContent = Math.round(data.gap_pct * 100) + "%"; }
-
-        status.style.background = "rgba(52,211,153,0.12)";
-        status.style.color = "var(--success)";
-        status.textContent = "✅ Texte détecté automatiquement — tu peux corriger si besoin.";
-      } else if (data.ocr_error || data.error) {
-        status.style.background = "rgba(248,113,113,0.1)";
-        status.style.color = "var(--error)";
-        status.textContent = "⚠️ Détection impossible — entre le texte manuellement.";
-      } else {
-        status.style.background = "rgba(248,113,113,0.1)";
-        status.style.color = "var(--error)";
-        status.textContent = "⚠️ Aucun texte trouvé — entre le texte manuellement.";
-      }
-    } catch(_) {
-      status.style.background = "rgba(248,113,113,0.1)";
-      status.style.color = "var(--error)";
-      status.textContent = "⚠️ Détection échouée — entre le texte manuellement.";
-    }
-  }
-
-  // ── Hidden field sync ─────────────────────────────────────────
-  function syncPct() {
-    document.getElementById("xPctHidden").value =
-      (document.getElementById("xPct").value / 100).toFixed(2);
-    document.getElementById("yPctHidden").value =
-      (document.getElementById("yPct").value / 100).toFixed(2);
-  }
-  function syncGap() {
-    document.getElementById("gapPctHidden").value =
-      (document.getElementById("gapPct").value / 100).toFixed(3);
-  }
-  function syncColor(val) {
-    try {
-      // If it looks like a hex, sync the color picker
-      if (/^#[0-9a-fA-F]{6}$/.test(val))
-        document.getElementById("colorPicker").value = val;
-    } catch(_) {}
-  }
-
-  // ── Form submit via fetch ─────────────────────────────────────
-  function showError(msg) {
-    const box = document.getElementById("errorBox");
-    box.style.display = "block";
-    box.textContent = "❌ Erreur : " + msg;
-  }
-
-  // Animate bar while waiting (20% → 88%)
-  let animInterval = null;
-  function startAnim() {
-    animInterval = setInterval(() => {
-      const fill = document.getElementById("progressFill");
-      const cur = parseFloat(fill.style.width) || 20;
-      if (cur < 88) fill.style.width = (cur + 1) + "%";
-    }, 800);
-  }
-
-  async function submitForm() {
-    const form = document.getElementById("mainForm");
-    const btn  = document.getElementById("submitBtn");
-
-    if (!document.getElementById("inputA").files[0] ||
-        !document.getElementById("inputB").files[0]) {
-      alert("Merci d'uploader les deux vidéos.");
-      return;
-    }
-
+  container.innerHTML = "";
+  if (linesData.length === 0) {
+    noLines.style.display = "block";
+    count.textContent = "";
     btn.disabled = true;
-    document.getElementById("errorBox").style.display = "none";
-    document.getElementById("resultCard").style.display = "none";
-    document.getElementById("progressCard").style.display = "block";
-    document.getElementById("progressFill").style.width = "5%";
-    document.getElementById("progressStatus").textContent = "Upload et traitement en cours…";
+    return;
+  }
+  noLines.style.display = "none";
+  count.textContent = `— ${linesData.length} ligne${linesData.length > 1 ? "s" : ""} détectée${linesData.length > 1 ? "s" : ""}`;
+  btn.disabled = false;
 
-    const fd = new FormData(form);
+  linesData.forEach((line, i) => {
+    const row = document.createElement("div");
+    row.className = "line-row";
+    row.innerHTML = `<span class="line-num">${i+1}</span>
+      <input type="text" value="${escapeHtml(line.text)}"
+        oninput="linesData[${i}].text=this.value; syncLinesJson()"
+        placeholder="Ligne ${i+1}…" />`;
+    container.appendChild(row);
+  });
+  syncLinesJson();
+}
 
-    // Animate bar during upload+processing
-    setTimeout(() => {
-      document.getElementById("progressFill").style.width = "20%";
-      startAnim();
-    }, 1000);
+function syncLinesJson() {
+  document.getElementById("linesJson").value = JSON.stringify(linesData);
+}
 
-    try {
-      const res  = await fetch("/process", { method: "POST", body: fd });
-      const data = await res.json();
-      clearInterval(animInterval);
+function escapeHtml(s) {
+  return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+                .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
 
-      if (!res.ok || data.error) throw new Error(data.error || res.statusText);
+// ── Analyze Video B ───────────────────────────────────────────────
+async function analyzeVideoB(file) {
+  const status = document.getElementById("detectStatus");
+  status.style.display = "block";
+  status.style.background = "rgba(124,92,252,0.12)";
+  status.style.color = "var(--accent2)";
+  status.textContent = "🔍 Analyse du texte en cours…";
 
-      // Done
-      document.getElementById("progressFill").style.width = "100%";
-      document.getElementById("progressCard").style.display = "none";
-      document.getElementById("resultCard").style.display = "block";
-      document.getElementById("downloadBtn").href = "/download/" + data.job_id;
-      btn.disabled = false;
+  linesData = [];
+  renderLines();
 
-    } catch(e) {
-      clearInterval(animInterval);
-      document.getElementById("progressCard").style.display = "none";
-      showError(e.message);
-      btn.disabled = false;
-    }
+  try {
+    const fd = new FormData();
+    fd.append("video_b", file);
+    const res  = await fetch("/analyze", { method: "POST", body: fd });
+    const data = await res.json();
+
+    if (data.error) throw new Error(data.error);
+    const lines = data.lines || [];
+    if (lines.length === 0) throw new Error("Aucun texte détecté");
+
+    // Filter out error entries
+    linesData = lines.filter(l => !l.error && l.text);
+    renderLines();
+
+    status.style.background = "rgba(52,211,153,0.1)";
+    status.style.color = "var(--success)";
+    status.textContent = `✅ ${linesData.length} ligne(s) détectée(s) — corrige si besoin, puis génère.`;
+
+  } catch(e) {
+    status.style.background = "rgba(248,113,113,0.1)";
+    status.style.color = "var(--error)";
+    status.textContent = "⚠️ Détection échouée : " + e.message;
+  }
+}
+
+// ── Submit ────────────────────────────────────────────────────────
+let animInterval = null;
+function startAnim() {
+  animInterval = setInterval(() => {
+    const f = document.getElementById("pFill");
+    const c = parseFloat(f.style.width) || 20;
+    if (c < 88) f.style.width = (c + 1) + "%";
+  }, 800);
+}
+
+function showError(msg) {
+  const b = document.getElementById("errorBox");
+  b.style.display = "block";
+  b.textContent = "❌ " + msg;
+}
+
+async function submitForm() {
+  const btn = document.getElementById("submitBtn");
+  const vaFile = document.getElementById("inputA").files[0];
+  const vbFile = document.getElementById("inputB").files[0];
+
+  if (!vaFile || !vbFile) { alert("Uploade les deux vidéos."); return; }
+  if (linesData.filter(l => l.text).length === 0) {
+    alert("Aucune ligne de texte. Attends la détection ou corrige."); return;
   }
 
-  // ── Dead code below kept for reference ──────────────────────
-  if (false) { // never runs
-    let x = 0; x += 0; // suppress linter
-    if (false) {
-          // still processing – animate bar between 20-90%
-          const fill = document.getElementById("progressFill");
-          const cur  = parseFloat(fill.style.width) || 20;
-          if (cur < 88) fill.style.width = (cur + 2) + "%";
-    } // end if(false)
-  } // end dead code
+  btn.disabled = true;
+  document.getElementById("errorBox").style.display = "none";
+  document.getElementById("resultCard").style.display = "none";
+  document.getElementById("progressCard").style.display = "block";
+  document.getElementById("pFill").style.width = "5%";
+  document.getElementById("pStatus").textContent = "Upload et rendu en cours…";
+  setTimeout(() => { document.getElementById("pFill").style.width = "20%"; startAnim(); }, 1000);
+
+  const fd = new FormData();
+  fd.append("video_a", vaFile);
+  fd.append("video_b", vbFile);
+  fd.append("lines_json", JSON.stringify(linesData));
+
+  try {
+    const res  = await fetch("/process", { method: "POST", body: fd });
+    const data = await res.json();
+    clearInterval(animInterval);
+    if (!res.ok || data.error) throw new Error(data.error || res.statusText);
+
+    document.getElementById("pFill").style.width = "100%";
+    document.getElementById("progressCard").style.display = "none";
+    document.getElementById("resultCard").style.display = "block";
+    document.getElementById("downloadBtn").href = "/download/" + data.job_id;
+    btn.disabled = false;
+  } catch(e) {
+    clearInterval(animInterval);
+    document.getElementById("progressCard").style.display = "none";
+    showError(e.message);
+    btn.disabled = false;
+  }
+}
 </script>
 </body>
 </html>
