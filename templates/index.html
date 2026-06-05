@@ -207,7 +207,8 @@ async function analyzeVideoB(file) {
 
     status.style.background = "rgba(52,211,153,0.1)";
     status.style.color = "var(--success)";
-    status.textContent = `✅ ${linesData.length} ligne(s) détectée(s) — corrige si besoin, puis génère.`;
+    const modeLabel = data.mode === "vision" ? "🤖 Claude Vision" : "🔍 OCR basique";
+    status.textContent = `✅ ${linesData.length} ligne(s) détectée(s) via ${modeLabel} — corrige si besoin, puis génère.`;
 
   } catch(e) {
     status.style.background = "rgba(248,113,113,0.1)";
