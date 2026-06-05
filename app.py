@@ -9,14 +9,9 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
 UPLOAD_DIR = Path("/tmp/videobot_jobs")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-FONT = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
 
-# Pixel mask for text copy: pure white (text fill) OR pure black (text border)
-# Multiplication replaces and() which is not available in geq
-# This rejects warm beige/skin tones where R>G>B
-_IS_WHITE = "gt(r(X,Y),215)*gt(g(X,Y),210)*gt(b(X,Y),205)"
-_IS_BLACK = "lt(r(X,Y),55)*lt(g(X,Y),55)*lt(b(X,Y),55)"
-TEXT_ALPHA = f"255*({_IS_WHITE}+{_IS_BLACK})"
+FONT      = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
+FONT_REG  = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
 
 
 # ── Global JSON error handler ─────────────────────────────────────
@@ -32,7 +27,6 @@ def too_large(e):
 # ── Helpers ───────────────────────────────────────────────────────
 
 def get_video_dims(path):
-    """Return (width, height) of first video stream."""
     try:
         r = subprocess.run(
             ["ffprobe", "-v", "quiet", "-print_format", "json",
@@ -47,15 +41,15 @@ def get_video_dims(path):
     return 576, 1024
 
 
-def detect_text_region(video_path: str) -> dict:
+def analyze_text_lines(video_path: str) -> list:
     """
-    Detect the bounding box of text regions in a video frame.
-    Uses white-pixel density analysis on the full frame.
-    Returns {"y_start": fraction, "y_end": fraction} or {}.
+    Detect individual text lines in a video frame.
+    Returns list of {text, y_pct, x_pct, fontsize_b}.
     """
-    frame_path = f"/tmp/detect_{uuid.uuid4().hex}.png"
+    frame_path = f"/tmp/analyze_{uuid.uuid4().hex}.png"
     try:
         import numpy as np
+        import pytesseract
         from PIL import Image
 
         subprocess.run(
@@ -64,72 +58,95 @@ def detect_text_region(video_path: str) -> dict:
             capture_output=True, timeout=15
         )
         if not Path(frame_path).exists():
-            return {}
+            return []
 
         img = Image.open(frame_path).convert("RGB")
         arr = np.array(img)
         h, w = arr.shape[:2]
 
-        # White pixels across the full frame
-        white = (arr[:,:,0] > 170) & (arr[:,:,1] > 170) & (arr[:,:,2] > 170)
+        # Detect white pixels across full frame
+        white = (arr[:,:,0] > 175) & (arr[:,:,1] > 175) & (arr[:,:,2] > 175)
         row_sums = white.sum(axis=1)
-        sig_rows = np.where(row_sums > w * 0.03)[0]  # >3% of width
+        sig_rows = np.where(row_sums > w * 0.03)[0]
+        if len(sig_rows) == 0:
+            return []
 
-        if len(sig_rows) < 5:
-            return {}
-
-        # Group into blocks (gap > 2.5% of height = new block)
+        # Group into individual visual lines (tight gap = 1.2% of height)
         blocks, current = [], [sig_rows[0]]
-        gap_thr = int(h * 0.025)
         for i in range(1, len(sig_rows)):
-            if sig_rows[i] - sig_rows[i-1] <= gap_thr:
+            if sig_rows[i] - sig_rows[i-1] <= int(h * 0.012):
                 current.append(sig_rows[i])
             else:
-                if len(current) >= 3:
+                if len(current) >= 2:
                     blocks.append(current)
                 current = [sig_rows[i]]
-        if len(current) >= 3:
+        if len(current) >= 2:
             blocks.append(current)
 
-        if not blocks:
-            return {}
+        lines = []
+        for block in blocks:
+            y1 = max(0, block[0] - 4)
+            y2 = min(h, block[-1] + 4)
+            block_h = y2 - y1
 
-        pad = int(h * 0.01)
-        y_start = max(0, blocks[0][0] - pad)
-        y_end   = min(h, blocks[-1][-1] + pad)
+            if block_h < 20:   # skip thin artifacts
+                continue
 
-        return {
-            "y_start": float(y_start / h),
-            "y_end":   float(y_end   / h),
-        }
+            # Font size estimate: ~75% of visual line height
+            font_px = max(12, int(block_h * 0.75))
+
+            # X: leftmost white column
+            crop_arr = arr[y1:y2, :]
+            white_mask = (
+                (crop_arr[:,:,0] > 175) &
+                (crop_arr[:,:,1] > 175) &
+                (crop_arr[:,:,2] > 175)
+            )
+            col_sums = white_mask.sum(axis=0)
+            x_cols   = np.where(col_sums > 0)[0]
+            x_pct    = float(x_cols[0] / w) if len(x_cols) else 0.04
+
+            # OCR: invert (white text→black on white bg — Tesseract's sweet spot)
+            inv = np.full((block_h, w), 255, dtype=np.uint8)
+            inv[white_mask] = 0
+            pil_inv = Image.fromarray(inv)
+            big = pil_inv.resize((w * 4, block_h * 4), Image.NEAREST)
+            text = pytesseract.image_to_string(
+                big, config="--psm 7 --oem 3"
+            ).strip()
+            text_clean = " ".join(text.split())
+
+            # Discard lines with <30% alphabetic characters (artifacts)
+            alpha_ratio = (
+                sum(c.isalpha() for c in text_clean) / max(1, len(text_clean))
+            )
+            if alpha_ratio < 0.30 and len(text_clean) < 5:
+                continue
+
+            lines.append({
+                "text":      text_clean,
+                "y_pct":     round(y1 / h, 4),
+                "x_pct":     round(x_pct, 4),
+                "fontsize_b": font_px,
+            })
+
+        return lines
 
     except Exception as e:
-        return {"error": str(e)}
+        return [{"error": str(e)}]
     finally:
         if Path(frame_path).exists():
             Path(frame_path).unlink(missing_ok=True)
 
 
-def build_pixel_overlay_filter(wb, hb, wa, ha, y_s, y_e):
-    """
-    Build ffmpeg filter_complex that copies the text pixels from Video B
-    (detected region y_s..y_e) onto Video A using luma-based transparency.
-    """
-    region_h  = y_e - y_s
-    overlay_y = int(ha * y_s)
-    text_h_a  = max(1, int(ha * region_h))
-
-    return (
-        f"[1:v]crop=iw:ih*{region_h:.5f}:0:ih*{y_s:.5f}[crop_b];"
-        f"[crop_b]scale={wa}:{text_h_a}[scaled_b];"
-        f"[scaled_b]format=rgba,"
-        f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='{TEXT_ALPHA}'[text_layer];"
-        f"[0:v][text_layer]overlay=x=0:y={overlay_y}[out]"
-    )
-
-
 def escape_dt(text):
-    return text.replace("\\", "\\\\").replace(":", "\\:").replace("%", "\\%")
+    return (
+        text
+        .replace("\\", "\\\\")
+        .replace("'",  "’")   # replace straight quote with curly (safe)
+        .replace(":",  "\\:")
+        .replace("%",  "\\%")
+    )
 
 
 # ── Routes ────────────────────────────────────────────────────────
@@ -137,6 +154,28 @@ def escape_dt(text):
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/analyze", methods=["POST"])
+def analyze():
+    """Upload Video B → detect text lines (position + font size + OCR text)."""
+    try:
+        if "video_b" not in request.files:
+            return jsonify({"error": "video_b manquant"}), 400
+
+        vb     = request.files["video_b"]
+        tmp_id = str(uuid.uuid4())
+        tmp    = UPLOAD_DIR / tmp_id
+        tmp.mkdir(parents=True, exist_ok=True)
+        path_b = str(tmp / "b.mp4")
+        vb.save(path_b)
+
+        lines = analyze_text_lines(path_b)
+        _, hb = get_video_dims(path_b)
+        return jsonify({"lines": lines, "video_b_height": hb})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/process", methods=["POST"])
@@ -160,69 +199,57 @@ def process():
 
         wa, ha = get_video_dims(path_a)
         wb, hb = get_video_dims(path_b)
+        scale  = ha / hb   # font size scaling B → A
 
-        # ── Mode 1 : pixel copy (default) ─────────────────────────
-        region = detect_text_region(path_b)
+        # Lines come as JSON from the frontend
+        lines_json = request.form.get("lines_json", "[]")
+        try:
+            lines = json.loads(lines_json)
+        except Exception:
+            lines = []
 
-        if region and "y_start" in region:
-            # Auto copy text pixels from B onto A
-            filter_complex = build_pixel_overlay_filter(
-                wb, hb, wa, ha,
-                region["y_start"], region["y_end"]
+        if not lines:
+            return jsonify({"error": "Aucune ligne de texte détectée ou fournie."}), 400
+
+        # Build drawtext filter chain
+        filters = []
+        for line in lines:
+            text      = line.get("text", "").strip()
+            if not text:
+                continue
+            y_pct     = float(line.get("y_pct",     0.71))
+            x_pct     = float(line.get("x_pct",     0.04))
+            fontsize_b = int(line.get("fontsize_b", 32))
+
+            x         = max(0, int(wa * x_pct))
+            y         = max(0, int(ha * y_pct))
+            fontsize  = max(10, int(fontsize_b * scale))
+
+            filters.append(
+                f"drawtext=fontfile={FONT}"
+                f":text='{escape_dt(text)}'"
+                f":fontsize={fontsize}"
+                f":fontcolor=white"
+                f":bordercolor=black:borderw=3"
+                f":x={x}:y={y}"
             )
-            cmd = [
-                "ffmpeg", "-y",
-                "-i", path_a, "-i", path_b,
-                "-filter_complex", filter_complex,
-                "-map", "[out]", "-map", "1:a",
-                "-shortest",
-                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
-                "-c:a", "aac", "-b:a", "128k",
-                "-loglevel", "error",
-                path_out
-            ]
 
-        else:
-            # ── Mode 2 : drawtext fallback (manual text) ──────────
-            line1     = request.form.get("line1", "").strip()
-            line2     = request.form.get("line2", "").strip()
-            fontsize  = max(10, min(120, int(request.form.get("fontsize",  32))))
-            fontcolor = request.form.get("fontcolor", "white")
-            borderw   = max(0,   min(10,  int(request.form.get("borderw",   3))))
-            x_pct     = max(0.0, min(0.9,  float(request.form.get("x_pct",  0.04))))
-            y_pct     = max(0.0, min(0.95, float(request.form.get("y_pct",  0.71))))
-            gap_pct   = max(0.02, min(0.15, float(request.form.get("line_gap_pct", 0.055))))
+        if not filters:
+            return jsonify({"error": "Aucun texte valide à incruster."}), 400
 
-            if not line1 and not line2:
-                return jsonify({"error": "Aucun texte détecté dans la Vidéo B et aucun texte saisi manuellement."}), 400
+        vf = ",".join(filters)
 
-            x  = max(0, int(wa * x_pct))
-            y1 = max(0, int(ha * y_pct))
-            y2 = y1 + int(ha * gap_pct)
-
-            def dt(text, y):
-                return (
-                    f"drawtext=fontfile={FONT}:text='{escape_dt(text)}'"
-                    f":fontsize={fontsize}:fontcolor={fontcolor}"
-                    f":bordercolor=black:borderw={borderw}:x={x}:y={y}"
-                )
-
-            filters = []
-            if line1: filters.append(dt(line1, y1))
-            if line2: filters.append(dt(line2, y2))
-            vf = ",".join(filters) if filters else "null"
-
-            cmd = [
-                "ffmpeg", "-y",
-                "-i", path_a, "-i", path_b,
-                "-filter_complex", f"[0:v]{vf}[out]",
-                "-map", "[out]", "-map", "1:a",
-                "-shortest",
-                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
-                "-c:a", "aac", "-b:a", "128k",
-                "-loglevel", "error",
-                path_out
-            ]
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", path_a, "-i", path_b,
+            "-filter_complex", f"[0:v]{vf}[out]",
+            "-map", "[out]", "-map", "1:a",
+            "-shortest",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
+            "-c:a", "aac", "-b:a", "128k",
+            "-loglevel", "error",
+            path_out
+        ]
 
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
@@ -233,8 +260,7 @@ def process():
             err = proc.stderr[-800:] if proc.stderr else "ffmpeg a echoue"
             return jsonify({"error": err}), 500
 
-        mode = "pixel_copy" if (region and "y_start" in region) else "drawtext"
-        return jsonify({"job_id": job_id, "mode": mode})
+        return jsonify({"job_id": job_id})
 
     except Exception as e:
         return jsonify({"error": f"Erreur serveur: {str(e)}"}), 500
