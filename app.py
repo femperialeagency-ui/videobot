@@ -43,8 +43,8 @@ def get_video_dims(path):
 
 def analyze_text_lines(video_path: str) -> list:
     """
-    Detect individual text lines in a video frame.
-    Returns list of {text, y_pct, x_pct, fontsize_b}.
+    Detect text lines using full-frame OCR with word bounding boxes.
+    Returns list of {text, y_pct, x_pct, fontsize_b} sorted top→bottom.
     """
     frame_path = f"/tmp/analyze_{uuid.uuid4().hex}.png"
     try:
@@ -64,72 +64,73 @@ def analyze_text_lines(video_path: str) -> list:
         arr = np.array(img)
         h, w = arr.shape[:2]
 
-        # Detect white pixels across full frame
-        white = (arr[:,:,0] > 175) & (arr[:,:,1] > 175) & (arr[:,:,2] > 175)
-        row_sums = white.sum(axis=1)
-        sig_rows = np.where(row_sums > w * 0.03)[0]
-        if len(sig_rows) == 0:
+        # Invert full frame: white text → black (Tesseract sweet spot)
+        white_mask = (arr[:,:,0] > 175) & (arr[:,:,1] > 175) & (arr[:,:,2] > 175)
+        inv = np.full((h, w), 255, dtype=np.uint8)
+        inv[white_mask] = 0
+
+        # Scale 2× for better OCR accuracy
+        pil_inv = Image.fromarray(inv).resize((w * 2, h * 2), Image.NEAREST)
+
+        # Get all words with bounding boxes
+        data = pytesseract.image_to_data(
+            pil_inv, config="--psm 3 --oem 3",
+            output_type=pytesseract.Output.DICT
+        )
+
+        # Collect valid words (convert coords back to original frame scale)
+        words = []
+        for i in range(len(data['text'])):
+            txt  = data['text'][i].strip()
+            conf = int(data['conf'][i])
+            if not txt or conf < 20:
+                continue
+            wx = data['left'][i]   // 2
+            wy = data['top'][i]    // 2
+            ww = data['width'][i]  // 2
+            wh = data['height'][i] // 2
+            # Skip tiny or abnormally tall/thin bboxes (OCR artifacts)
+            if wh < 5 or ww < 3:
+                continue
+            if wh > h * 0.12:          # taller than 12% of frame → artifact
+                continue
+            words.append({'text': txt, 'x': wx, 'y': wy, 'w': ww, 'h': wh})
+
+        if not words:
             return []
 
-        # Group into individual visual lines (tight gap = 1.2% of height)
-        blocks, current = [], [sig_rows[0]]
-        for i in range(1, len(sig_rows)):
-            if sig_rows[i] - sig_rows[i-1] <= int(h * 0.012):
-                current.append(sig_rows[i])
+        # Compute median word height (for proximity threshold)
+        med_h = float(np.median([wd['h'] for wd in words]))
+
+        # Group words into lines by y-proximity
+        words.sort(key=lambda wd: wd['y'])
+        groups = [[words[0]]]
+        for wd in words[1:]:
+            if abs(wd['y'] - groups[-1][-1]['y']) < med_h * 0.7:
+                groups[-1].append(wd)
             else:
-                if len(current) >= 2:
-                    blocks.append(current)
-                current = [sig_rows[i]]
-        if len(current) >= 2:
-            blocks.append(current)
+                groups.append([wd])
 
+        # Build line objects
         lines = []
-        for block in blocks:
-            y1 = max(0, block[0] - 4)
-            y2 = min(h, block[-1] + 4)
-            block_h = y2 - y1
-
-            if block_h < 20:   # skip thin artifacts
+        for grp in groups:
+            grp.sort(key=lambda wd: wd['x'])
+            text = " ".join(wd['text'] for wd in grp)
+            alpha_r = sum(c.isalpha() for c in text) / max(1, len(text))
+            if alpha_r < 0.25 and len(text) < 4:
                 continue
-
-            # Font size estimate: ~75% of visual line height
-            font_px = max(12, int(block_h * 0.75))
-
-            # X: leftmost white column
-            crop_arr = arr[y1:y2, :]
-            white_mask = (
-                (crop_arr[:,:,0] > 175) &
-                (crop_arr[:,:,1] > 175) &
-                (crop_arr[:,:,2] > 175)
-            )
-            col_sums = white_mask.sum(axis=0)
-            x_cols   = np.where(col_sums > 0)[0]
-            x_pct    = float(x_cols[0] / w) if len(x_cols) else 0.04
-
-            # OCR: invert (white text→black on white bg — Tesseract's sweet spot)
-            inv = np.full((block_h, w), 255, dtype=np.uint8)
-            inv[white_mask] = 0
-            pil_inv = Image.fromarray(inv)
-            big = pil_inv.resize((w * 4, block_h * 4), Image.NEAREST)
-            text = pytesseract.image_to_string(
-                big, config="--psm 7 --oem 3"
-            ).strip()
-            text_clean = " ".join(text.split())
-
-            # Discard lines with <30% alphabetic characters (artifacts)
-            alpha_ratio = (
-                sum(c.isalpha() for c in text_clean) / max(1, len(text_clean))
-            )
-            if alpha_ratio < 0.30 and len(text_clean) < 5:
-                continue
-
+            y_line   = min(wd['y'] for wd in grp)
+            x_line   = min(wd['x'] for wd in grp)
+            font_est = max(10, int(np.median([wd['h'] for wd in grp]) * 0.90))
             lines.append({
-                "text":      text_clean,
-                "y_pct":     round(y1 / h, 4),
-                "x_pct":     round(x_pct, 4),
-                "fontsize_b": font_px,
+                "text":       text,
+                "y_pct":      round(y_line / h, 4),
+                "x_pct":      round(max(0.0, (x_line - 5) / w), 4),
+                "fontsize_b": font_est,
             })
 
+        # Ensure top → bottom order
+        lines.sort(key=lambda l: l["y_pct"])
         return lines
 
     except Exception as e:
