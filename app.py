@@ -14,30 +14,34 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 FONT_BOLD = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
 FONT_REG  = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
 
-VISION_PROMPT = """These images are frames from the same TikTok/Reel video.
+VISION_PROMPT = """These images are from the same TikTok/Reel video.
 
-Identify ALL text overlaid on the video. Only include text that was added as a caption or overlay — NOT text that is part of the scene (clothing, posters, etc.).
+Detect EVERY text element added as an overlay (captions, titles, stickers) — NOT text on clothing, posters, or objects in the scene.
 
-Return a JSON array of text blocks ordered top-to-bottom as they appear on screen.
+Return a JSON array. Each element = one independent text object.
 
-For each block return:
-- "text": exact content including ALL emojis (e.g. ❤️🥺💔), newlines within a block use \\n
-- "y_pct": vertical center position as decimal (0.0=top, 1.0=bottom)
-- "x_pct": horizontal center position (0.0=left, 1.0=right, 0.5=center)
-- "fontsize_b": estimated font height in pixels assuming frame height = 1280px
-- "align": "left", "center", or "right"
-- "bold": true or false
+For EACH object return:
+- "text": exact content with ALL emojis. Use \\n for line breaks WITHIN the same visual block.
+- "cx_pct": CENTER x as fraction of frame width  (0.0=left edge, 1.0=right edge, 0.5=center)
+- "cy_pct": CENTER y as fraction of frame height (0.0=top, 1.0=bottom)
+- "w_pct":  estimated width of the text block as fraction of frame width
+- "fontsize_pct": font height as fraction of frame height (e.g. 0.04 = 4% of height)
+- "align": "left" | "center" | "right"
+- "bold": true | false
+- "color": "white" | "black" | other if clearly different
 
-Rules:
-- Include EVERY emoji exactly as it appears
-- Keep related lines in one block if they form one visual paragraph
-- If multiple lines appear together as one visual group, join them with \\n
-- Return ONLY valid JSON array, no explanation, no markdown
+KEY RULES:
+1. Each independently-positioned element = separate JSON object with its own coordinates.
+2. A grid of numbers (e.g. keypad 1-9) = 9 separate objects, each at their own cx_pct/cy_pct.
+3. Multi-line blocks that belong together visually = ONE object with \\n between lines.
+4. Preserve ALL emojis exactly.
+5. Return ONLY valid JSON array, no markdown, no explanation.
 
-Example:
+Example for a video with centered text + a keypad:
 [
-  {"text": "if u got ts on ur fyp", "y_pct": 0.28, "x_pct": 0.5, "fontsize_b": 38, "align": "center", "bold": false},
-  {"text": "ur highk a\\nnonchalant & chill ❤️🥺", "y_pct": 0.42, "x_pct": 0.5, "fontsize_b": 44, "align": "center", "bold": true}
+  {"text": "Type this fast", "cx_pct": 0.5, "cy_pct": 0.08, "w_pct": 0.7, "fontsize_pct": 0.04, "align": "center", "bold": false, "color": "white"},
+  {"text": "1", "cx_pct": 0.18, "cy_pct": 0.55, "w_pct": 0.08, "fontsize_pct": 0.08, "align": "center", "bold": false, "color": "white"},
+  {"text": "2", "cx_pct": 0.50, "cy_pct": 0.55, "w_pct": 0.08, "fontsize_pct": 0.08, "align": "center", "bold": false, "color": "white"}
 ]"""
 
 
@@ -137,32 +141,25 @@ def analyze_with_claude_vision(frame_paths: list) -> list:
 
     blocks = json.loads(raw)
 
-    # Flatten: if a block has \n, split into separate lines for rendering
-    lines = []
+    # Normalize: handle both old y_pct/x_pct and new cx_pct/cy_pct schemas
+    normalized = []
     for block in blocks:
         text = block.get("text", "").strip()
         if not text:
             continue
-        sub_lines = text.split("\\n")
-        if len(sub_lines) == 1:
-            lines.append(block)
-        else:
-            # Assign y positions proportionally for sub-lines
-            y_base = block.get("y_pct", 0.5)
-            fsize  = block.get("fontsize_b", 36)
-            # Assume each sub-line takes ~fsize px in 1280 frame
-            line_step = fsize / 1280
-            for idx, sub in enumerate(sub_lines):
-                sub = sub.strip()
-                if not sub:
-                    continue
-                new_block = dict(block)
-                new_block["text"] = sub
-                new_block["y_pct"] = round(y_base + (idx - len(sub_lines) / 2 + 0.5) * line_step, 4)
-                lines.append(new_block)
+        b = dict(block)
+        # Support both naming conventions
+        if "cx_pct" not in b:
+            b["cx_pct"] = b.get("x_pct", 0.5)
+        if "cy_pct" not in b:
+            b["cy_pct"] = b.get("y_pct", 0.5)
+        if "fontsize_pct" not in b:
+            # Convert fontsize_b (px in 1280 frame) to fraction
+            b["fontsize_pct"] = b.get("fontsize_b", 36) / 1280
+        normalized.append(b)
 
-    lines.sort(key=lambda l: l.get("y_pct", 0))
-    return lines
+    normalized.sort(key=lambda l: l.get("cy_pct", 0))
+    return normalized
 
 
 def analyze_with_tesseract_fallback(frame_paths: list) -> list:
@@ -226,34 +223,38 @@ def analyze_with_tesseract_fallback(frame_paths: list) -> list:
     return lines
 
 
-def render_text_overlay(lines_data: list, wa: int, ha: int, wb: int, hb: int) -> str:
+def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str:
     """
-    Render all text blocks onto a transparent RGBA image.
+    Render all text objects onto a transparent RGBA image.
+    Uses cx_pct/cy_pct as CENTER coordinates, supports multi-line with \\n.
     Returns path to the PNG overlay file.
     """
     from PIL import Image, ImageDraw, ImageFont
 
-    scale  = ha / hb
     overlay = Image.new("RGBA", (wa, ha), (0, 0, 0, 0))
 
-    # Try pilmoji for emoji support, fall back to PIL
     use_pilmoji = True
     try:
         from pilmoji import Pilmoji
     except ImportError:
         use_pilmoji = False
 
-    for block in lines_data:
+    for block in blocks:
         text = block.get("text", "").strip()
         if not text:
             continue
 
-        fontsize_b = block.get("fontsize_b", 36)
-        fontsize   = max(10, int(fontsize_b * scale))
-        y_pct      = block.get("y_pct", 0.5)
-        x_pct      = block.get("x_pct", 0.5)
-        align      = block.get("align", "center")
-        bold       = block.get("bold", False)
+        # Font size: fontsize_pct is fraction of frame height
+        fontsize_pct = block.get("fontsize_pct", 0.035)
+        fontsize     = max(10, int(ha * fontsize_pct))
+
+        # Center coordinates in pixels
+        cx = int(wa * block.get("cx_pct", 0.5))
+        cy = int(ha * block.get("cy_pct", 0.5))
+
+        bold      = block.get("bold", False)
+        color_str = block.get("color", "white")
+        color = (255, 255, 255, 255) if "white" in color_str.lower() else (0, 0, 0, 255)
 
         font_path = FONT_BOLD if bold else FONT_REG
         try:
@@ -261,46 +262,57 @@ def render_text_overlay(lines_data: list, wa: int, ha: int, wb: int, hb: int) ->
         except Exception:
             font = ImageFont.load_default()
 
-        # Estimate text width for alignment
-        try:
-            bbox = font.getbbox(text)
-            tw   = bbox[2] - bbox[0]
-        except Exception:
-            tw = len(text) * fontsize // 2
+        border = max(1, fontsize // 10)
+        shadow = (0, 0, 0, 210)
 
-        if align == "center":
-            x = max(0, (wa - tw) // 2)
-        elif align == "right":
-            x = max(0, wa - tw - int(wa * 0.05))
-        else:
-            x = max(0, int(wa * x_pct))
+        # Handle multi-line blocks
+        lines  = text.split("\\n")
+        line_h = int(fontsize * 1.25)
+        total_h = len(lines) * line_h
+        y_start = cy - total_h // 2
 
-        y = max(0, int(ha * y_pct) - fontsize // 2)
-
-        border = max(2, fontsize // 12)
-
-        if use_pilmoji:
-            try:
-                with Pilmoji(overlay) as pm:
-                    for dx in range(-border, border+1):
-                        for dy in range(-border, border+1):
-                            if abs(dx) + abs(dy) > border:
-                                continue
-                            pm.text((x+dx, y+dy), text, font=font,
-                                    fill=(0, 0, 0, 220))
-                    pm.text((x, y), text, font=font, fill=(255, 255, 255, 255))
-            except Exception:
-                use_pilmoji = False
-
-        if not use_pilmoji:
-            draw = ImageDraw.Draw(overlay)
-            for dx in range(-border, border+1):
-                for dy in range(-border, border+1):
-                    if abs(dx) + abs(dy) > border:
+        def draw_line(canvas, x, y, line_text, fnt):
+            # Draw border/shadow
+            for dx in range(-border, border + 1):
+                for dy in range(-border, border + 1):
+                    if dx == 0 and dy == 0:
                         continue
-                    draw.text((x+dx, y+dy), text, font=font,
-                               fill=(0, 0, 0, 220))
-            draw.text((x, y), text, font=font, fill=(255, 255, 255, 255))
+                    if abs(dx) + abs(dy) <= border + 1:
+                        canvas.text((x + dx, y + dy), line_text, font=fnt, fill=shadow)
+            canvas.text((x, y), line_text, font=fnt, fill=color)
+
+        for i, line in enumerate(lines):
+            line = line.strip()
+            if not line:
+                continue
+            y = y_start + i * line_h
+
+            # Compute x for this line (centered on cx)
+            try:
+                bbox = font.getbbox(line)
+                tw   = bbox[2] - bbox[0]
+            except Exception:
+                tw = len(line) * fontsize // 2
+
+            x = max(0, cx - tw // 2)
+            x = min(x, wa - 1)  # don't go off-screen
+            y = max(0, min(y, ha - fontsize - 1))
+
+            if use_pilmoji:
+                try:
+                    with Pilmoji(overlay) as pm:
+                        # shadow
+                        for dx in range(-border, border + 1):
+                            for dy in range(-border, border + 1):
+                                if abs(dx) + abs(dy) <= border + 1 and (dx or dy):
+                                    pm.text((x+dx, y+dy), line, font=font, fill=shadow)
+                        pm.text((x, y), line, font=font, fill=color)
+                except Exception:
+                    use_pilmoji = False
+
+            if not use_pilmoji:
+                draw = ImageDraw.Draw(overlay)
+                draw_line(draw, x, y, line, font)
 
     out_path = f"/tmp/overlay_{uuid.uuid4().hex}.png"
     overlay.save(out_path, "PNG")
