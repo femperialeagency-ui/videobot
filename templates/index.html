@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VideoBot — Créateur de Vidéo C</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f0f13;
+      --surface:  #1a1a24;
+      --border:   #2e2e42;
+      --accent:   #7c5cfc;
+      --accent2:  #a78bfa;
+      --text:     #e8e8f0;
+      --muted:    #8888aa;
+      --success:  #34d399;
+      --error:    #f87171;
+      --radius:   12px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 16px 80px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    header p {
+      color: var(--muted);
+      margin-top: 8px;
+      font-size: 0.95rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      width: 100%;
+      max-width: 680px;
+      margin-bottom: 20px;
+    }
+    .card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--accent2);
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card h2 .num {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 50%;
+      width: 22px; height: 22px;
+      font-size: 0.75rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    /* Drop zones */
+    .drop-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 24px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(124,92,252,0.07);
+    }
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .drop-zone .icon { font-size: 2rem; margin-bottom: 8px; }
+    .drop-zone .label { font-weight: 600; font-size: 0.9rem; }
+    .drop-zone .sublabel { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+    .drop-zone .filename {
+      margin-top: 8px;
+      font-size: 0.78rem;
+      color: var(--success);
+      word-break: break-all;
+    }
+
+    /* Form fields */
+    .field { margin-bottom: 16px; }
+    .field label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .field input[type="text"],
+    .field input[type="number"],
+    .field select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .field input:focus, .field select:focus { border-color: var(--accent); }
+
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+    /* Range slider */
+    .range-wrap { display: flex; align-items: center; gap: 12px; }
+    .range-wrap input[type="range"] {
+      flex: 1;
+      accent-color: var(--accent);
+    }
+    .range-wrap .val {
+      font-size: 0.85rem;
+      color: var(--accent2);
+      min-width: 32px;
+      text-align: right;
+    }
+
+    /* Color swatch + input */
+    .color-row { display: flex; align-items: center; gap: 10px; }
+    .color-row input[type="color"] {
+      width: 36px; height: 36px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      background: none;
+      padding: 0;
+    }
+    .color-row input[type="text"] {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 8px 12px;
+      font-size: 0.9rem;
+      outline: none;
+    }
+    .color-row input[type="text"]:focus { border-color: var(--accent); }
+
+    /* Submit button */
+    #submitBtn {
+      width: 100%;
+      max-width: 680px;
+      padding: 16px;
+      background: linear-gradient(135deg, var(--accent), #9f6fff);
+      border: none;
+      border-radius: var(--radius);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      margin-bottom: 20px;
+    }
+    #submitBtn:hover:not(:disabled) { opacity: 0.9; }
+    #submitBtn:active:not(:disabled) { transform: scale(0.98); }
+    #submitBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Progress */
+    #progressCard {
+      display: none;
+      width: 100%;
+      max-width: 680px;
+    }
+    .progress-bar-wrap {
+      background: var(--border);
+      border-radius: 999px;
+      height: 8px;
+      overflow: hidden;
+      margin: 12px 0;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 999px;
+      transition: width 0.4s ease;
+      width: 0%;
+    }
+    #progressStatus { font-size: 0.88rem; color: var(--muted); }
+
+    /* Result */
+    #resultCard { display: none; width: 100%; max-width: 680px; }
+    #downloadBtn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--success);
+      color: #000;
+      font-weight: 700;
+      padding: 12px 24px;
+      border-radius: 10px;
+      text-decoration: none;
+      font-size: 0.95rem;
+      margin-top: 12px;
+      transition: opacity 0.2s;
+    }
+    #downloadBtn:hover { opacity: 0.85; }
+
+    /* Error */
+    #errorBox {
+      display: none;
+      width: 100%;
+      max-width: 680px;
+      background: rgba(248,113,113,0.1);
+      border: 1px solid var(--error);
+      border-radius: var(--radius);
+      padding: 16px;
+      color: var(--error);
+      font-size: 0.88rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* Tooltip helper */
+    .hint { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
+
+    @media (max-width: 520px) {
+      .drop-row { grid-template-columns: 1fr; }
+      .field-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🎬 VideoBot</h1>
+  <p>Combine la vidéo A + l'audio de B + ton texte → Vidéo C prête à télécharger</p>
+</header>
+
+<form id="mainForm">
+
+  <!-- STEP 1 : Upload -->
+  <div class="card">
+    <h2><span class="num">1</span> Upload des vidéos</h2>
+    <div class="drop-row">
+      <div class="drop-zone" id="zoneA">
+        <input type="file" name="video_a" id="inputA" accept="video/*" required />
+        <div class="icon">🎥</div>
+        <div class="label">Vidéo A</div>
+        <div class="sublabel">Tes visuels (son remplacé)</div>
+        <div class="filename" id="nameA"></div>
+      </div>
+      <div class="drop-zone" id="zoneB">
+        <input type="file" name="video_b" id="inputB" accept="video/*" required />
+        <div class="icon">🎵</div>
+        <div class="label">Vidéo B</div>
+        <div class="sublabel">Source : audio + texte</div>
+        <div class="filename" id="nameB"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2 : Texte -->
+  <div class="card">
+    <h2><span class="num">2</span> Texte à incruster</h2>
+
+    <div class="field">
+      <label>Ligne 1</label>
+      <input type="text" name="line1" id="line1" placeholder='Ex : Can I lowkey call you a "bad boy"' />
+    </div>
+    <div class="field">
+      <label>Ligne 2</label>
+      <input type="text" name="line2" id="line2" placeholder='Ex : without the D and O' />
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label>Taille de police</label>
+        <div class="range-wrap">
+          <input type="range" id="fontsize" name="fontsize" min="14" max="100" value="32"
+                 oninput="document.getElementById('fsVal').textContent=this.value" />
+          <span class="val" id="fsVal">32</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Épaisseur du contour</label>
+        <div class="range-wrap">
+          <input type="range" id="borderw" name="borderw" min="0" max="8" value="3"
+                 oninput="document.getElementById('bwVal').textContent=this.value" />
+          <span class="val" id="bwVal">3</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Couleur du texte</label>
+      <div class="color-row">
+        <input type="color" id="colorPicker" value="#ffffff"
+               oninput="document.getElementById('colorText').value=this.value" />
+        <input type="text" id="colorText" name="fontcolor" value="white"
+               placeholder="white / #ffffff / yellow"
+               oninput="syncColor(this.value)" />
+      </div>
+      <p class="hint">Nom CSS (white, yellow…) ou code hex (#ffffff)</p>
+    </div>
+  </div>
+
+  <!-- STEP 3 : Position -->
+  <div class="card">
+    <h2><span class="num">3</span> Position du texte</h2>
+
+    <div class="field-row">
+      <div class="field">
+        <label>Position horizontale (% depuis gauche)</label>
+        <div class="range-wrap">
+          <input type="range" id="xPct" min="0" max="80" value="4" step="1"
+                 oninput="document.getElementById('xVal').textContent=this.value+'%'; syncPct()" />
+          <span class="val" id="xVal">4%</span>
+        </div>
+        <input type="hidden" name="x_pct" id="xPctHidden" value="0.04" />
+      </div>
+      <div class="field">
+        <label>Position verticale (% depuis le haut)</label>
+        <div class="range-wrap">
+          <input type="range" id="yPct" min="0" max="95" value="71" step="1"
+                 oninput="document.getElementById('yVal').textContent=this.value+'%'; syncPct()" />
+          <span class="val" id="yVal">71%</span>
+        </div>
+        <input type="hidden" name="y_pct" id="yPctHidden" value="0.71" />
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Espacement entre les lignes (% de la hauteur)</label>
+      <div class="range-wrap">
+        <input type="range" id="gapPct" min="2" max="12" value="5" step="1"
+               oninput="document.getElementById('gapVal').textContent=this.value+'%'; syncGap()" />
+        <span class="val" id="gapVal">5%</span>
+      </div>
+      <input type="hidden" name="line_gap_pct" id="gapPctHidden" value="0.055" />
+    </div>
+  </div>
+
+</form>
+
+<button id="submitBtn" onclick="submitForm()">⚡ Générer la Vidéo C</button>
+
+<!-- Progress -->
+<div class="card" id="progressCard">
+  <h2>⏳ Traitement en cours…</h2>
+  <div class="progress-bar-wrap">
+    <div class="progress-bar-fill" id="progressFill"></div>
+  </div>
+  <div id="progressStatus">Upload et analyse des vidéos…</div>
+</div>
+
+<!-- Result -->
+<div class="card" id="resultCard">
+  <h2>✅ Vidéo C prête !</h2>
+  <p style="color:var(--muted);font-size:0.9rem">Clique pour télécharger ta vidéo finale.</p>
+  <a id="downloadBtn" href="#">⬇️ Télécharger video_C.mp4</a>
+</div>
+
+<!-- Error -->
+<div id="errorBox"></div>
+
+<script>
+  // ── Drop zone UI ──────────────────────────────────────────────
+  ["A","B"].forEach(letter => {
+    const input = document.getElementById("input"+letter);
+    const zone  = document.getElementById("zone"+letter);
+    const name  = document.getElementById("name"+letter);
+
+    input.addEventListener("change", () => {
+      if (input.files[0]) name.textContent = "✓ " + input.files[0].name;
+    });
+    zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("drag-over"); });
+    zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
+    zone.addEventListener("drop", e => {
+      e.preventDefault();
+      zone.classList.remove("drag-over");
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+        name.textContent = "✓ " + file.name;
+      }
+    });
+  });
+
+  // ── Hidden field sync ─────────────────────────────────────────
+  function syncPct() {
+    document.getElementById("xPctHidden").value =
+      (document.getElementById("xPct").value / 100).toFixed(2);
+    document.getElementById("yPctHidden").value =
+      (document.getElementById("yPct").value / 100).toFixed(2);
+  }
+  function syncGap() {
+    document.getElementById("gapPctHidden").value =
+      (document.getElementById("gapPct").value / 100).toFixed(3);
+  }
+  function syncColor(val) {
+    try {
+      if (/^#[0-9a-fA-F]{6}$/.test(val))
+        document.getElementById("colorPicker").value = val;
+    } catch(_) {}
+  }
+
+  // ── Form submit via fetch ─────────────────────────────────────
+  let pollInterval = null;
+
+  function showError(msg) {
+    const box = document.getElementById("errorBox");
+    box.style.display = "block";
+    box.textContent = "❌ Erreur : " + msg;
+  }
+
+  async function submitForm() {
+    const form = document.getElementById("mainForm");
+    const btn  = document.getElementById("submitBtn");
+
+    if (!document.getElementById("inputA").files[0] ||
+        !document.getElementById("inputB").files[0]) {
+      alert("Merci d'uploader les deux vidéos.");
+      return;
+    }
+
+    btn.disabled = true;
+    document.getElementById("errorBox").style.display = "none";
+    document.getElementById("resultCard").style.display = "none";
+    document.getElementById("progressCard").style.display = "block";
+    document.getElementById("progressFill").style.width = "5%";
+    document.getElementById("progressStatus").textContent = "Upload des vidéos…";
+
+    const fd = new FormData(form);
+
+    let jobId;
+    try {
+      const res  = await fetch("/process", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || res.statusText);
+      jobId = data.job_id;
+    } catch(e) {
+      document.getElementById("progressCard").style.display = "none";
+      showError(e.message);
+      btn.disabled = false;
+      return;
+    }
+
+    document.getElementById("progressFill").style.width = "20%";
+    document.getElementById("progressStatus").textContent = "Traitement ffmpeg…";
+
+    pollInterval = setInterval(async () => {
+      try {
+        const r = await fetch("/status/" + jobId);
+        const s = await r.json();
+
+        if (s.status === "done") {
+          clearInterval(pollInterval);
+          document.getElementById("progressFill").style.width = "100%";
+          document.getElementById("progressCard").style.display = "none";
+          document.getElementById("resultCard").style.display = "block";
+          document.getElementById("downloadBtn").href = "/download/" + jobId;
+          btn.disabled = false;
+
+        } else if (s.status === "error") {
+          clearInterval(pollInterval);
+          document.getElementById("progressCard").style.display = "none";
+          showError(s.error || "Erreur inconnue");
+          btn.disabled = false;
+
+        } else {
+          const fill = document.getElementById("progressFill");
+          const cur  = parseFloat(fill.style.width) || 20;
+          if (cur < 88) fill.style.width = (cur + 2) + "%";
+        }
+      } catch(_) {}
+    }, 1500);
+  }
+</script>
+</body>
+</html>
