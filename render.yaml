@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: videobot
+    runtime: docker
+    plan: starter          # $7/month — no sleep, faster CPU
+    # plan: free           # gratuit mais dort après 15 min d'inactivité
+    envVars:
+      - key: PORT
+        value: 10000
+    healthCheckPath: /
