@@ -429,6 +429,7 @@
   }
   function syncColor(val) {
     try {
+      // If it looks like a hex, sync the color picker
       if (/^#[0-9a-fA-F]{6}$/.test(val))
         document.getElementById("colorPicker").value = val;
     } catch(_) {}
@@ -447,6 +448,7 @@
     const form = document.getElementById("mainForm");
     const btn  = document.getElementById("submitBtn");
 
+    // Basic validation
     if (!document.getElementById("inputA").files[0] ||
         !document.getElementById("inputB").files[0]) {
       alert("Merci d'uploader les deux vidéos.");
@@ -475,12 +477,27 @@
       return;
     }
 
+    // Poll status
     document.getElementById("progressFill").style.width = "20%";
     document.getElementById("progressStatus").textContent = "Traitement ffmpeg…";
+
+    let networkErrors = 0;
+    const MAX_NETWORK_ERRORS = 8;
 
     pollInterval = setInterval(async () => {
       try {
         const r = await fetch("/status/" + jobId);
+        networkErrors = 0; // reset on success
+
+        if (r.status === 404) {
+          // Server restarted — job lost
+          clearInterval(pollInterval);
+          document.getElementById("progressCard").style.display = "none";
+          showError("Le serveur a redémarré pendant le traitement. Relance la vidéo.");
+          btn.disabled = false;
+          return;
+        }
+
         const s = await r.json();
 
         if (s.status === "done") {
@@ -491,18 +508,27 @@
           document.getElementById("downloadBtn").href = "/download/" + jobId;
           btn.disabled = false;
 
-        } else if (s.status === "error") {
+        } else if (s.status === "error" || s.status === "not_found") {
           clearInterval(pollInterval);
           document.getElementById("progressCard").style.display = "none";
-          showError(s.error || "Erreur inconnue");
+          showError(s.error || "Erreur inconnue — relance la vidéo.");
           btn.disabled = false;
 
         } else {
+          // still processing – animate bar between 20-90%
           const fill = document.getElementById("progressFill");
           const cur  = parseFloat(fill.style.width) || 20;
           if (cur < 88) fill.style.width = (cur + 2) + "%";
         }
-      } catch(_) {}
+      } catch(_) {
+        networkErrors++;
+        if (networkErrors >= MAX_NETWORK_ERRORS) {
+          clearInterval(pollInterval);
+          document.getElementById("progressCard").style.display = "none";
+          showError("Connexion perdue. Vérifie ta connexion et relance.");
+          btn.disabled = false;
+        }
+      }
     }, 1500);
   }
 </script>
