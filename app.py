@@ -1,6 +1,7 @@
 import os
 import uuid
 import json
+import base64
 import subprocess
 from pathlib import Path
 from flask import Flask, render_template, request, send_file, jsonify
@@ -10,8 +11,34 @@ app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
 UPLOAD_DIR = Path("/tmp/videobot_jobs")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-FONT      = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
+FONT_BOLD = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
 FONT_REG  = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
+
+VISION_PROMPT = """These images are frames from the same TikTok/Reel video.
+
+Identify ALL text overlaid on the video. Only include text that was added as a caption or overlay — NOT text that is part of the scene (clothing, posters, etc.).
+
+Return a JSON array of text blocks ordered top-to-bottom as they appear on screen.
+
+For each block return:
+- "text": exact content including ALL emojis (e.g. ❤️🥺💔), newlines within a block use \\n
+- "y_pct": vertical center position as decimal (0.0=top, 1.0=bottom)
+- "x_pct": horizontal center position (0.0=left, 1.0=right, 0.5=center)
+- "fontsize_b": estimated font height in pixels assuming frame height = 1280px
+- "align": "left", "center", or "right"
+- "bold": true or false
+
+Rules:
+- Include EVERY emoji exactly as it appears
+- Keep related lines in one block if they form one visual paragraph
+- If multiple lines appear together as one visual group, join them with \\n
+- Return ONLY valid JSON array, no explanation, no markdown
+
+Example:
+[
+  {"text": "if u got ts on ur fyp", "y_pct": 0.28, "x_pct": 0.5, "fontsize_b": 38, "align": "center", "bold": false},
+  {"text": "ur highk a\\nnonchalant & chill ❤️🥺", "y_pct": 0.42, "x_pct": 0.5, "fontsize_b": 44, "align": "center", "bold": true}
+]"""
 
 
 # ── Global JSON error handler ─────────────────────────────────────
@@ -41,121 +68,243 @@ def get_video_dims(path):
     return 576, 1024
 
 
-def analyze_text_lines(video_path: str) -> list:
-    """
-    Detect text lines using full-frame OCR with word bounding boxes.
-    Returns list of {text, y_pct, x_pct, fontsize_b} sorted top→bottom.
-    """
-    frame_path = f"/tmp/analyze_{uuid.uuid4().hex}.png"
+def extract_frames(video_path: str, count: int = 4) -> list:
+    """Extract evenly-spaced frames from video."""
+    # Get duration
+    r = subprocess.run(
+        ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+         "-print_format", "json", video_path],
+        capture_output=True, text=True, timeout=15
+    )
     try:
-        import numpy as np
-        import pytesseract
-        from PIL import Image
+        duration = float(json.loads(r.stdout)["format"]["duration"])
+    except Exception:
+        duration = 3.0
 
+    frames = []
+    step = max(0.5, duration / (count + 1))
+    for i in range(1, count + 1):
+        t = min(step * i, duration - 0.1)
+        out = f"/tmp/frame_{uuid.uuid4().hex}.png"
         subprocess.run(
-            ["ffmpeg", "-ss", "1", "-i", video_path,
-             "-vframes", "1", "-y", frame_path],
+            ["ffmpeg", "-ss", str(t), "-i", video_path,
+             "-vframes", "1", "-vf", "scale=720:-1", "-y", out],
             capture_output=True, timeout=15
         )
-        if not Path(frame_path).exists():
-            return []
+        if Path(out).exists():
+            frames.append(out)
+    return frames
 
-        img = Image.open(frame_path).convert("RGB")
-        arr = np.array(img)
-        h, w = arr.shape[:2]
 
-        # Invert full frame: white text → black (Tesseract sweet spot)
-        white_mask = (arr[:,:,0] > 175) & (arr[:,:,1] > 175) & (arr[:,:,2] > 175)
-        inv = np.full((h, w), 255, dtype=np.uint8)
-        inv[white_mask] = 0
+def analyze_with_claude_vision(frame_paths: list) -> list:
+    """Use Claude Vision to detect text blocks with emojis and positions."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return []
 
-        # Scale 2× for better OCR accuracy
-        pil_inv = Image.fromarray(inv).resize((w * 2, h * 2), Image.NEAREST)
+    import anthropic
 
-        # Get all words with bounding boxes
-        data = pytesseract.image_to_data(
-            pil_inv, config="--psm 3 --oem 3",
-            output_type=pytesseract.Output.DICT
-        )
-
-        # Collect valid words (convert coords back to original frame scale)
-        words = []
-        for i in range(len(data['text'])):
-            txt  = data['text'][i].strip()
-            conf = int(data['conf'][i])
-            if not txt or conf < 20:
-                continue
-            wx = data['left'][i]   // 2
-            wy = data['top'][i]    // 2
-            ww = data['width'][i]  // 2
-            wh = data['height'][i] // 2
-            # Skip degenerate bboxes
-            if wh < 4 or ww < 2:
-                continue
-            words.append({'text': txt, 'x': wx, 'y': wy, 'w': ww, 'h': wh})
-
-        if not words:
-            return []
-
-        # Compute median word height
-        med_h = float(np.median([wd['h'] for wd in words]))
-
-        # Filter height outliers: keep 0.4× – 2.5× median
-        # (removes huge OCR blobs and tiny noise artifacts)
-        words = [wd for wd in words
-                 if med_h * 0.40 <= wd['h'] <= med_h * 2.5]
-        if not words:
-            return []
-
-        # Recompute median after filtering
-        med_h = float(np.median([wd['h'] for wd in words]))
-
-        # Group words into lines by y-proximity
-        words.sort(key=lambda wd: wd['y'])
-        groups = [[words[0]]]
-        for wd in words[1:]:
-            if abs(wd['y'] - groups[-1][-1]['y']) < med_h * 0.7:
-                groups[-1].append(wd)
-            else:
-                groups.append([wd])
-
-        # Build line objects
-        lines = []
-        for grp in groups:
-            grp.sort(key=lambda wd: wd['x'])
-            text = " ".join(wd['text'] for wd in grp)
-            alpha_r = sum(c.isalpha() for c in text) / max(1, len(text))
-            if alpha_r < 0.25 and len(text) < 4:
-                continue
-            y_line   = min(wd['y'] for wd in grp)
-            x_line   = min(wd['x'] for wd in grp)
-            font_est = max(10, int(np.median([wd['h'] for wd in grp]) * 0.90))
-            lines.append({
-                "text":       text,
-                "y_pct":      round(y_line / h, 4),
-                "x_pct":      round(max(0.0, (x_line - 5) / w), 4),
-                "fontsize_b": font_est,
+    content = []
+    for path in frame_paths[:4]:
+        try:
+            with open(path, "rb") as f:
+                b64 = base64.standard_b64encode(f.read()).decode()
+            content.append({
+                "type": "image",
+                "source": {"type": "base64", "media_type": "image/png", "data": b64}
             })
+        except Exception:
+            pass
 
-        # Ensure top → bottom order
-        lines.sort(key=lambda l: l["y_pct"])
-        return lines
+    if not content:
+        return []
 
-    except Exception as e:
-        return [{"error": str(e)}]
-    finally:
-        if Path(frame_path).exists():
-            Path(frame_path).unlink(missing_ok=True)
+    content.append({"type": "text", "text": VISION_PROMPT})
 
-
-def escape_dt(text):
-    return (
-        text
-        .replace("\\", "\\\\")
-        .replace("'",  "’")   # replace straight quote with curly (safe)
-        .replace(":",  "\\:")
-        .replace("%",  "\\%")
+    client = anthropic.Anthropic(api_key=api_key)
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=2048,
+        messages=[{"role": "user", "content": content}]
     )
+
+    raw = response.content[0].text.strip()
+    # Remove markdown code fences if present
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+
+    blocks = json.loads(raw)
+
+    # Flatten: if a block has \n, split into separate lines for rendering
+    lines = []
+    for block in blocks:
+        text = block.get("text", "").strip()
+        if not text:
+            continue
+        sub_lines = text.split("\\n")
+        if len(sub_lines) == 1:
+            lines.append(block)
+        else:
+            # Assign y positions proportionally for sub-lines
+            y_base = block.get("y_pct", 0.5)
+            fsize  = block.get("fontsize_b", 36)
+            # Assume each sub-line takes ~fsize px in 1280 frame
+            line_step = fsize / 1280
+            for idx, sub in enumerate(sub_lines):
+                sub = sub.strip()
+                if not sub:
+                    continue
+                new_block = dict(block)
+                new_block["text"] = sub
+                new_block["y_pct"] = round(y_base + (idx - len(sub_lines) / 2 + 0.5) * line_step, 4)
+                lines.append(new_block)
+
+    lines.sort(key=lambda l: l.get("y_pct", 0))
+    return lines
+
+
+def analyze_with_tesseract_fallback(frame_paths: list) -> list:
+    """Fallback OCR using Tesseract when no API key."""
+    import numpy as np
+    import pytesseract
+    from PIL import Image
+
+    if not frame_paths:
+        return []
+
+    img  = Image.open(frame_paths[0]).convert("RGB")
+    arr  = np.array(img)
+    h, w = arr.shape[:2]
+
+    white = (arr[:,:,0] > 175) & (arr[:,:,1] > 175) & (arr[:,:,2] > 175)
+    inv   = np.full((h, w), 255, dtype=np.uint8)
+    inv[white] = 0
+    from PIL import Image as PIL
+    pil_inv = PIL.fromarray(inv).resize((w*2, h*2), PIL.NEAREST)
+
+    data = pytesseract.image_to_data(pil_inv, config="--psm 3 --oem 3",
+                                      output_type=pytesseract.Output.DICT)
+    raw_words = []
+    for i in range(len(data['text'])):
+        txt = data['text'][i].strip()
+        if not txt or int(data['conf'][i]) < 20: continue
+        wx, wy = data['left'][i]//2, data['top'][i]//2
+        ww, wh = data['width'][i]//2, data['height'][i]//2
+        if wh < 4 or ww < 2: continue
+        raw_words.append({'text': txt, 'x': wx, 'y': wy, 'w': ww, 'h': wh})
+
+    if not raw_words: return []
+    import numpy as np2
+    med_h = float(np2.median([wd['h'] for wd in raw_words]))
+    words = [wd for wd in raw_words if med_h*0.40 <= wd['h'] <= med_h*2.5]
+    if not words: return []
+    med_h2 = float(np2.median([wd['h'] for wd in words]))
+
+    words.sort(key=lambda wd: wd['y'])
+    groups = [[words[0]]]
+    for wd in words[1:]:
+        if abs(wd['y'] - groups[-1][-1]['y']) < med_h2 * 0.7:
+            groups[-1].append(wd)
+        else:
+            groups.append([wd])
+
+    lines = []
+    for grp in groups:
+        grp.sort(key=lambda wd: wd['x'])
+        text = " ".join(wd['text'] for wd in grp)
+        alpha_r = sum(c.isalpha() for c in text) / max(1, len(text))
+        if alpha_r < 0.25 and len(text) < 4: continue
+        y_l = min(wd['y'] for wd in grp) / h
+        x_l = min(wd['x'] for wd in grp) / w
+        font_est = max(10, int(np2.median([wd['h'] for wd in grp]) * 0.90))
+        lines.append({"text": text, "y_pct": round(y_l,4),
+                      "x_pct": round(max(0,(x_l-5)/w),4),
+                      "fontsize_b": font_est, "align": "left", "bold": False})
+    lines.sort(key=lambda l: l["y_pct"])
+    return lines
+
+
+def render_text_overlay(lines_data: list, wa: int, ha: int, wb: int, hb: int) -> str:
+    """
+    Render all text blocks onto a transparent RGBA image.
+    Returns path to the PNG overlay file.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    scale  = ha / hb
+    overlay = Image.new("RGBA", (wa, ha), (0, 0, 0, 0))
+
+    # Try pilmoji for emoji support, fall back to PIL
+    use_pilmoji = True
+    try:
+        from pilmoji import Pilmoji
+    except ImportError:
+        use_pilmoji = False
+
+    for block in lines_data:
+        text = block.get("text", "").strip()
+        if not text:
+            continue
+
+        fontsize_b = block.get("fontsize_b", 36)
+        fontsize   = max(10, int(fontsize_b * scale))
+        y_pct      = block.get("y_pct", 0.5)
+        x_pct      = block.get("x_pct", 0.5)
+        align      = block.get("align", "center")
+        bold       = block.get("bold", False)
+
+        font_path = FONT_BOLD if bold else FONT_REG
+        try:
+            font = ImageFont.truetype(font_path, fontsize)
+        except Exception:
+            font = ImageFont.load_default()
+
+        # Estimate text width for alignment
+        try:
+            bbox = font.getbbox(text)
+            tw   = bbox[2] - bbox[0]
+        except Exception:
+            tw = len(text) * fontsize // 2
+
+        if align == "center":
+            x = max(0, (wa - tw) // 2)
+        elif align == "right":
+            x = max(0, wa - tw - int(wa * 0.05))
+        else:
+            x = max(0, int(wa * x_pct))
+
+        y = max(0, int(ha * y_pct) - fontsize // 2)
+
+        border = max(2, fontsize // 12)
+
+        if use_pilmoji:
+            try:
+                with Pilmoji(overlay) as pm:
+                    for dx in range(-border, border+1):
+                        for dy in range(-border, border+1):
+                            if abs(dx) + abs(dy) > border:
+                                continue
+                            pm.text((x+dx, y+dy), text, font=font,
+                                    fill=(0, 0, 0, 220))
+                    pm.text((x, y), text, font=font, fill=(255, 255, 255, 255))
+            except Exception:
+                use_pilmoji = False
+
+        if not use_pilmoji:
+            draw = ImageDraw.Draw(overlay)
+            for dx in range(-border, border+1):
+                for dy in range(-border, border+1):
+                    if abs(dx) + abs(dy) > border:
+                        continue
+                    draw.text((x+dx, y+dy), text, font=font,
+                               fill=(0, 0, 0, 220))
+            draw.text((x, y), text, font=font, fill=(255, 255, 255, 255))
+
+    out_path = f"/tmp/overlay_{uuid.uuid4().hex}.png"
+    overlay.save(out_path, "PNG")
+    return out_path
 
 
 # ── Routes ────────────────────────────────────────────────────────
@@ -167,7 +316,7 @@ def index():
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    """Upload Video B → detect text lines (position + font size + OCR text)."""
+    """Upload Video B → detect text blocks via Claude Vision (or Tesseract fallback)."""
     try:
         if "video_b" not in request.files:
             return jsonify({"error": "video_b manquant"}), 400
@@ -179,9 +328,33 @@ def analyze():
         path_b = str(tmp / "b.mp4")
         vb.save(path_b)
 
-        lines = analyze_text_lines(path_b)
+        # Extract multiple frames
+        frames = extract_frames(path_b, count=4)
+
+        # Try Claude Vision first
+        has_key = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
+        if has_key:
+            lines = analyze_with_claude_vision(frames)
+        else:
+            lines = []
+
+        # Fallback to Tesseract if Vision failed or no key
+        if not lines:
+            lines = analyze_with_tesseract_fallback(frames)
+
+        # Cleanup temp frames
+        for f in frames:
+            try:
+                Path(f).unlink(missing_ok=True)
+            except Exception:
+                pass
+
         _, hb = get_video_dims(path_b)
-        return jsonify({"lines": lines, "video_b_height": hb})
+        return jsonify({
+            "lines":          lines,
+            "video_b_height": hb,
+            "mode":           "vision" if has_key else "tesseract"
+        })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -208,9 +381,8 @@ def process():
 
         wa, ha = get_video_dims(path_a)
         wb, hb = get_video_dims(path_b)
-        scale  = ha / hb   # font size scaling B → A
 
-        # Lines come as JSON from the frontend
+        # Get text lines from form
         lines_json = request.form.get("lines_json", "[]")
         try:
             lines = json.loads(lines_json)
@@ -218,41 +390,21 @@ def process():
             lines = []
 
         if not lines:
-            return jsonify({"error": "Aucune ligne de texte détectée ou fournie."}), 400
+            return jsonify({"error": "Aucune ligne de texte fournie."}), 400
 
-        # Build drawtext filter chain
-        filters = []
-        for line in lines:
-            text      = line.get("text", "").strip()
-            if not text:
-                continue
-            y_pct     = float(line.get("y_pct",     0.71))
-            x_pct     = float(line.get("x_pct",     0.04))
-            fontsize_b = int(line.get("fontsize_b", 32))
+        # Render text overlay image (supports emojis via Pilmoji)
+        overlay_path = render_text_overlay(lines, wa, ha, wb, hb)
 
-            x         = max(0, int(wa * x_pct))
-            y         = max(0, int(ha * y_pct))
-            fontsize  = max(10, int(fontsize_b * scale))
-
-            filters.append(
-                f"drawtext=fontfile={FONT}"
-                f":text='{escape_dt(text)}'"
-                f":fontsize={fontsize}"
-                f":fontcolor=white"
-                f":bordercolor=black:borderw=3"
-                f":x={x}:y={y}"
-            )
-
-        if not filters:
-            return jsonify({"error": "Aucun texte valide à incruster."}), 400
-
-        vf = ",".join(filters)
-
+        # Compose: video A + overlay image + audio from B
         cmd = [
             "ffmpeg", "-y",
-            "-i", path_a, "-i", path_b,
-            "-filter_complex", f"[0:v]{vf}[out]",
-            "-map", "[out]", "-map", "1:a",
+            "-i", path_a,
+            "-i", path_b,
+            "-i", overlay_path,
+            "-filter_complex",
+            "[0:v][2:v]overlay=0:0[out]",
+            "-map", "[out]",
+            "-map", "1:a",
             "-shortest",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
             "-c:a", "aac", "-b:a", "128k",
@@ -264,6 +416,11 @@ def process():
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
         except subprocess.TimeoutExpired:
             return jsonify({"error": "Timeout (>3 min)"}), 500
+        finally:
+            try:
+                Path(overlay_path).unlink(missing_ok=True)
+            except Exception:
+                pass
 
         if proc.returncode != 0 or not Path(path_out).exists():
             err = proc.stderr[-800:] if proc.stderr else "ffmpeg a echoue"

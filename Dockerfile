@@ -5,6 +5,7 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg \
       fonts-liberation \
+      fonts-noto-color-emoji \
       tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
