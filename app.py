@@ -14,34 +14,35 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 FONT_BOLD = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
 FONT_REG  = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
 
-VISION_PROMPT = """These images are from the same TikTok/Reel video.
+VISION_PROMPT = """These images are frames from the same TikTok/Reel video.
 
-Detect EVERY text element added as an overlay (captions, titles, stickers) — NOT text on clothing, posters, or objects in the scene.
+Detect EVERY text element added as a caption or overlay — NOT text on clothing, objects, or the scene itself.
 
-Return a JSON array. Each element = one independent text object.
+Return a JSON array. Each visually distinct text block = one separate object.
 
-For EACH object return:
-- "text": exact content with ALL emojis. Use \\n for line breaks WITHIN the same visual block.
-- "cx_pct": CENTER x as fraction of frame width  (0.0=left edge, 1.0=right edge, 0.5=center)
-- "cy_pct": CENTER y as fraction of frame height (0.0=top, 1.0=bottom)
-- "w_pct":  estimated width of the text block as fraction of frame width
-- "fontsize_pct": font height as fraction of frame height (e.g. 0.04 = 4% of height)
+For EACH object:
+- "text": exact text with ALL emojis. If 2 lines are tightly grouped together, join with \\n.
+- "cx_pct": CENTER x as decimal fraction of frame width (0=left, 1=right, 0.5=center)
+- "cy_pct": CENTER y as decimal fraction of frame height (0=top, 1=bottom)
+- "fontsize_pct": font height as fraction of frame height. Be conservative: most TikTok captions are 0.025–0.045.
 - "align": "left" | "center" | "right"
 - "bold": true | false
-- "color": "white" | "black" | other if clearly different
+- "color": "white" | "black"
 
-KEY RULES:
-1. Each independently-positioned element = separate JSON object with its own coordinates.
-2. A grid of numbers (e.g. keypad 1-9) = 9 separate objects, each at their own cx_pct/cy_pct.
-3. Multi-line blocks that belong together visually = ONE object with \\n between lines.
+CRITICAL RULES:
+1. Paragraphs/blocks at DIFFERENT vertical positions = DIFFERENT JSON objects, even if all centered.
+2. A number grid (keypad) = each number is its own object with its own cx_pct/cy_pct.
+3. Keep fontsize_pct realistic: 0.03–0.045 for typical captions, max 0.06 for very large text.
 4. Preserve ALL emojis exactly.
-5. Return ONLY valid JSON array, no markdown, no explanation.
+5. Return ONLY a valid JSON array. No markdown, no explanation.
 
-Example for a video with centered text + a keypad:
+Example — video with 3 separate caption blocks + 2 keypad numbers:
 [
-  {"text": "Type this fast", "cx_pct": 0.5, "cy_pct": 0.08, "w_pct": 0.7, "fontsize_pct": 0.04, "align": "center", "bold": false, "color": "white"},
-  {"text": "1", "cx_pct": 0.18, "cy_pct": 0.55, "w_pct": 0.08, "fontsize_pct": 0.08, "align": "center", "bold": false, "color": "white"},
-  {"text": "2", "cx_pct": 0.50, "cy_pct": 0.55, "w_pct": 0.08, "fontsize_pct": 0.08, "align": "center", "bold": false, "color": "white"}
+  {"text": "if u got ts on ur fyp", "cx_pct": 0.5, "cy_pct": 0.25, "fontsize_pct": 0.034, "align": "center", "bold": false, "color": "white"},
+  {"text": "ur highk a\\nnonchalant & chill ❤️🥺", "cx_pct": 0.5, "cy_pct": 0.42, "fontsize_pct": 0.038, "align": "center", "bold": true, "color": "white"},
+  {"text": "send ts to a corny twin 😜✌️", "cx_pct": 0.5, "cy_pct": 0.88, "fontsize_pct": 0.034, "align": "center", "bold": false, "color": "white"},
+  {"text": "1", "cx_pct": 0.18, "cy_pct": 0.55, "fontsize_pct": 0.06, "align": "center", "bold": false, "color": "white"},
+  {"text": "2", "cx_pct": 0.50, "cy_pct": 0.55, "fontsize_pct": 0.06, "align": "center", "bold": false, "color": "white"}
 ]"""
 
 
@@ -244,8 +245,8 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
         if not text:
             continue
 
-        # Font size: fontsize_pct is fraction of frame height
-        fontsize_pct = block.get("fontsize_pct", 0.035)
+        # Font size: fontsize_pct is fraction of frame height (cap at 6%)
+        fontsize_pct = min(block.get("fontsize_pct", 0.035), 0.06)
         fontsize     = max(10, int(ha * fontsize_pct))
 
         # Center coordinates in pixels
@@ -257,51 +258,55 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
         color = (255, 255, 255, 255) if "white" in color_str.lower() else (0, 0, 0, 255)
 
         font_path = FONT_BOLD if bold else FONT_REG
-        try:
-            font = ImageFont.truetype(font_path, fontsize)
-        except Exception:
-            font = ImageFont.load_default()
+
+        # Handle both literal \n (from JSON) and actual newlines
+        lines = text.replace("\\n", "\n").split("\n")
+        lines = [l.strip() for l in lines if l.strip()]
+        if not lines:
+            continue
+
+        # Auto-fit: reduce font size so no line overflows 90% of frame width
+        max_w = int(wa * 0.90)
+        for attempt in range(20):
+            try:
+                font = ImageFont.truetype(font_path, fontsize)
+            except Exception:
+                font = ImageFont.load_default()
+                break
+            widths = []
+            for ln in lines:
+                try:
+                    bb = font.getbbox(ln)
+                    widths.append(bb[2] - bb[0])
+                except Exception:
+                    widths.append(len(ln) * fontsize // 2)
+            if max(widths, default=0) <= max_w or fontsize <= 10:
+                break
+            fontsize = max(10, fontsize - 2)
 
         border = max(1, fontsize // 10)
         shadow = (0, 0, 0, 210)
 
-        # Handle multi-line blocks
-        lines  = text.split("\\n")
-        line_h = int(fontsize * 1.25)
+        line_h  = int(fontsize * 1.3)
         total_h = len(lines) * line_h
         y_start = cy - total_h // 2
 
-        def draw_line(canvas, x, y, line_text, fnt):
-            # Draw border/shadow
-            for dx in range(-border, border + 1):
-                for dy in range(-border, border + 1):
-                    if dx == 0 and dy == 0:
-                        continue
-                    if abs(dx) + abs(dy) <= border + 1:
-                        canvas.text((x + dx, y + dy), line_text, font=fnt, fill=shadow)
-            canvas.text((x, y), line_text, font=fnt, fill=color)
-
         for i, line in enumerate(lines):
-            line = line.strip()
-            if not line:
-                continue
-            y = y_start + i * line_h
-
-            # Compute x for this line (centered on cx)
+            y = max(0, min(y_start + i * line_h, ha - fontsize - 1))
             try:
                 bbox = font.getbbox(line)
                 tw   = bbox[2] - bbox[0]
             except Exception:
                 tw = len(line) * fontsize // 2
 
-            x = max(0, cx - tw // 2)
-            x = min(x, wa - 1)  # don't go off-screen
-            y = max(0, min(y, ha - fontsize - 1))
+            # Center this line on cx
+            x = cx - tw // 2
+            # Clamp so text stays on screen
+            x = max(0, min(x, wa - tw - 1))
 
             if use_pilmoji:
                 try:
                     with Pilmoji(overlay) as pm:
-                        # shadow
                         for dx in range(-border, border + 1):
                             for dy in range(-border, border + 1):
                                 if abs(dx) + abs(dy) <= border + 1 and (dx or dy):
@@ -312,7 +317,11 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
 
             if not use_pilmoji:
                 draw = ImageDraw.Draw(overlay)
-                draw_line(draw, x, y, line, font)
+                for dx in range(-border, border + 1):
+                    for dy in range(-border, border + 1):
+                        if abs(dx) + abs(dy) <= border + 1 and (dx or dy):
+                            draw.text((x+dx, y+dy), line, font=font, fill=shadow)
+                draw.text((x, y), line, font=font, fill=color)
 
     out_path = f"/tmp/overlay_{uuid.uuid4().hex}.png"
     overlay.save(out_path, "PNG")
