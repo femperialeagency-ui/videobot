@@ -11,7 +11,12 @@ UPLOAD_DIR = Path("/tmp/videobot_jobs")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 FONT = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
 
-LUMA = "0.299*r(X,Y)+0.587*g(X,Y)+0.114*b(X,Y)"
+# Pixel mask for text copy: pure white (text fill) OR pure black (text border)
+# Multiplication replaces and() which is not available in geq
+# This rejects warm beige/skin tones where R>G>B
+_IS_WHITE = "gt(r(X,Y),215)*gt(g(X,Y),210)*gt(b(X,Y),205)"
+_IS_BLACK = "lt(r(X,Y),55)*lt(g(X,Y),55)*lt(b(X,Y),55)"
+TEXT_ALPHA = f"255*({_IS_WHITE}+{_IS_BLACK})"
 
 
 # ── Global JSON error handler ─────────────────────────────────────
@@ -114,13 +119,11 @@ def build_pixel_overlay_filter(wb, hb, wa, ha, y_s, y_e):
     overlay_y = int(ha * y_s)
     text_h_a  = max(1, int(ha * region_h))
 
-    alpha = f"if(gt({LUMA},175),255,if(lt({LUMA},70),255,0))"
-
     return (
         f"[1:v]crop=iw:ih*{region_h:.5f}:0:ih*{y_s:.5f}[crop_b];"
         f"[crop_b]scale={wa}:{text_h_a}[scaled_b];"
         f"[scaled_b]format=rgba,"
-        f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='{alpha}'[text_layer];"
+        f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='{TEXT_ALPHA}'[text_layer];"
         f"[0:v][text_layer]overlay=x=0:y={overlay_y}[out]"
     )
 
