@@ -89,17 +89,25 @@ def analyze_text_lines(video_path: str) -> list:
             wy = data['top'][i]    // 2
             ww = data['width'][i]  // 2
             wh = data['height'][i] // 2
-            # Skip tiny or abnormally tall/thin bboxes (OCR artifacts)
-            if wh < 5 or ww < 3:
-                continue
-            if wh > h * 0.12:          # taller than 12% of frame → artifact
+            # Skip degenerate bboxes
+            if wh < 4 or ww < 2:
                 continue
             words.append({'text': txt, 'x': wx, 'y': wy, 'w': ww, 'h': wh})
 
         if not words:
             return []
 
-        # Compute median word height (for proximity threshold)
+        # Compute median word height
+        med_h = float(np.median([wd['h'] for wd in words]))
+
+        # Filter height outliers: keep 0.4× – 2.5× median
+        # (removes huge OCR blobs and tiny noise artifacts)
+        words = [wd for wd in words
+                 if med_h * 0.40 <= wd['h'] <= med_h * 2.5]
+        if not words:
+            return []
+
+        # Recompute median after filtering
         med_h = float(np.median([wd['h'] for wd in words]))
 
         # Group words into lines by y-proximity
