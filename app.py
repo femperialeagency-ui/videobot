@@ -12,14 +12,29 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 FONT = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
 
 
+# ── Global: toutes les erreurs Flask retournent du JSON, jamais du HTML ──
+@app.errorhandler(Exception)
+def handle_exception(e):
+    return jsonify({"error": str(e)}), 500
+
+@app.errorhandler(413)
+def too_large(e):
+    return jsonify({"error": "Fichier trop grand (max 200 MB)"}), 413
+
+
 def probe_video(path):
-    r = subprocess.run(
-        ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_streams", path],
-        capture_output=True, text=True, timeout=30
-    )
-    for s in json.loads(r.stdout).get("streams", []):
-        if s.get("codec_type") == "video":
-            return s
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json",
+             "-show_streams", path],
+            capture_output=True, text=True, timeout=30
+        )
+        data = json.loads(r.stdout) if r.stdout.strip() else {}
+        for s in data.get("streams", []):
+            if s.get("codec_type") == "video":
+                return s
+    except Exception:
+        pass
     return {}
 
 
@@ -34,70 +49,78 @@ def index():
 
 @app.route("/process", methods=["POST"])
 def process():
-    if "video_a" not in request.files or "video_b" not in request.files:
-        return jsonify({"error": "Les deux videos sont requises."}), 400
-
-    va = request.files["video_a"]
-    vb = request.files["video_b"]
-    line1       = request.form.get("line1", "").strip()
-    line2       = request.form.get("line2", "").strip()
-    fontsize    = max(10, min(120, int(request.form.get("fontsize", 32))))
-    fontcolor   = request.form.get("fontcolor", "white")
-    borderw     = max(0, min(10,  int(request.form.get("borderw", 3))))
-    x_pct       = max(0.0, min(0.9,  float(request.form.get("x_pct", 0.04))))
-    y_pct       = max(0.0, min(0.95, float(request.form.get("y_pct", 0.71))))
-    gap_pct     = max(0.02, min(0.15, float(request.form.get("line_gap_pct", 0.055))))
-
-    job_id  = str(uuid.uuid4())
-    job_dir = UPLOAD_DIR / job_id
-    job_dir.mkdir(parents=True, exist_ok=True)
-
-    path_a   = str(job_dir / "a.mp4")
-    path_b   = str(job_dir / "b.mp4")
-    path_out = str(job_dir / "c.mp4")
-
-    va.save(path_a)
-    vb.save(path_b)
-
-    info = probe_video(path_a)
-    w = int(info.get("width",  576))
-    h = int(info.get("height", 1024))
-    x  = max(0, int(w * x_pct))
-    y1 = max(0, int(h * y_pct))
-    y2 = y1 + int(h * gap_pct)
-
-    def dt(text, y):
-        return (f"drawtext=fontfile={FONT}:text='{escape_dt(text)}'"
-                f":fontsize={fontsize}:fontcolor={fontcolor}"
-                f":bordercolor=black:borderw={borderw}:x={x}:y={y}")
-
-    filters = []
-    if line1: filters.append(dt(line1, y1))
-    if line2: filters.append(dt(line2, y2))
-    vf = ",".join(filters) if filters else "null"
-
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", path_a, "-i", path_b,
-        "-filter_complex", f"[0:v]{vf}[v]",
-        "-map", "[v]", "-map", "1:a",
-        "-shortest",
-        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
-        "-c:a", "aac", "-b:a", "128k",
-        "-loglevel", "error",
-        path_out
-    ]
-
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-    except subprocess.TimeoutExpired:
-        return jsonify({"error": "Timeout : traitement trop long (>3 min)"}), 500
+        if "video_a" not in request.files or "video_b" not in request.files:
+            return jsonify({"error": "Les deux videos sont requises."}), 400
 
-    if proc.returncode != 0 or not Path(path_out).exists():
-        err = proc.stderr[-800:] if proc.stderr else "ffmpeg a echoue"
-        return jsonify({"error": err}), 500
+        va = request.files["video_a"]
+        vb = request.files["video_b"]
+        line1     = request.form.get("line1", "").strip()
+        line2     = request.form.get("line2", "").strip()
+        fontsize  = max(10, min(120, int(request.form.get("fontsize",  32))))
+        fontcolor = request.form.get("fontcolor", "white")
+        borderw   = max(0, min(10,  int(request.form.get("borderw",   3))))
+        x_pct     = max(0.0, min(0.9,  float(request.form.get("x_pct",  0.04))))
+        y_pct     = max(0.0, min(0.95, float(request.form.get("y_pct",  0.71))))
+        gap_pct   = max(0.02, min(0.15, float(request.form.get("line_gap_pct", 0.055))))
 
-    return jsonify({"job_id": job_id})
+        job_id  = str(uuid.uuid4())
+        job_dir = UPLOAD_DIR / job_id
+        job_dir.mkdir(parents=True, exist_ok=True)
+        path_a   = str(job_dir / "a.mp4")
+        path_b   = str(job_dir / "b.mp4")
+        path_out = str(job_dir / "c.mp4")
+
+        va.save(path_a)
+        vb.save(path_b)
+
+        info = probe_video(path_a)
+        w = int(info.get("width",  576))
+        h = int(info.get("height", 1024))
+        x  = max(0, int(w * x_pct))
+        y1 = max(0, int(h * y_pct))
+        y2 = y1 + int(h * gap_pct)
+
+        filters = []
+        if line1:
+            filters.append(
+                f"drawtext=fontfile={FONT}:text='{escape_dt(line1)}'"
+                f":fontsize={fontsize}:fontcolor={fontcolor}"
+                f":bordercolor=black:borderw={borderw}:x={x}:y={y1}"
+            )
+        if line2:
+            filters.append(
+                f"drawtext=fontfile={FONT}:text='{escape_dt(line2)}'"
+                f":fontsize={fontsize}:fontcolor={fontcolor}"
+                f":bordercolor=black:borderw={borderw}:x={x}:y={y2}"
+            )
+        vf = ",".join(filters) if filters else "null"
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", path_a, "-i", path_b,
+            "-filter_complex", f"[0:v]{vf}[v]",
+            "-map", "[v]", "-map", "1:a",
+            "-shortest",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
+            "-c:a", "aac", "-b:a", "128k",
+            "-loglevel", "error",
+            path_out
+        ]
+
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        except subprocess.TimeoutExpired:
+            return jsonify({"error": "Timeout (>3 min)"}), 500
+
+        if proc.returncode != 0 or not Path(path_out).exists():
+            err = proc.stderr[-800:] if proc.stderr else "ffmpeg a echoue"
+            return jsonify({"error": err}), 500
+
+        return jsonify({"job_id": job_id})
+
+    except Exception as e:
+        return jsonify({"error": f"Erreur serveur: {str(e)}"}), 500
 
 
 @app.route("/download/<job_id>")
