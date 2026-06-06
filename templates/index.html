@@ -14,11 +14,25 @@
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: var(--bg); color: var(--text); min-height: 100vh;
       display: flex; flex-direction: column; align-items: center; padding: 40px 16px 80px; }
-    header { text-align: center; margin-bottom: 36px; }
+    header { text-align: center; margin-bottom: 24px; }
     header h1 { font-size: 2rem; font-weight: 700;
       background: linear-gradient(135deg, var(--accent), var(--accent2));
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
     header p { color: var(--muted); margin-top: 8px; font-size: 0.9rem; }
+
+    /* ── Tab switcher ── */
+    .tab-switcher { display: flex; gap: 8px; margin-bottom: 24px; }
+    .tab-btn { padding: 10px 22px; border: 1px solid var(--border); border-radius: 10px;
+      background: var(--surface); color: var(--muted); cursor: pointer; font-size: 0.9rem;
+      font-weight: 600; transition: all .2s; }
+    .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .tab-btn:hover:not(.active) { border-color: var(--accent); color: var(--accent2); }
+
+    /* ── Tab content wrappers ── */
+    .tab-content { display: none; flex-direction: column; align-items: center; width: 100%; }
+    .tab-content.active { display: flex; }
+
+    /* ── Shared card / UI ── */
     .card { background: var(--surface); border: 1px solid var(--border);
       border-radius: var(--radius); padding: 24px; width: 100%; max-width: 660px; margin-bottom: 16px; }
     .card h2 { font-size: 0.95rem; font-weight: 600; color: var(--accent2);
@@ -44,85 +58,177 @@
       border-radius: 8px; color: var(--text); padding: 8px 10px; font-size: 0.88rem; outline: none;
       transition: border-color .2s; }
     .line-row input:focus { border-color: var(--accent); }
-    #noLines { font-size: 0.84rem; color: var(--muted); display: none; }
-    #submitBtn { width: 100%; max-width: 660px; padding: 15px;
-      background: linear-gradient(135deg, var(--accent), #9f6fff);
-      border: none; border-radius: var(--radius); color: #fff;
-      font-size: 1rem; font-weight: 700; cursor: pointer;
-      transition: opacity .2s, transform .1s; margin-bottom: 16px; }
-    #submitBtn:hover:not(:disabled) { opacity: .9; }
-    #submitBtn:disabled { opacity: .45; cursor: not-allowed; }
-    #progressCard { display: none; width: 100%; max-width: 660px; }
     .pbar { background: var(--border); border-radius: 999px; height: 7px; overflow: hidden; margin: 10px 0; }
     .pbar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
       border-radius: 999px; transition: width .4s; width: 0%; }
+    .primary-btn { width: 100%; max-width: 660px; padding: 15px;
+      background: linear-gradient(135deg, var(--accent), #9f6fff);
+      border: none; border-radius: var(--radius); color: #fff;
+      font-size: 1rem; font-weight: 700; cursor: pointer;
+      transition: opacity .2s; margin-bottom: 16px; }
+    .primary-btn:hover:not(:disabled) { opacity: .9; }
+    .primary-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+    /* ── Simple mode ── */
+    #noLines { font-size: 0.84rem; color: var(--muted); display: none; }
     #resultCard { display: none; width: 100%; max-width: 660px; }
     #downloadBtn { display: inline-flex; align-items: center; gap: 8px;
       background: var(--success); color: #000; font-weight: 700;
       padding: 11px 22px; border-radius: 10px; text-decoration: none;
       font-size: 0.92rem; margin-top: 10px; transition: opacity .2s; }
     #downloadBtn:hover { opacity: .85; }
+    #progressCard { display: none; width: 100%; max-width: 660px; }
     #errorBox { display: none; width: 100%; max-width: 660px;
       background: rgba(248,113,113,.1); border: 1px solid var(--error);
       border-radius: var(--radius); padding: 14px; color: var(--error);
       font-size: 0.85rem; white-space: pre-wrap; }
+
+    /* ── Batch mode ── */
+    .batch-row { display: flex; align-items: center; gap: 10px;
+      padding: 9px 0; border-bottom: 1px solid var(--border); }
+    .batch-row:last-child { border-bottom: none; }
+    .batch-idx { font-size: 0.72rem; color: var(--muted); width: 22px; flex-shrink: 0; text-align: right; }
+    .batch-fname { flex: 1; font-size: 0.84rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .batch-st { font-size: 0.82rem; flex-shrink: 0; max-width: 210px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dl-link { color: var(--success); text-decoration: none; font-size: 1.1rem; flex-shrink: 0; }
+    .dl-link:hover { opacity: .8; }
+    #bProgressCard { display: none; width: 100%; max-width: 660px; }
+    .zip-btn { margin-top: 14px; padding: 11px 22px; background: var(--accent); color: #fff;
+      border: none; border-radius: 10px; font-size: 0.92rem; font-weight: 700; cursor: pointer;
+      display: none; align-items: center; gap: 8px; }
+    .zip-btn:hover:not(:disabled) { opacity: .85; }
+    .zip-btn:disabled { opacity: .5; cursor: not-allowed; }
   </style>
 </head>
 <body>
+
 <header>
   <h1>🎬 VideoBot</h1>
   <p>Upload Vidéo A + Vidéo B → texte détecté et réécrit → Vidéo C propre</p>
 </header>
 
-<!-- Upload -->
-<div class="card">
-  <h2><span class="num">1</span> Upload des vidéos</h2>
-  <div class="drop-row">
-    <div class="drop-zone" id="zoneA">
-      <input type="file" name="video_a" id="inputA" accept="video/*" required />
-      <div class="icon">🎥</div>
-      <div class="lbl">Vidéo A</div>
-      <div class="sub">Tes visuels</div>
-      <div class="fn" id="nameA"></div>
-    </div>
-    <div class="drop-zone" id="zoneB">
-      <input type="file" name="video_b" id="inputB" accept="video/*" required />
-      <div class="icon">🎵</div>
-      <div class="lbl">Vidéo B</div>
-      <div class="sub">Audio + texte source</div>
-      <div class="fn" id="nameB"></div>
+<!-- Tab switcher -->
+<div class="tab-switcher">
+  <button class="tab-btn active" onclick="switchTab('simple')">🎬 Mode Simple</button>
+  <button class="tab-btn" onclick="switchTab('batch')">📦 Mode Batch</button>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SIMPLE MODE (unchanged)
+══════════════════════════════════════════ -->
+<div id="simpleTab" class="tab-content active">
+
+  <!-- Upload -->
+  <div class="card">
+    <h2><span class="num">1</span> Upload des vidéos</h2>
+    <div class="drop-row">
+      <div class="drop-zone" id="zoneA">
+        <input type="file" name="video_a" id="inputA" accept="video/*" required />
+        <div class="icon">🎥</div>
+        <div class="lbl">Vidéo A</div>
+        <div class="sub">Tes visuels</div>
+        <div class="fn" id="nameA"></div>
+      </div>
+      <div class="drop-zone" id="zoneB">
+        <input type="file" name="video_b" id="inputB" accept="video/*" required />
+        <div class="icon">🎵</div>
+        <div class="lbl">Vidéo B</div>
+        <div class="sub">Audio + texte source</div>
+        <div class="fn" id="nameB"></div>
+      </div>
     </div>
   </div>
-</div>
 
-<!-- Detected lines -->
-<div class="card">
-  <h2><span class="num">2</span> Texte détecté <span id="lineCount" style="color:var(--muted);font-weight:400;font-size:0.8rem;margin-left:4px"></span></h2>
-  <div class="status-bar" id="detectStatus"></div>
-  <div id="linesContainer"></div>
-  <div id="noLines" style="font-size:0.84rem;color:var(--muted);">Uploade la Vidéo B pour détecter le texte automatiquement.</div>
-  <!-- Hidden: stores full lines data (with positions + font sizes) -->
-  <input type="hidden" id="linesJson" />
-</div>
+  <!-- Detected lines -->
+  <div class="card">
+    <h2><span class="num">2</span> Texte détecté <span id="lineCount" style="color:var(--muted);font-weight:400;font-size:0.8rem;margin-left:4px"></span></h2>
+    <div class="status-bar" id="detectStatus"></div>
+    <div id="linesContainer"></div>
+    <div id="noLines">Uploade la Vidéo B pour détecter le texte automatiquement.</div>
+    <input type="hidden" id="linesJson" />
+  </div>
 
-<button id="submitBtn" onclick="submitForm()" disabled>⚡ Générer la Vidéo C</button>
+  <button id="submitBtn" class="primary-btn" onclick="submitForm()" disabled>⚡ Générer la Vidéo C</button>
 
-<div class="card" id="progressCard">
-  <h2>⏳ Traitement en cours…</h2>
-  <div class="pbar"><div class="pbar-fill" id="pFill"></div></div>
-  <div id="pStatus" style="font-size:.85rem;color:var(--muted)">Upload et rendu…</div>
-</div>
+  <div class="card" id="progressCard">
+    <h2>⏳ Traitement en cours…</h2>
+    <div class="pbar"><div class="pbar-fill" id="pFill"></div></div>
+    <div id="pStatus" style="font-size:.85rem;color:var(--muted)">Upload et rendu…</div>
+  </div>
 
-<div class="card" id="resultCard">
-  <h2>✅ Vidéo C prête !</h2>
-  <p style="color:var(--muted);font-size:.88rem">Clique pour télécharger.</p>
-  <a id="downloadBtn" href="#">⬇️ Télécharger video_C.mp4</a>
-</div>
+  <div class="card" id="resultCard">
+    <h2>✅ Vidéo C prête !</h2>
+    <p style="color:var(--muted);font-size:.88rem">Clique pour télécharger.</p>
+    <a id="downloadBtn" href="#">⬇️ Télécharger video_C.mp4</a>
+  </div>
 
-<div id="errorBox"></div>
+  <div id="errorBox"></div>
+
+</div><!-- /simpleTab -->
+
+
+<!-- ══════════════════════════════════════════
+     BATCH MODE
+══════════════════════════════════════════ -->
+<div id="batchTab" class="tab-content">
+
+  <!-- Upload -->
+  <div class="card">
+    <h2><span class="num">1</span> Upload des vidéos</h2>
+    <div class="drop-row">
+      <div class="drop-zone" id="bZoneA">
+        <input type="file" id="bInputA" accept="video/*" />
+        <div class="icon">🎥</div>
+        <div class="lbl">Vidéo A</div>
+        <div class="sub">Tes visuels (1 fichier)</div>
+        <div class="fn" id="bNameA"></div>
+      </div>
+      <div class="drop-zone" id="bZoneB">
+        <input type="file" id="bInputB" accept="video/*" multiple />
+        <div class="icon">🎵</div>
+        <div class="lbl">Vidéos B</div>
+        <div class="sub">1 à 10 fichiers</div>
+        <div class="fn" id="bNameB"></div>
+      </div>
+    </div>
+  </div>
+
+  <button id="bLaunchBtn" class="primary-btn" onclick="runBatch()" disabled>⚡ Lancer le Batch</button>
+
+  <!-- Progress + per-video results -->
+  <div class="card" id="bProgressCard">
+    <h2 id="bProgressTitle">⏳ Traitement batch…</h2>
+    <div class="pbar"><div class="pbar-fill" id="bGlobalFill"></div></div>
+    <div id="bGlobalStatus" style="font-size:.85rem;color:var(--muted);margin-bottom:14px"></div>
+    <div id="bResultsList"></div>
+    <button class="zip-btn" id="bZipBtn" onclick="downloadZip()">📦 Télécharger tout en ZIP</button>
+  </div>
+
+</div><!-- /batchTab -->
+
 
 <script>
-// ── Drop zones ────────────────────────────────────────────────────
+// ══════════════════════════════════════════
+// SHARED
+// ══════════════════════════════════════════
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b, i) => {
+    b.classList.toggle('active', (tab === 'simple' && i === 0) || (tab === 'batch' && i === 1));
+  });
+  document.getElementById('simpleTab').classList.toggle('active', tab === 'simple');
+  document.getElementById('batchTab').classList.toggle('active', tab === 'batch');
+}
+
+function escapeHtml(s) {
+  return (s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+                  .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+
+// ══════════════════════════════════════════
+// SIMPLE MODE (unchanged)
+// ══════════════════════════════════════════
 ["A","B"].forEach(letter => {
   const input = document.getElementById("input"+letter);
   const zone  = document.getElementById("zone"+letter);
@@ -139,7 +245,6 @@
   zone.addEventListener("drop", e => { e.preventDefault(); zone.classList.remove("drag-over"); handle(e.dataTransfer.files[0]); });
 });
 
-// ── linesData: array of {text, y_pct, x_pct, fontsize_b} ──────────
 let linesData = [];
 
 function renderLines() {
@@ -175,12 +280,6 @@ function syncLinesJson() {
   document.getElementById("linesJson").value = JSON.stringify(linesData);
 }
 
-function escapeHtml(s) {
-  return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
-                .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
-}
-
-// ── Analyze Video B ───────────────────────────────────────────────
 async function analyzeVideoB(file) {
   const status = document.getElementById("detectStatus");
   status.style.display = "block";
@@ -201,7 +300,6 @@ async function analyzeVideoB(file) {
     const lines = data.lines || [];
     if (lines.length === 0) throw new Error("Aucun texte détecté");
 
-    // Filter out error entries
     linesData = lines.filter(l => !l.error && l.text);
     renderLines();
 
@@ -217,7 +315,6 @@ async function analyzeVideoB(file) {
   }
 }
 
-// ── Submit ────────────────────────────────────────────────────────
 let animInterval = null;
 function startAnim() {
   animInterval = setInterval(() => {
@@ -272,6 +369,179 @@ async function submitForm() {
     document.getElementById("progressCard").style.display = "none";
     showError(e.message);
     btn.disabled = false;
+  }
+}
+
+
+// ══════════════════════════════════════════
+// BATCH MODE
+// ══════════════════════════════════════════
+let bFileA      = null;
+let bFilesB     = [];
+let bResults    = [];   // {filename, status, statusText, job_id}
+let bRunning    = false;
+
+// ── Drop zones ──
+const bInputA = document.getElementById("bInputA");
+const bZoneA  = document.getElementById("bZoneA");
+bInputA.addEventListener("change", () => {
+  if (bInputA.files[0]) { bFileA = bInputA.files[0]; document.getElementById("bNameA").textContent = "✓ " + bFileA.name; checkBatchReady(); }
+});
+bZoneA.addEventListener("dragover", e => { e.preventDefault(); bZoneA.classList.add("drag-over"); });
+bZoneA.addEventListener("dragleave", () => bZoneA.classList.remove("drag-over"));
+bZoneA.addEventListener("drop", e => {
+  e.preventDefault(); bZoneA.classList.remove("drag-over");
+  const f = e.dataTransfer.files[0];
+  if (f) { bFileA = f; const dt = new DataTransfer(); dt.items.add(f); bInputA.files = dt.files; document.getElementById("bNameA").textContent = "✓ " + f.name; checkBatchReady(); }
+});
+
+const bInputB = document.getElementById("bInputB");
+const bZoneB  = document.getElementById("bZoneB");
+bInputB.addEventListener("change", () => handleBatchBFiles(Array.from(bInputB.files)));
+bZoneB.addEventListener("dragover", e => { e.preventDefault(); bZoneB.classList.add("drag-over"); });
+bZoneB.addEventListener("dragleave", () => bZoneB.classList.remove("drag-over"));
+bZoneB.addEventListener("drop", e => {
+  e.preventDefault(); bZoneB.classList.remove("drag-over");
+  handleBatchBFiles(Array.from(e.dataTransfer.files));
+});
+
+function handleBatchBFiles(files) {
+  const videos = files.filter(f => f.type.startsWith("video/") || /\.(mp4|mov|avi|mkv|webm)$/i.test(f.name));
+  bFilesB = videos.slice(0, 10);
+  const n = bFilesB.length;
+  document.getElementById("bNameB").textContent = n > 0 ? `✓ ${n} fichier${n > 1 ? "s" : ""} sélectionné${n > 1 ? "s" : ""}` : "";
+  checkBatchReady();
+}
+
+function checkBatchReady() {
+  document.getElementById("bLaunchBtn").disabled = !(bFileA && bFilesB.length > 0) || bRunning;
+}
+
+// ── Run batch ──
+async function runBatch() {
+  if (!bFileA || bFilesB.length === 0 || bRunning) return;
+  bRunning = true;
+  document.getElementById("bLaunchBtn").disabled = true;
+
+  // Init results
+  bResults = bFilesB.map(f => ({ filename: f.name, status: "pending", statusText: "⏳ En attente", job_id: null }));
+
+  // Show progress card
+  const card = document.getElementById("bProgressCard");
+  card.style.display = "block";
+  document.getElementById("bProgressTitle").textContent = "⏳ Traitement batch…";
+  document.getElementById("bZipBtn").style.display = "none";
+  renderBatchResults();
+  updateBatchProgress(0, bFilesB.length);
+
+  for (let i = 0; i < bFilesB.length; i++) {
+    const file = bFilesB[i];
+
+    bResults[i].status = "processing";
+    bResults[i].statusText = "🔍 Analyse…";
+    renderBatchResults();
+
+    try {
+      // Step 1 — Analyze
+      const fd1 = new FormData();
+      fd1.append("video_b", file);
+      const r1 = await fetch("/analyze", { method: "POST", body: fd1 });
+      const d1 = await r1.json();
+      if (d1.error) throw new Error(d1.error);
+      const lines = (d1.lines || []).filter(l => l.text);
+      if (!lines.length) throw new Error("Aucun texte détecté");
+
+      bResults[i].statusText = "⚙️ Génération…";
+      renderBatchResults();
+
+      // Step 2 — Process
+      const fd2 = new FormData();
+      fd2.append("video_a", bFileA);
+      fd2.append("video_b", file);
+      fd2.append("lines_json", JSON.stringify(lines));
+      const r2 = await fetch("/process", { method: "POST", body: fd2 });
+      const d2 = await r2.json();
+      if (!r2.ok || d2.error) throw new Error(d2.error || r2.statusText);
+
+      bResults[i].status     = "done";
+      bResults[i].statusText = "✅ Terminé";
+      bResults[i].job_id     = d2.job_id;
+
+    } catch(e) {
+      bResults[i].status     = "error";
+      bResults[i].statusText = "❌ " + e.message;
+    }
+
+    renderBatchResults();
+    updateBatchProgress(i + 1, bFilesB.length);
+  }
+
+  // Done
+  bRunning = false;
+  document.getElementById("bLaunchBtn").disabled = false;
+  document.getElementById("bProgressTitle").textContent = "✅ Batch terminé";
+
+  const successes = bResults.filter(r => r.status === "done");
+  if (successes.length > 0) {
+    const btn = document.getElementById("bZipBtn");
+    btn.style.display = "inline-flex";
+    btn.textContent = `📦 Télécharger les ${successes.length} vidéo${successes.length > 1 ? "s" : ""} en ZIP`;
+  }
+}
+
+function renderBatchResults() {
+  const colorMap = { pending: "var(--muted)", processing: "var(--accent2)", done: "var(--success)", error: "var(--error)" };
+  document.getElementById("bResultsList").innerHTML = bResults.map((r, i) => {
+    const color = colorMap[r.status] || "var(--muted)";
+    const dl = r.status === "done"
+      ? `<a class="dl-link" href="/download/${r.job_id}" download title="Télécharger">⬇️</a>`
+      : `<span style="width:1.1rem;display:inline-block"></span>`;
+    return `<div class="batch-row">
+      <span class="batch-idx">${i + 1}</span>
+      <span class="batch-fname" title="${escapeHtml(r.filename)}">${escapeHtml(r.filename)}</span>
+      <span class="batch-st" style="color:${color}">${escapeHtml(r.statusText)}</span>
+      ${dl}
+    </div>`;
+  }).join("");
+}
+
+function updateBatchProgress(done, total) {
+  const pct = total > 0 ? Math.round(done / total * 100) : 0;
+  document.getElementById("bGlobalFill").style.width = pct + "%";
+  document.getElementById("bGlobalStatus").textContent = `${done} / ${total} vidéo${total > 1 ? "s" : ""} traitée${done > 1 ? "s" : ""}`;
+}
+
+async function downloadZip() {
+  const jobIds = bResults.filter(r => r.status === "done").map(r => r.job_id);
+  if (!jobIds.length) return;
+
+  const btn = document.getElementById("bZipBtn");
+  btn.disabled = true;
+  const origText = btn.textContent;
+  btn.textContent = "⏳ Préparation du ZIP…";
+
+  try {
+    const res = await fetch("/batch_zip", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job_ids: jobIds })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || res.statusText);
+    }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = "videos_C.zip";
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    alert("Erreur ZIP : " + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origText;
   }
 }
 </script>
