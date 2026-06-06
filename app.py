@@ -1,4 +1,110 @@
-aW1wb3J0IG9zCmltcG9ydCBnYwppbXBvcnQgdXVpZAppbXBvcnQganNvbgppbXBvcnQgYmFzZTY0CmltcG9ydCB6aXBmaWxlCmltcG9ydCBzdWJwcm9jZXNzCmZyb20gcGF0aGxpYiBpbXBvcnQgUGF0aApmcm9tIGZsYXNrIGltcG9ydCBGbGFzaywgcmVuZGVyX3RlbXBsYXRlLCByZXF1ZXN0LCBzZW5kX2ZpbGUsIGpzb25pZnkKCmFwcCA9IEZsYXNrKF9fbmFtZV9fKQphcHAuY29uZmlnWyJNQVhfQ09OVEVOVF9MRU5HVEgiXSA9IDIwMCAqIDEwMjQgKiAxMDI0ClVQTE9BRF9ESVIgPSBQYXRoKCIvdG1wL3ZpZGVvYm90X2pvYnMiKQpVUExPQURfRElSLm1rZGlyKHBhcmVudHM9VHJ1ZSwgZXhpc3Rfb2s9VHJ1ZSkKCkZPTlRfQk9MRCA9ICIvdXNyL3NoYXJlL2ZvbnRzL3RydWV0eXBlL2xpYmVyYXRpb24vTGliZXJhdGlvblNhbnMtQm9sZC50dGYiCkZPTlRfUkVHICA9ICIvdXNyL3NoYXJlL2ZvbnRzL3RydWV0eXBlL2xpYmVyYXRpb24vTGliZXJhdGlvblNhbnMtUmVndWxhci50dGYiCgpWSVNJT05fUFJPTVBUID0gIiIiVGhlc2UgaW1hZ2VzIGFyZSBmcmFtZXMgZnJvbSB0aGUgc2FtZSBUaWtUb2svUmVlbCB2aWRlby4KCkRldGVjdCBFVkVSWSB0ZXh0IGVsZW1lbnQgYWRkZWQgYXMgYSBjYXB0aW9uIG9yIG92ZXJsYXkg4oCUIE5PVCB0ZXh0IG9uIGNsb3RoaW5nLCBvYmplY3RzLCBvciB0aGUgc2NlbmUgaXRzZWxmLgoKUmV0dXJuIGEgSlNPTiBhcnJheS4gRWFjaCB2aXN1YWxseSBkaXN0aW5jdCB0ZXh0IGJsb2NrID0gb25lIHNlcGFyYXRlIG9iamVjdC4KCkZvciBFQUNIIG9iamVjdDoKLSAidGV4dCI6IGV4YWN0IHRleHQgd2l0aCBBTEwgZW1vamlzLiBJZiAyIGxpbmVzIGFyZSB0aWdodGx5IGdyb3VwZWQgdG9nZXRoZXIsIGpvaW4gd2l0aCBcXG4uCi0gImN4X3BjdCI6IENFTlRFUiB4IGFzIGRlY2ltYWwgZnJhY3Rpb24gb2YgZnJhbWUgd2lkdGggKDA9bGVmdCwgMT1yaWdodCwgMC41PWNlbnRlcikKLSAiY3lfcGN0IjogQ0VOVEVSIHkgYXMgZGVjaW1hbCBmcmFjdGlvbiBvZiBmcmFtZSBoZWlnaHQgKDA9dG9wLCAxPWJvdHRvbSkKLSAiZm9udHNpemVfcGN0IjogZm9udCBoZWlnaHQgYXMgZnJhY3Rpb24gb2YgZnJhbWUgaGVpZ2h0LiBCZSBjb25zZXJ2YXRpdmU6IG1vc3QgVGlrVG9rIGNhcHRpb25zIGFyZSAwLjAyNeKAkzAuMDQ1LgotICJhbGlnbiI6ICJsZWZ0IiB8ICJjZW50ZXIiIHwgInJpZ2h0IgotICJib2xkIjogdHJ1ZSB8IGZhbHNlCi0gImNvbG9yIjogIndoaXRlIiB8ICJibGFjayIKCkNSSVRJQ0FMIFJVTEVTOgoxLiBQYXJhZ3JhcGhzL2Jsb2NrcyBhdCBESUZGRVJFTlQgdmVydGljYWwgcG9zaXRpb25zID0gRElGRkVSRU5UIEpTT04gb2JqZWN0cywgZXZlbiBpZiBhbGwgY2VudGVyZWQuCjIuIEEgbnVtYmVyIGdyaWQgKGtleXBhZCkgPSBlYWNoIG51bWJlciBpcyBpdHMgb3duIG9iamVjdCB3aXRoIGl0cyBvd24gY3hfcGN0L2N5X3BjdC4KMy4gS2VlcCBmb250c2l6ZV9wY3QgcmVhbGlzdGljOiAwLjAz4oCTMC4wNDUgZm9yIHR5cGljYWwgY2FwdGlvbnMsIG1heCAwLjA2IGZvciB2ZXJ5IGxhcmdlIHRleHQuCjQuIFByZXNlcnZlIEFMTCBlbW9qaXMgZXhhY3RseS4KNS4gUmV0dXJuIE9OTFkgYSB2YWxpZCBKU09OIGFycmF5LiBObyBtYXJrZG93biwgbm8gZXhwbGFuYXRpb24uCgpFeGFtcGxlIOKAlCB2aWRlbyB3aXRoIDMgc2VwYXJhdGUgY2FwdGlvbiBibG9ja3MgKyAyIGtleXBhZCBudW1iZXJzOgpbCiAgeyJ0ZXh0IjogImlmIHUgZ290IHRzIG9uIHVyIGZ5cCIsICJjeF9wY3QiOiAwLjUsICJjeV9wY3QiOiAwLjI1LCAiZm9udHNpemVfcGN0IjogMC4wMzQsICJhbGlnbiI6ICJjZW50ZXIiLCAiYm9sZCI6IGZhbHNlLCAiY29sb3IiOiAid2hpdGUifSwKICB7InRleHQiOiAidXIgaGlnaGsgYVxcbm5vbmNoYWxhbnQgJiBjaGlsbCDinaTvuI/wn6W6IiwgImN4X3BjdCI6IDAuNSwgImN5X3BjdCI6IDAuNDIsICJmb250c2l6ZV9wY3QiOiAwLjAzOCwgImFsaWduIjogImNlbnRlciIsICJib2xkIjogdHJ1ZSwgImNvbG9yIjogIndoaXRlIn0sCiAgeyJ0ZXh0IjogInNlbmQgdHMgdG8gYSBjb3JueSB0d2luIPCfmJzinIzvuI8iLCAiY3hfcGN0IjogMC41LCAiY3lfcGN0IjogMC44OCwgImZvbnRzaXplX3BjdCI6IDAuMDM0LCAiYWxpZ24iOiAiY2VudGVyIiwgImJvbGQiOiBmYWxzZSwgImNvbG9yIjogIndoaXRlIn0sCiAgeyJ0ZXh0IjogIjEiLCAiY3hfcGN0IjogMC4xOCwgImN5X3BjdCI6IDAuNTUsICJmb250c2l6ZV9wY3QiOiAwLjA2LCAiYWxpZ24iOiAiY2VudGVyIiwgImJvbGQiOiBmYWxzZSwgImNvbG9yIjogIndoaXRlIn0sCiAgeyJ0ZXh0IjogIjIiLCAiY3hfcGN0IjogMC41MCwgImN5X3BjdCI6IDAuNTUsICJmb250c2l6ZV9wY3QiOiAwLjA2LCAiYWxpZ24iOiAiY2VudGVyIiwgImJvbGQiOiBmYWxzZSwgImNvbG9yIjogIndoaXRlIn0KXSIiIgoKCiMg4pSA4pSAIEdsb2JhbCBKU09OIGVycm9yIGhhbmRsZXIg4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSACkBhcHAuZXJyb3JoYW5kbGVyKEV4Y2VwdGlvbikKZGVmIGhhbmRsZV9leGNlcHRpb24oZSk6CiAgICByZXR1cm4ganNvbmlmeSh7ImVycm9yIjogc3RyKGUpfSksIDUwMAoKQGFwcC5lcnJvcmhhbmRsZXIoNDEzKQpkZWYgdG9vX2xhcmdlKGUpOgogICAgcmV0dXJuIGpzb25pZnkoeyJlcnJvciI6ICJGaWNoaWVyIHRyb3AgZ3JhbmQgKG1heCAyMDAgTUIpIn0pLCA0MTMKCgojIOKUgOKUgCBIZWxwZXJzIOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgAoKZGVmIGdldF92aWRlb19kaW1zKHBhdGgpOgogICAgdHJ5OgogICAgICAgIHIgPSBzdWJwcm9jZXNzLnJ1bigKICAgICAgICAgICAgWyJmZnByb2JlIiwgIi12IiwgInF1aWV0IiwgIi1wcmludF9mb3JtYXQiLCAianNvbiIsCiAgICAgICAgICAgICAiLXNob3dfc3RyZWFtcyIsIHBhdGhdLAogICAgICAgICAgICBjYXB0dXJlX291dHB1dD1UcnVlLCB0ZXh0PVRydWUsIHRpbWVvdXQ9MzAKICAgICAgICApCiAgICAgICAgZm9yIHMgaW4ganNvbi5sb2FkcyhyLnN0ZG91dCkuZ2V0KCJzdHJlYW1zIiwgW10pOgogICAgICAgICAgICBpZiBzLmdldCgiY29kZWNfdHlwZSIpID09ICJ2aWRlbyI6CiAgICAgICAgICAgICAgICByZXR1cm4gaW50KHNbIndpZHRoIl0pLCBpbnQoc1siaGVpZ2h0Il0pCiAgICBleGNlcHQgRXhjZXB0aW9uOgogICAgICAgIHBhc3MKICAgIHJldHVybiA1NzYsIDEwMjQKCgpkZWYgZXh0cmFjdF9mcmFtZXModmlkZW9fcGF0aDogc3RyLCBjb3VudDogaW50ID0gNCkgLT4gbGlzdDoKICAgICIiIkV4dHJhY3QgZXZlbmx5LXNwYWNlZCBmcmFtZXMgZnJvbSB2aWRlby4iIiIKICAgICMgR2V0IGR1cmF0aW9uCiAgICByID0gc3VicHJvY2Vzcy5ydW4oCiAgICAgICAgWyJmZnByb2JlIiwgIi12IiwgInF1aWV0IiwgIi1zaG93X2VudHJpZXMiLCAiZm9ybWF0PWR1cmF0aW9uIiwKICAgICAgICAgIi1wcmludF9mb3JtYXQiLCAianNvbiIsIHZpZGVvX3BhdGhdLAogICAgICAgIGNhcHR1cmVfb3V0cHV0PVRydWUsIHRleHQ9VHJ1ZSwgdGltZW91dD0xNQogICAgKQogICAgdHJ5OgogICAgICAgIGR1cmF0aW9uID0gZmxvYXQoanNvbi5sb2FkcyhyLnN0ZG91dClbImZvcm1hdCJdWyJkdXJhdGlvbiJdKQogICAgZXhjZXB0IEV4Y2VwdGlvbjoKICAgICAgICBkdXJhdGlvbiA9IDMuMAoKICAgIGZyYW1lcyA9IFtdCiAgICBzdGVwID0gbWF4KDAuNSwgZHVyYXRpb24gLyAoY291bnQgKyAxKSkKICAgIGZvciBpIGluIHJhbmdlKDEsIGNvdW50ICsgMSk6CiAgICAgICAgdCA9IG1pbihzdGVwICogaSwgZHVyYXRpb24gLSAwLjEpCiAgICAgICAgb3V0ID0gZiIvdG1wL2ZyYW1lX3t1dWlkLnV1aWQ0KCkuaGV4fS5wbmciCiAgICAgICAgc3VicHJvY2Vzcy5ydW4oCiAgICAgICAgICAgIFsiZmZtcGVnIiwgIi1zcyIsIHN0cih0KSwgIi1pIiwgdmlkZW9fcGF0aCwKICAgICAgICAgICAgICItdmZyYW1lcyIsICIxIiwgIi12ZiIsICJzY2FsZT03MjA6LTEiLCAiLXkiLCBvdXRdLAogICAgICAgICAgICBjYXB0dXJlX291dHB1dD1UcnVlLCB0aW1lb3V0PTE1CiAgICAgICAgKQogICAgICAgIGlmIFBhdGgob3V0KS5leGlzdHMoKToKICAgICAgICAgICAgZnJhbWVzLmFwcGVuZChvdXQpCiAgICByZXR1cm4gZnJhbWVzCgoKZGVmIGFuYWx5emVfd2l0aF9jbGF1ZGVfdmlzaW9uKGZyYW1lX3BhdGhzOiBsaXN0KSAtPiBsaXN0OgogICAgIiIiVXNlIENsYXVkZSBWaXNpb24gdG8gZGV0ZWN0IHRleHQgYmxvY2tzIHdpdGggZW1vamlzIGFuZCBwb3Nptions."""
+import os
+import gc
+import uuid
+import json
+import base64
+import zipfile
+import subprocess
+from pathlib import Path
+from flask import Flask, render_template, request, send_file, jsonify
+
+app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
+UPLOAD_DIR = Path("/tmp/videobot_jobs")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+FONT_BOLD = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
+FONT_REG  = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
+
+VISION_PROMPT = """These images are frames from the same TikTok/Reel video.
+
+Detect EVERY text element added as a caption or overlay â NOT text on clothing, objects, or the scene itself.
+
+Return a JSON array. Each visually distinct text block = one separate object.
+
+For EACH object:
+- "text": exact text with ALL emojis. If 2 lines are tightly grouped together, join with \\n.
+- "cx_pct": CENTER x as decimal fraction of frame width (0=left, 1=right, 0.5=center)
+- "cy_pct": CENTER y as decimal fraction of frame height (0=top, 1=bottom)
+- "fontsize_pct": font height as fraction of frame height. Be conservative: most TikTok captions are 0.025â0.045.
+- "align": "left" | "center" | "right"
+- "bold": true | false
+- "color": "white" | "black"
+
+CRITICAL RULES:
+1. Paragraphs/blocks at DIFFERENT vertical positions = DIFFERENT JSON objects, even if all centered.
+2. A number grid (keypad) = each number is its own object with its own cx_pct/cy_pct.
+3. Keep fontsize_pct realistic: 0.03â0.045 for typical captions, max 0.06 for very large text.
+4. Preserve ALL emojis exactly.
+5. Return ONLY a valid JSON array. No markdown, no explanation.
+
+Example â video with 3 separate caption blocks + 2 keypad numbers:
+[
+  {"text": "if u got ts on ur fyp", "cx_pct": 0.5, "cy_pct": 0.25, "fontsize_pct": 0.034, "align": "center", "bold": false, "color": "white"},
+  {"text": "ur highk a\\nnonchalant & chill â¤ï¸ð¥º", "cx_pct": 0.5, "cy_pct": 0.42, "fontsize_pct": 0.038, "align": "center", "bold": true, "color": "white"},
+  {"text": "send ts to a corny twin ðâï¸", "cx_pct": 0.5, "cy_pct": 0.88, "fontsize_pct": 0.034, "align": "center", "bold": false, "color": "white"},
+  {"text": "1", "cx_pct": 0.18, "cy_pct": 0.55, "fontsize_pct": 0.06, "align": "center", "bold": false, "color": "white"},
+  {"text": "2", "cx_pct": 0.50, "cy_pct": 0.55, "fontsize_pct": 0.06, "align": "center", "bold": false, "color": "white"}
+]"""
+
+
+# ââ Global JSON error handler âââââââââââââââââââââââââââââââââââââ
+@app.errorhandler(Exception)
+def handle_exception(e):
+    return jsonify({"error": str(e)}), 500
+
+@app.errorhandler(413)
+def too_large(e):
+    return jsonify({"error": "Fichier trop grand (max 200 MB)"}), 413
+
+
+# ââ Helpers âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+
+def get_video_dims(path):
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json",
+             "-show_streams", path],
+            capture_output=True, text=True, timeout=30
+        )
+        for s in json.loads(r.stdout).get("streams", []):
+            if s.get("codec_type") == "video":
+                return int(s["width"]), int(s["height"])
+    except Exception:
+        pass
+    return 576, 1024
+
+
+def extract_frames(video_path: str, count: int = 4) -> list:
+    """Extract evenly-spaced frames from video."""
+    # Get duration
+    r = subprocess.run(
+        ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+         "-print_format", "json", video_path],
+        capture_output=True, text=True, timeout=15
+    )
+    try:
+        duration = float(json.loads(r.stdout)["format"]["duration"])
+    except Exception:
+        duration = 3.0
+
+    frames = []
+    step = max(0.5, duration / (count + 1))
+    for i in range(1, count + 1):
+        t = min(step * i, duration - 0.1)
+        out = f"/tmp/frame_{uuid.uuid4().hex}.png"
+        subprocess.run(
+            ["ffmpeg", "-ss", str(t), "-i", video_path,
+             "-vframes", "1", "-vf", "scale=720:-1", "-y", out],
+            capture_output=True, timeout=15
+        )
+        if Path(out).exists():
+            frames.append(out)
+    return frames
+
+
+def analyze_with_claude_vision(frame_paths: list) -> list:
+    """Use Claude Vision to detect text blocks with emojis and positions."""
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
         return []
