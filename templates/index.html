@@ -443,8 +443,12 @@ async function runBatch() {
 
     try {
       // Step 1 — Analyze
+      // mode="batch" tells the server to run the timed-caption detection
+      // (each caption gets its own start_time/end_time) instead of the
+      // simple-mode single-pass detection. Simple mode never sends this.
       const fd1 = new FormData();
       fd1.append("video_b", file);
+      fd1.append("mode", "batch");
       const r1 = await fetch("/analyze", { method: "POST", body: fd1 });
       const d1 = await r1.json();
       if (d1.error) throw new Error(d1.error);
@@ -455,10 +459,14 @@ async function runBatch() {
       renderBatchResults();
 
       // Step 2 — Process
+      // mode="batch" + lines carrying start_time/end_time triggers the
+      // timed multi-overlay rendering server-side; otherwise the server
+      // falls back to the original single static overlay automatically.
       const fd2 = new FormData();
       fd2.append("video_a", bFileA);
       fd2.append("video_b", file);
       fd2.append("lines_json", JSON.stringify(lines));
+      fd2.append("mode", "batch");
       const r2 = await fetch("/process", { method: "POST", body: fd2 });
       const d2 = await r2.json();
       if (!r2.ok || d2.error) throw new Error(d2.error || r2.statusText);
