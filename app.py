@@ -65,7 +65,39 @@ Example:
 ]"""
 
 
-# ── Global JSON error handler ────────────────────────────────────
+# ── Batch-mode-only: timed caption detection ──────────────────────
+# Simple mode keeps the single-pass VISION_PROMPT above (one overlay
+# rendered for the whole video). Batch mode needs each caption to
+# appear/disappear at the right moment, so this prompt asks Claude to
+# report which captions are visible in EACH sampled frame individually;
+# the per-frame detections are then merged server-side into timed spans
+# (see _merge_timed_captions). This file/runtime is never used by the
+# simple-mode code path.
+VISION_PROMPT_TIMED = """These are {n} frames sampled from the SAME TikTok/Reel video, in chronological order. Each frame's capture time (seconds) is:
+{timestamps}
+
+For EACH frame, detect every text caption/overlay that is VISIBLE IN THAT SPECIFIC FRAME — not text on clothing, objects, or the scene itself.
+
+Return a JSON array. Each object = ONE caption visible in ONE frame:
+- "frame_index": the 1-based index of the frame (1 to {n}) this caption is visible in
+- "text": exact text with ALL emojis. Use \\n between visual lines exactly as displayed.
+- "cx_pct": CENTER x as decimal fraction of frame width (0=left, 1=right, 0.5=center)
+- "cy_pct": CENTER y as decimal fraction of frame height (0=top, 1=bottom)
+- "width_pct": width of the text block as fraction of frame width (0.3-0.9)
+- "fontsize_pct": font height as fraction of frame height (typical 0.030-0.055; large titles 0.055-0.075)
+- "align": "left" | "center" | "right"
+- "bold": true | false
+- "color": "white" | "black"
+
+CRITICAL RULES:
+1. If the SAME caption is visible across several consecutive frames, output ONE object per frame it appears in (repeat the same text/position/style, just change frame_index). This is how we learn when it appears and disappears.
+2. If a caption is replaced by a DIFFERENT caption at the same position, treat them as separate texts with their own frame_index entries.
+3. Only report captions that are ACTUALLY visible in that frame — do not guess or carry text into frames where it isn't shown.
+4. Multi-line text = use \\n for every visual line break.
+5. Return ONLY a valid JSON array. No markdown, no explanation."""
+
+
+# ── Global JSON error handler ─────────────────────────────────────
 @app.errorhandler(Exception)
 def handle_exception(e):
     return jsonify({"error": str(e)}), 500
@@ -75,7 +107,7 @@ def too_large(e):
     return jsonify({"error": "Fichier trop grand (max 200 MB)"}), 413
 
 
-# ── Helpers ──────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────
 
 def get_video_dims(path):
     try:
@@ -183,6 +215,188 @@ def analyze_with_claude_vision(frame_paths: list) -> list:
 
     normalized.sort(key=lambda l: l.get("cy_pct", 0))
     return normalized
+
+
+def _merge_timed_captions(detections: list, frame_times: list, duration: float) -> list:
+    """
+    Batch-mode-only helper: turn a flat list of per-frame caption
+    detections (each tagged with a 1-based frame_index) into timed
+    caption spans with start_time/end_time.
+
+    Captions with the same text at roughly the same position that show
+    up across consecutive sampled frames are merged into ONE span; the
+    boundary times are placed at the midpoint between the last frame
+    where the caption was NOT seen and the first/last frame where it WAS
+    seen (falling back to 0 / video duration at the clip edges). A small
+    gap tolerance (skip at most one sampled frame) absorbs occasional
+    missed detections without splitting one caption into several spans.
+    """
+    from collections import defaultdict
+
+    groups = defaultdict(list)
+    for d in detections:
+        text = (d.get("text") or "").strip()
+        if not text:
+            continue
+        key = (text, round(d.get("cx_pct", 0.5), 1), round(d.get("cy_pct", 0.5), 1))
+        groups[key].append(d)
+
+    n_frames = len(frame_times)
+    captions = []
+
+    for _, items in groups.items():
+        items.sort(key=lambda x: x["frame_index"])
+
+        # Split into consecutive runs, tolerating a 1-frame gap
+        runs = [[items[0]]]
+        for it in items[1:]:
+            if it["frame_index"] - runs[-1][-1]["frame_index"] <= 2:
+                runs[-1].append(it)
+            else:
+                runs.append([it])
+
+        for run in runs:
+            first_idx = run[0]["frame_index"]
+            last_idx  = run[-1]["frame_index"]
+            first_t   = frame_times[first_idx - 1]
+            last_t    = frame_times[last_idx - 1]
+
+            start_time = 0.0 if first_idx <= 1 else (frame_times[first_idx - 2] + first_t) / 2.0
+            end_time   = duration if last_idx >= n_frames else (last_t + frame_times[last_idx]) / 2.0
+
+            if end_time <= start_time:
+                end_time = min(duration, start_time + max(0.5, last_t - first_t + 0.5))
+
+            base = dict(run[len(run) // 2])
+            base.pop("frame_index", None)
+            base["start_time"] = round(max(0.0, start_time), 2)
+            base["end_time"]   = round(min(duration, end_time), 2)
+            captions.append(base)
+
+    captions.sort(key=lambda c: (c.get("start_time", 0.0), c.get("cy_pct", 0.0)))
+    return captions
+
+
+def analyze_with_claude_vision_timed(video_path: str):
+    """
+    Batch-mode-only detection path: samples several frames spread across
+    the video's timeline (instead of the simple-mode path's 4 frames
+    covering the whole clip), asks Vision which captions are visible in
+    EACH sampled frame, then merges consecutive per-frame detections into
+    timed caption spans (start_time/end_time) via _merge_timed_captions.
+
+    Returns (captions, duration). Falls back to ([], duration) on any
+    failure so callers can fall back to the existing static detection.
+    Simple mode never calls this function — analyze_with_claude_vision
+    (single-pass, no timing) remains its sole detection path.
+    """
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return [], 0.0
+
+    import anthropic
+
+    r = subprocess.run(
+        ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+         "-print_format", "json", video_path],
+        capture_output=True, text=True, timeout=15
+    )
+    try:
+        duration = float(json.loads(r.stdout)["format"]["duration"])
+    except Exception:
+        duration = 3.0
+    if duration <= 0:
+        duration = 3.0
+
+    # Sample more frames than the static-overlay path (8 vs 4), spread
+    # evenly across the whole timeline, so caption appear/disappear
+    # boundaries can be localized to roughly duration/8 precision.
+    count = 8
+    step  = max(0.35, duration / count)
+    frame_times, frame_paths = [], []
+    for i in range(count):
+        t = min(step * i + step / 2.0, max(0.1, duration - 0.1))
+        out = f"/tmp/tframe_{uuid.uuid4().hex}.png"
+        subprocess.run(
+            ["ffmpeg", "-ss", str(t), "-i", video_path,
+             "-vframes", "1", "-vf", "scale=720:-1", "-y", out],
+            capture_output=True, timeout=15
+        )
+        if Path(out).exists():
+            frame_times.append(round(t, 2))
+            frame_paths.append(out)
+
+    if not frame_paths:
+        return [], duration
+
+    try:
+        content = []
+        for path in frame_paths:
+            try:
+                with open(path, "rb") as f:
+                    b64 = base64.standard_b64encode(f.read()).decode()
+                content.append({
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": "image/png", "data": b64}
+                })
+            except Exception:
+                pass
+
+        if not content:
+            return [], duration
+
+        timestamps_str = "\n".join(f"frame {i+1}: {t}s" for i, t in enumerate(frame_times))
+        prompt = VISION_PROMPT_TIMED.format(n=len(frame_times), timestamps=timestamps_str)
+        content.append({"type": "text", "text": prompt})
+
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=4096,
+            messages=[{"role": "user", "content": content}]
+        )
+
+        raw = response.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+
+        detections = json.loads(raw)
+
+        n = len(frame_times)
+        normalized = []
+        for d in detections:
+            text = (d.get("text") or "").strip()
+            idx  = d.get("frame_index")
+            if not text or not isinstance(idx, int) or idx < 1 or idx > n:
+                continue
+            b = dict(d)
+            b["text"]         = text
+            b["frame_index"]  = idx
+            if "cx_pct" not in b:
+                b["cx_pct"] = b.get("x_pct", 0.5)
+            if "cy_pct" not in b:
+                b["cy_pct"] = b.get("y_pct", 0.5)
+            if "fontsize_pct" not in b:
+                b["fontsize_pct"] = b.get("fontsize_b", 36) / 1280
+            if "width_pct" not in b:
+                b["width_pct"] = 0.85
+            normalized.append(b)
+
+        if not normalized:
+            return [], duration
+
+        return _merge_timed_captions(normalized, frame_times, duration), duration
+
+    except Exception:
+        return [], duration
+    finally:
+        for path in frame_paths:
+            try:
+                Path(path).unlink(missing_ok=True)
+            except Exception:
+                pass
 
 
 def analyze_with_tesseract_fallback(frame_paths: list) -> list:
@@ -457,6 +671,48 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
     return out_path
 
 
+def _build_timed_overlay_cmd(path_a: str, path_b: str, overlay_specs: list, path_out: str) -> list:
+    """
+    Batch-mode-only ffmpeg command builder: composite video A with N
+    separate transparent overlay PNGs (one per timed caption, each
+    produced by the SAME render_text_overlay used everywhere else — so
+    font, stroke, size, wrap and position are pixel-identical to the
+    static single-overlay path), each gated to be visible only during
+    its own [start_time, end_time] window via the overlay filter's
+    `enable='between(t,start,end)'` expression. Captions at the same
+    spot naturally replace one another because only one window is ever
+    active at a given timestamp. Audio still comes from video B.
+
+    overlay_specs: list of (overlay_png_path, start_time, end_time)
+    """
+    cmd = ["ffmpeg", "-y", "-i", path_a, "-i", path_b]
+    for png_path, _, _ in overlay_specs:
+        cmd += ["-i", png_path]
+
+    filters = []
+    prev = "[0:v]"
+    last = len(overlay_specs) - 1
+    for i, (_, start, end) in enumerate(overlay_specs):
+        in_label  = f"[{i + 2}:v]"
+        out_label = "[ovout]" if i == last else f"[ov{i + 1}]"
+        filters.append(
+            f"{prev}{in_label}overlay=0:0:enable='between(t,{start:.3f},{end:.3f})'{out_label}"
+        )
+        prev = out_label
+
+    cmd += [
+        "-filter_complex", ";".join(filters),
+        "-map", "[ovout]",
+        "-map", "1:a",
+        "-shortest",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
+        "-c:a", "aac", "-b:a", "128k",
+        "-loglevel", "error",
+        path_out
+    ]
+    return cmd
+
+
 # ── Routes ────────────────────────────────────────────────────────
 
 @app.route("/")
@@ -478,26 +734,41 @@ def analyze():
         path_b = str(tmp / "b.mp4")
         vb.save(path_b)
 
-        # Extract multiple frames
-        frames = extract_frames(path_b, count=4)
-
-        # Try Claude Vision first
+        # ui_mode distinguishes Batch from Simple so we can run the new
+        # timed-caption detection ONLY for batch — simple mode keeps using
+        # the exact same single-pass flow it always has.
+        ui_mode = (request.form.get("mode") or "simple").strip().lower()
         has_key = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
-        if has_key:
-            lines = analyze_with_claude_vision(frames)
-        else:
-            lines = []
 
-        # Fallback to Tesseract if Vision failed or no key
-        if not lines:
-            lines = analyze_with_tesseract_fallback(frames)
-
-        # Cleanup temp frames
-        for f in frames:
+        lines = []
+        if ui_mode == "batch":
+            # Batch-only: sample frames across the timeline and detect
+            # WHEN each caption appears/disappears (start_time/end_time).
             try:
-                Path(f).unlink(missing_ok=True)
+                lines, _ = analyze_with_claude_vision_timed(path_b)
             except Exception:
-                pass
+                lines = []
+
+        if lines:
+            # Timed detection succeeded — use it as-is (already includes
+            # start_time/end_time alongside the usual position/style keys).
+            pass
+        else:
+            # Either simple mode, or batch timed-detection found nothing —
+            # fall back to the original single-pass flow (identical to the
+            # pre-existing behavior; produces lines WITHOUT timing info).
+            frames = extract_frames(path_b, count=4)
+            if has_key:
+                lines = analyze_with_claude_vision(frames)
+            else:
+                lines = []
+            if not lines:
+                lines = analyze_with_tesseract_fallback(frames)
+            for f in frames:
+                try:
+                    Path(f).unlink(missing_ok=True)
+                except Exception:
+                    pass
 
         _, hb = get_video_dims(path_b)
         return jsonify({
@@ -542,35 +813,72 @@ def process():
         if not lines:
             return jsonify({"error": "Aucune ligne de texte fournie."}), 400
 
-        # Render text overlay image (supports emojis via Pilmoji)
-        overlay_path = render_text_overlay(lines, wa, ha, wb, hb)
+        # Batch-only timed-caption path: only taken when the request is
+        # explicitly flagged as batch AND every line carries start_time/
+        # end_time (i.e. came from analyze_with_claude_vision_timed).
+        # Simple mode never sends mode="batch", so it always falls through
+        # to the original single-static-overlay path below, byte-for-byte
+        # unchanged — including which function renders the overlay(s).
+        ui_mode = (request.form.get("mode") or "simple").strip().lower()
+        has_timing = (
+            ui_mode == "batch"
+            and bool(lines)
+            and all(isinstance(l, dict) and "start_time" in l and "end_time" in l for l in lines)
+        )
 
-        # Compose: video A + overlay image + audio from B
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", path_a,
-            "-i", path_b,
-            "-i", overlay_path,
-            "-filter_complex",
-            "[0:v][2:v]overlay=0:0[out]",
-            "-map", "[out]",
-            "-map", "1:a",
-            "-shortest",
-            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
-            "-c:a", "aac", "-b:a", "128k",
-            "-loglevel", "error",
-            path_out
-        ]
-
+        overlay_paths = []
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-        except subprocess.TimeoutExpired:
-            return jsonify({"error": "Timeout (>3 min)"}), 500
-        finally:
+            if has_timing:
+                overlay_specs = []
+                for line in lines:
+                    try:
+                        start = max(0.0, float(line.get("start_time", 0.0)))
+                        end   = max(start + 0.05, float(line.get("end_time", start + 0.05)))
+                    except Exception:
+                        continue
+                    # Render EACH caption alone on its own transparent layer
+                    # using the exact same render_text_overlay function/logic
+                    # as every other mode — only the time window differs.
+                    op = render_text_overlay([line], wa, ha, wb, hb)
+                    overlay_paths.append(op)
+                    overlay_specs.append((op, start, end))
+
+                if not overlay_specs:
+                    return jsonify({"error": "Aucune ligne de texte fournie."}), 400
+
+                cmd = _build_timed_overlay_cmd(path_a, path_b, overlay_specs, path_out)
+            else:
+                # ── Original single-overlay path (simple mode + batch
+                # fallback when timing wasn't available) — unchanged. ──
+                overlay_path = render_text_overlay(lines, wa, ha, wb, hb)
+                overlay_paths.append(overlay_path)
+
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-i", path_a,
+                    "-i", path_b,
+                    "-i", overlay_path,
+                    "-filter_complex",
+                    "[0:v][2:v]overlay=0:0[out]",
+                    "-map", "[out]",
+                    "-map", "1:a",
+                    "-shortest",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
+                    "-c:a", "aac", "-b:a", "128k",
+                    "-loglevel", "error",
+                    path_out
+                ]
+
             try:
-                Path(overlay_path).unlink(missing_ok=True)
-            except Exception:
-                pass
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+            except subprocess.TimeoutExpired:
+                return jsonify({"error": "Timeout (>3 min)"}), 500
+        finally:
+            for op in overlay_paths:
+                try:
+                    Path(op).unlink(missing_ok=True)
+                except Exception:
+                    pass
             gc.collect()
 
         if proc.returncode != 0 or not Path(path_out).exists():
@@ -631,4 +939,3 @@ def batch_zip():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
-
