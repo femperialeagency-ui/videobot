@@ -1466,16 +1466,19 @@ def analyze():
         path_b = str(tmp / "b.mp4")
         vb.save(path_b)
 
-        # ui_mode distinguishes Batch from Simple so we can run the new
-        # timed-caption detection ONLY for batch — simple mode keeps using
-        # the exact same single-pass flow it always has.
+        # ui_mode is read so /process can later choose the right overlay
+        # path. Both Batch and Simple now try the timed multi-frame
+        # detector first (falling back to the original single-pass flow if
+        # it finds nothing), so sequential captions get correct per-caption
+        # timing in both modes instead of being merged into one overlay.
         ui_mode = (request.form.get("mode") or "simple").strip().lower()
         has_key = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
 
         lines = []
-        if ui_mode == "batch":
-            # Batch-only: sample frames across the timeline and detect
-            # WHEN each caption appears/disappears (start_time/end_time).
+        if ui_mode in ("batch", "simple"):
+            # Sample frames across the timeline and detect WHEN each
+            # caption appears/disappears (start_time/end_time). Falls
+            # through to the single-pass flow below on failure/empty result.
             try:
                 lines, _ = analyze_with_claude_vision_timed(path_b)
             except Exception:
@@ -1545,16 +1548,18 @@ def process():
         if not lines:
             return jsonify({"error": "Aucune ligne de texte fournie."}), 400
 
-        # Batch-only timed-caption path: only taken when the request is
-        # explicitly flagged as batch AND every line carries start_time/
-        # end_time (i.e. came from analyze_with_claude_vision_timed).
-        # Simple mode never sends mode="batch", so it always falls through
-        # to the original single-static-overlay path below, byte-for-byte
-        # unchanged — including which function renders the overlay(s).
+        # Timed per-caption overlay path: taken whenever every detected
+        # line carries start_time/end_time (i.e. came from
+        # analyze_with_claude_vision_timed) — for BOTH Batch and Simple mode
+        # now, so sequential captions render with correct per-caption timing
+        # instead of being merged into one static overlay. Whenever timing
+        # data isn't available (detection fell back to the untimed
+        # single-pass flow), this falls through to the original
+        # single-static-overlay path below, byte-for-byte unchanged —
+        # including which function renders the overlay(s).
         ui_mode = (request.form.get("mode") or "simple").strip().lower()
         has_timing = (
-            ui_mode == "batch"
-            and bool(lines)
+            bool(lines)
             and all(isinstance(l, dict) and "start_time" in l and "end_time" in l for l in lines)
         )
 
