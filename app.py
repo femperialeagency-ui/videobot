@@ -351,6 +351,29 @@ def analyze_with_claude_vision(frame_paths: list) -> list:
     return normalized
 
 
+def _emoji_cluster_count(text: str) -> int:
+    """
+    Batch-merge helper (emoji-preservation fix): counts emoji clusters in
+    `text` using the exact same detector as the [EMOJI_DEBUG] log
+    (_extract_emojis -> _is_emoji_codepoint / _EMOJI_RANGES below). Used
+    only for COMPARISON/SELECTION inside _merge_timed_captions — never
+    strips, removes or rewrites any text that reaches the renderer.
+    """
+    return len(_extract_emojis(text)[0])
+
+
+def _strip_emoji_for_key(text: str) -> str:
+    """
+    Batch-merge helper (emoji-preservation fix): returns `text` with emoji
+    clusters removed, for use ONLY as a grouping-comparison key in
+    _merge_timed_captions — see the note at the `key = (...)` line below
+    for why exact-text matching fragments emoji-bearing captions. The
+    ORIGINAL text (emojis intact) is always what is stored/rendered;
+    this function's output never reaches the caption JSON or the renderer.
+    """
+    return "".join(ch for ch in text if not _is_emoji_codepoint(ch)).strip()
+
+
 def _merge_timed_captions(detections: list, frame_times: list, duration: float) -> list:
     """
     Batch-mode-only helper: turn a flat list of per-frame caption
@@ -364,6 +387,15 @@ def _merge_timed_captions(detections: list, frame_times: list, duration: float) 
     seen (falling back to 0 / video duration at the clip edges). A small
     gap tolerance (skip at most one sampled frame) absorbs occasional
     missed detections without splitting one caption into several spans.
+
+    Two targeted fixes live here (see inline notes at each site):
+      1. Emoji-insensitive grouping key + richest-emoji base selection,
+         so "volume up" / "volume up ❗❗" detections of the same on-screen
+         caption merge into one span that keeps the emoji.
+      2. A same-spot overlap guard after span construction, so two
+         different captions detected at the same screen position never
+         end up with overlapping [start_time, end_time] windows (which
+         would make _build_timed_overlay_cmd render both at once).
     """
     from collections import defaultdict
 
@@ -372,7 +404,19 @@ def _merge_timed_captions(detections: list, frame_times: list, duration: float) 
         text = (d.get("text") or "").strip()
         if not text:
             continue
-        key = (text, round(d.get("cx_pct", 0.5), 1), round(d.get("cy_pct", 0.5), 1))
+        # Emoji-preservation fix — grouping key, part 1: compare on the
+        # EMOJI-STRIPPED text rather than the exact string. Vision can
+        # transcribe the SAME on-screen caption as "volume up" on one
+        # sampled frame and "volume up ❗❗" on another (the same kind of
+        # frame-to-frame inconsistency proven in the positioning audit to
+        # affect text, just applied to emoji glyphs specifically). An
+        # exact-text key would put these in two different groups, each
+        # producing its own (likely shorter/fragmented) span, and risking
+        # the emoji-bearing variant being dropped entirely. Comparing on
+        # `_strip_emoji_for_key(text)` merges them into ONE run; which
+        # variant's text is actually kept is decided below by emoji count,
+        # not by this key — the key only controls what merges together.
+        key = (_strip_emoji_for_key(text), round(d.get("cx_pct", 0.5), 1), round(d.get("cy_pct", 0.5), 1))
         groups[key].append(d)
 
     n_frames = len(frame_times)
@@ -401,11 +445,68 @@ def _merge_timed_captions(detections: list, frame_times: list, duration: float) 
             if end_time <= start_time:
                 end_time = min(duration, start_time + max(0.5, last_t - first_t + 0.5))
 
-            base = dict(run[len(run) // 2])
+            # Emoji-preservation fix — base selection, part 2: if ANY
+            # detection in this run contains emoji clusters, use the
+            # richest one (most emoji clusters, per _extract_emojis — the
+            # very same counter [EMOJI_DEBUG] already trusts) as the
+            # span's base text/style/position, instead of unconditionally
+            # `run[len(run)//2]`. This guarantees that if a single sampled
+            # frame caught the emoji version, the merged caption keeps it.
+            # On a tie, prefer whichever candidate sits closest to the
+            # run's middle frame — preserving the exact behavior (and the
+            # positioning-audit-proven stability) of the original
+            # middle-frame pick for every other field. Runs with NO
+            # emoji anywhere fall through to that original pick completely
+            # unchanged — byte-for-byte identical to before this change.
+            emoji_counts = [_emoji_cluster_count(d.get("text", "")) for d in run]
+            max_emojis = max(emoji_counts)
+            if max_emojis > 0:
+                mid_idx  = len(run) // 2
+                richest  = [i for i, c in enumerate(emoji_counts) if c == max_emojis]
+                chosen   = min(richest, key=lambda i: abs(i - mid_idx))
+                base = dict(run[chosen])
+            else:
+                base = dict(run[len(run) // 2])
+
             base.pop("frame_index", None)
             base["start_time"] = round(max(0.0, start_time), 2)
             base["end_time"]   = round(min(duration, end_time), 2)
             captions.append(base)
+
+    # ── Timing fix: same-spot overlap guard ───────────────────────────
+    # Each span above derives start_time/end_time independently, from
+    # only ITS OWN group's first/last detected frame index. When Vision
+    # detects two DIFFERENT captions at essentially the same screen spot
+    # across an overlapping range of sampled frames — e.g. both visible
+    # on the transition frame between them, the same kind of frame-to-
+    # frame detection inconsistency the emoji fix above accounts for —
+    # their independently-computed windows can overlap. Because
+    # _build_timed_overlay_cmd enables each overlay with its own
+    # `between(t,start,end)` and stacks them in a filter chain, an
+    # overlap means BOTH render simultaneously: captions visibly stack
+    # instead of replacing one another ("rendered all at once").
+    #
+    # Group the finished spans using the SAME position bucket as the
+    # grouping key above, sort each bucket chronologically, and trim each
+    # span's end_time to the next same-spot span's start_time. This
+    # restores the invariant _build_timed_overlay_cmd's own docstring
+    # already assumes ("Captions at the same spot naturally replace one
+    # another because only one window is ever active at a given
+    # timestamp") — which only actually held when spans never overlapped.
+    # Captions at genuinely different screen positions are left
+    # completely untouched and may still legitimately appear together.
+    by_pos = defaultdict(list)
+    for c in captions:
+        by_pos[(round(c.get("cx_pct", 0.5), 1), round(c.get("cy_pct", 0.5), 1))].append(c)
+    for spans in by_pos.values():
+        spans.sort(key=lambda c: c["start_time"])
+        for i in range(len(spans) - 1):
+            if spans[i]["end_time"] > spans[i + 1]["start_time"]:
+                spans[i]["end_time"] = spans[i + 1]["start_time"]
+    # Drop any span that the trim above collapsed to zero/negative length
+    # (only possible if two same-spot detections reported identical or
+    # inverted frame ranges — an edge case, not the common case).
+    captions = [c for c in captions if c["end_time"] > c["start_time"]]
 
     captions.sort(key=lambda c: (c.get("start_time", 0.0), c.get("cy_pct", 0.0)))
     return captions
