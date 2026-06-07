@@ -817,8 +817,16 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
         # Weight (675), font family (Inter), color (pure white), position,
         # wrapping and spacing are unaffected — this only thickens the
         # existing outline.
+        # Contrast-only follow-up: thickness (border) was already close to
+        # native captions, but the outline itself read as slightly faded —
+        # the stroke colour was translucent black (alpha 225/255 ≈ 88%),
+        # which lets background show through at the edge on bright scenes /
+        # skin tones. Bumped alpha to 255 (fully opaque black) so the edge
+        # reads as a crisp, solid line — darker edge separation without
+        # adding any extra pixels of width. Border math, weight, size,
+        # colour, font family, position, wrap and spacing untouched.
         border  = max(1, fontsize // 22)
-        shadow  = (0, 0, 0, 225)
+        shadow  = (0, 0, 0, 255)
         # Slightly more breathing room between lines than native captions'
         # tightest spacing — keeps multi-line blocks from reading as a dense
         # slab of text the way the generated output previously did.
