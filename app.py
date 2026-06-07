@@ -72,10 +72,14 @@ FONT_CAPTION = str(Path(__file__).parent / "fonts" / "Inter-Variable.ttf")
 # nudge the scale down once more (0.70 * 0.92 ≈ 0.644).
 # User feedback on video C: detection, wrapping, outline, weight and
 # positioning are all good — text just needs to read a bit larger, closer
-# to video B. Bumped +15% (0.644 * 1.15 ≈ 0.741). This is purely a font-size
-# multiplier; it does not touch font family, weight, stroke, alignment,
-# line spacing or text position.
-CAPTION_SIZE_SCALE = 0.741
+# to video B. Bumped +15% (0.644 * 1.15 ≈ 0.741).
+# Follow-up readability pass: side-by-side B-vs-C comparisons across
+# multiple source videos showed the remaining gap is size + contrast, not
+# weight (weight stays at 675 — see _load_caption_font). Bumped +8% again
+# (0.741 * 1.08 ≈ 0.800). This is purely a font-size multiplier; it does
+# not touch font family, weight, stroke, alignment, line spacing or text
+# position.
+CAPTION_SIZE_SCALE = 0.800
 
 # ── Positioning debug tooling (OFF by default; batch mode only) ───
 # CAPTION_VISUAL_DEBUG=1 makes /batch_render save one annotated frame
@@ -805,10 +809,15 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
         # ── Layout ────────────────────────────────────────────────────
         # Native TikTok/IG caption outlines read as a thin hairline stroke.
         # The 1/11 ratio was still ~2x thicker than source captions in
-        # side-by-side comparison, so we halve it again to ~1/22.
-        # Final refinement: nudge ~10% thinner still (1/22 -> 1/24) to match
-        # the subtle native stroke even more closely.
-        border  = max(1, fontsize // 24)
+        # side-by-side comparison, so we halved it again to ~1/22, then
+        # nudged ~10% thinner still to ~1/24.
+        # Follow-up readability pass: B-vs-C contrast comparison showed
+        # source captions still read with slightly stronger contrast, so
+        # we strengthen the stroke ~10% back toward 1/22 (24 -> 22).
+        # Weight (675), font family (Inter), color (pure white), position,
+        # wrapping and spacing are unaffected — this only thickens the
+        # existing outline.
+        border  = max(1, fontsize // 22)
         shadow  = (0, 0, 0, 225)
         # Slightly more breathing room between lines than native captions'
         # tightest spacing — keeps multi-line blocks from reading as a dense
