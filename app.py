@@ -77,6 +77,26 @@ FONT_CAPTION = str(Path(__file__).parent / "fonts" / "Inter-Variable.ttf")
 # line spacing or text position.
 CAPTION_SIZE_SCALE = 0.741
 
+# ── Positioning debug tooling (OFF by default; batch mode only) ───
+# CAPTION_VISUAL_DEBUG=1 makes /batch_render save one annotated frame
+# from source video B (red box = the DETECTED caption position, mapped
+# into B's own pixel space) and one from the rendered output C (green
+# box = the position the renderer actually used) per combo, so the two
+# can be placed side by side to confirm the caption lands in the same
+# relative zone in both. Purely an investigation aid for the "caption
+# sometimes appears in the wrong place" issue — it does not change
+# detection, rendering, typography or any existing behaviour, and is
+# inert unless the env var is explicitly set.
+CAPTION_VISUAL_DEBUG = os.environ.get("CAPTION_VISUAL_DEBUG", "") == "1"
+
+# Side-channel populated by render_text_overlay() with one structured
+# debug record per caption block it draws (cleared at the start of each
+# call). Lets callers that need it (the visual debug snapshot above)
+# inspect the exact source-vs-final coordinates without changing
+# render_text_overlay's signature or return type — so every existing
+# call site keeps working byte-for-byte unchanged.
+_caption_debug_log = []
+
 VISION_PROMPT = """These images are frames from the same TikTok/Reel video.
 
 Detect EVERY text element added as a caption or overlay — NOT text on clothing, objects, or the scene itself.
@@ -596,6 +616,7 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
     from PIL import Image, ImageDraw, ImageFont
 
     overlay = Image.new("RGBA", (wa, ha), (0, 0, 0, 0))
+    _caption_debug_log.clear()
 
     use_pilmoji = True
     try:
@@ -712,9 +733,107 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
             file=sys.stderr
         )
 
+        # ── Structured positioning debug log (per caption object) ─────
+        # Maps the SAME detected percentages onto the SOURCE frame
+        # (wb×hb — the resolution Vision actually saw when it produced
+        # cx_pct/cy_pct/width_pct) and reports the FINAL pixel box this
+        # function drew onto the wa×ha overlay canvas (which becomes
+        # video C's canvas, since the overlay is composited onto A at
+        # 0:0 with no scaling). Comparing source_* vs final_* — once
+        # both are expressed back as percentages of their own frame —
+        # is exactly how to confirm whether the renderer is faithfully
+        # reproducing the detected position or silently reinterpreting
+        # it. height_pct does not exist in the detection schema (Vision
+        # only reports width_pct/fontsize_pct); it is reported here as
+        # the rendered block's height as a fraction of the frame, for
+        # the same source-vs-final comparison.
+        block_left    = cx - block_w // 2
+        src_width_px  = wb * width_pct
+        src_height_px = hb * (total_h / ha) if ha else 0.0
+        debug_obj = {
+            "text":          text[:80],
+            "source_x":      round(wb * block.get("cx_pct", 0.5) - src_width_px / 2, 1),
+            "source_y":      round(hb * block.get("cy_pct", 0.5) - src_height_px / 2, 1),
+            "source_width":  round(src_width_px, 1),
+            "source_height": round(src_height_px, 1),
+            "cx_pct":        round(block.get("cx_pct", 0.5), 4),
+            "cy_pct":        round(block.get("cy_pct", 0.5), 4),
+            "width_pct":     round(width_pct, 4),
+            "height_pct":    round(total_h / ha, 4) if ha else 0.0,
+            "final_x":       block_left,
+            "final_y":       y_start,
+            "final_width":   block_w,
+            "final_height":  total_h,
+        }
+        _caption_debug_log.append(debug_obj)
+        print(f"[CAPTION_DEBUG] {json.dumps(debug_obj, ensure_ascii=False)}", file=sys.stderr)
+
     out_path = f"/tmp/overlay_{uuid.uuid4().hex}.png"
     overlay.save(out_path, "PNG")
     return out_path
+
+
+def _save_caption_debug_frames(out_dir: Path, tag: str, path_b: str, path_out: str,
+                               debug_obj: dict, t: float,
+                               wb: int, hb: int, wa: int, ha: int) -> None:
+    """
+    CAPTION_VISUAL_DEBUG=1 only — batch mode investigation aid.
+
+    Grabs one full-resolution frame from source video B at time `t` and
+    draws the DETECTED caption box on it in RED, using source_x/source_y
+    /source_width/source_height (debug_obj, already expressed in B's own
+    w×h pixel space — see render_text_overlay's [CAPTION_DEBUG] log).
+
+    Grabs the matching frame from rendered output C and draws the box
+    the renderer actually used in GREEN, using final_x/final_y/
+    final_width/final_height (already in the wa×ha canvas's pixel space
+    — which is video C's pixel space too, since the overlay is
+    composited onto A at offset 0:0 with no scaling).
+
+    Save both PNGs so the two boxes' positions — as a fraction of their
+    own frame — can be compared side by side. Never modifies detection,
+    rendering or the output video; purely observational, and any
+    failure here is swallowed so it can never affect a real render job.
+    """
+    import sys
+    from PIL import Image, ImageDraw
+
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        b_frame = str(out_dir / f"{tag}_debug_B_source.png")
+        c_frame = str(out_dir / f"{tag}_debug_C_rendered.png")
+
+        for src, dst in ((path_b, b_frame), (path_out, c_frame)):
+            subprocess.run(
+                ["ffmpeg", "-ss", str(max(0.0, t)), "-i", src,
+                 "-vframes", "1", "-y", dst],
+                capture_output=True, timeout=20
+            )
+
+        if Path(b_frame).exists():
+            img = Image.open(b_frame).convert("RGB")
+            draw = ImageDraw.Draw(img)
+            sx, sy = debug_obj["source_x"], debug_obj["source_y"]
+            sw, sh = debug_obj["source_width"], debug_obj["source_height"]
+            draw.rectangle([sx, sy, sx + sw, sy + sh], outline=(255, 0, 0), width=4)
+            img.save(b_frame)
+
+        if Path(c_frame).exists():
+            img = Image.open(c_frame).convert("RGB")
+            draw = ImageDraw.Draw(img)
+            fx, fy = debug_obj["final_x"], debug_obj["final_y"]
+            fw, fh = debug_obj["final_width"], debug_obj["final_height"]
+            draw.rectangle([fx, fy, fx + fw, fy + fh], outline=(0, 255, 0), width=4)
+            img.save(c_frame)
+
+        print(
+            f"[CAPTION_VISUAL_DEBUG] '{tag}' saved {b_frame} (red=detected, B is "
+            f"{wb}x{hb}) and {c_frame} (green=rendered, C is {wa}x{ha}) at t={t:.2f}s",
+            file=sys.stderr
+        )
+    except Exception as e:
+        import sys as _sys
+        print(f"[CAPTION_VISUAL_DEBUG] '{tag}' failed: {e}", file=_sys.stderr)
 
 
 def _build_timed_overlay_cmd(path_a: str, path_b: str, overlay_specs: list, path_out: str) -> list:
@@ -1200,6 +1319,11 @@ def batch_render():
         )
 
         overlay_paths = []
+        # Snapshot of (debug_obj, timestamp) for the FIRST caption only —
+        # used solely by the opt-in visual debug mode below to grab a
+        # representative frame pair. Untouched (stays None) unless
+        # CAPTION_VISUAL_DEBUG=1, so it can never affect a normal render.
+        debug_capture = None
         try:
             if has_timing:
                 overlay_specs = []
@@ -1212,6 +1336,9 @@ def batch_render():
                     op = render_text_overlay([line], wa, ha, wb, hb)
                     overlay_paths.append(op)
                     overlay_specs.append((op, start, end))
+                    if CAPTION_VISUAL_DEBUG and debug_capture is None and _caption_debug_log:
+                        mid = max(0.05, (start + end) / 2.0)
+                        debug_capture = (dict(_caption_debug_log[0]), mid)
 
                 if not overlay_specs:
                     return jsonify({"error": "Aucune ligne de texte fournie."}), 400
@@ -1220,6 +1347,8 @@ def batch_render():
             else:
                 overlay_path = render_text_overlay(lines, wa, ha, wb, hb)
                 overlay_paths.append(overlay_path)
+                if CAPTION_VISUAL_DEBUG and _caption_debug_log:
+                    debug_capture = (dict(_caption_debug_log[0]), 0.5)
 
                 cmd = [
                     "ffmpeg", "-y",
@@ -1252,6 +1381,21 @@ def batch_render():
         if proc.returncode != 0 or not Path(path_out).exists():
             err = proc.stderr[-800:] if proc.stderr else "ffmpeg a echoue"
             return jsonify({"error": err}), 500
+
+        # ── Opt-in visual positioning debug (CAPTION_VISUAL_DEBUG=1) ──
+        # Saves an annotated source-B frame + rendered-C frame so the
+        # detected vs. final caption boxes can be compared visually.
+        # Wrapped so any failure here can never fail the actual render.
+        if CAPTION_VISUAL_DEBUG and debug_capture:
+            try:
+                dbg, snap_t = debug_capture
+                _save_caption_debug_frames(
+                    bdir / "debug",
+                    f"A{a_index + 1:02d}_B{b_index + 1:02d}",
+                    path_b, path_out, dbg, snap_t, wb, hb, wa, ha
+                )
+            except Exception:
+                pass
 
         return jsonify({"ok": True, "filename": out_name})
 
