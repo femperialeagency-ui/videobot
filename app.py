@@ -118,7 +118,7 @@ CRITICAL RULES:
 2. Multi-line text = use \\n for EVERY visual line break. Example: "me when I realize I'm\\nlosing the argument"
 3. fontsize_pct must reflect actual visible font size — do not underestimate. Large text in the frame should be 0.05–0.075.
 4. width_pct: estimate how wide the text block is (e.g. 0.75 if it spans 75% of frame width).
-5. Preserve ALL emojis exactly as they appear.
+5. EMOJIS: Do not remove, replace, normalize or describe emojis. If an emoji appears on screen, return the exact Unicode emoji. Preserve emojis exactly as visible. Examples: ❤️, ⭐, 😈, 😴, 👉, 👌, 🥺, 😂, 😭 must be returned as Unicode characters. Never omit emojis.
 6. Return ONLY a valid JSON array. No markdown, no explanation.
 
 Example:
@@ -158,7 +158,8 @@ CRITICAL RULES:
 2. If a caption is replaced by a DIFFERENT caption at the same position, treat them as separate texts with their own frame_index entries.
 3. Only report captions that are ACTUALLY visible in that frame — do not guess or carry text into frames where it isn't shown.
 4. Multi-line text = use \\n for every visual line break.
-5. Return ONLY a valid JSON array. No markdown, no explanation."""
+5. EMOJIS: Do not remove, replace, normalize or describe emojis. If an emoji appears on screen, return the exact Unicode emoji. Preserve emojis exactly as visible. Examples: ❤️, ⭐, 😈, 😴, 👉, 👌, 🥺, 😂, 😭 must be returned as Unicode characters. Never omit emojis.
+6. Return ONLY a valid JSON array. No markdown, no explanation."""
 
 
 # ── Global JSON error handler ─────────────────────────────────────
@@ -524,6 +525,61 @@ def analyze_with_tesseract_fallback(frame_paths: list) -> list:
     return lines
 
 
+# ── Emoji investigation: debug-only detection helper ──────────────
+# Pure observation utility — scans a string and reports which Unicode
+# codepoints fall in the emoji ranges (grouping adjacent codepoints
+# into clusters so combos like "❤️" = U+2764 U+FE0F or ZWJ sequences
+# are reported as one emoji rather than split apart). Used ONLY to
+# populate the [EMOJI_DEBUG] log below; it never filters, removes or
+# rewrites any text — the renderer always receives the original string
+# untouched.
+_EMOJI_RANGES = (
+    (0x2190, 0x21FF),   # arrows
+    (0x2300, 0x23FF),   # misc technical (⌚⏰…)
+    (0x25A0, 0x25FF),   # geometric shapes
+    (0x2600, 0x27BF),   # misc symbols & dingbats (☀️❤️⭐✨…)
+    (0x2B00, 0x2BFF),   # misc symbols & arrows (⬆️⭕…)
+    (0x2B05, 0x2B07),
+    (0x1F000, 0x1FFFF), # all emoji planes (emoticons, pictographs, supplemental, extended-A…)
+    (0xFE00, 0xFE0F),   # variation selectors (text/emoji presentation)
+    (0x1F1E6, 0x1F1FF), # regional indicators (flag pairs)
+    (0x200D, 0x200D),   # zero-width joiner (combines emoji into one glyph, e.g. 👨‍👩‍👧)
+)
+
+
+def _is_emoji_codepoint(ch: str) -> bool:
+    cp = ord(ch)
+    return any(lo <= cp <= hi for lo, hi in _EMOJI_RANGES)
+
+
+def _extract_emojis(text: str):
+    """
+    Debug helper only (see [EMOJI_DEBUG] log in render_text_overlay).
+    Returns (emoji_clusters, unicode_codes):
+      - emoji_clusters: list of emoji strings found, e.g. ["❤️", "👉👌"]
+        (adjacent emoji codepoints — including ZWJ/variation-selector
+        joins — are grouped into one cluster, matching how they'd
+        visually appear as single glyphs)
+      - unicode_codes: matching list of "U+XXXX U+YYYY" strings, one
+        per cluster, e.g. ["U+2764 U+FE0F", "U+1F449 U+1F44C"]
+    Never modifies or filters `text` — purely observational.
+    """
+    clusters, codes = [], []
+    current = ""
+    for ch in text:
+        if _is_emoji_codepoint(ch):
+            current += ch
+        else:
+            if current:
+                clusters.append(current)
+                codes.append(" ".join(f"U+{ord(c):04X}" for c in current))
+                current = ""
+    if current:
+        clusters.append(current)
+        codes.append(" ".join(f"U+{ord(c):04X}" for c in current))
+    return clusters, codes
+
+
 def _measure_text(font, text: str) -> int:
     """Return rendered pixel width of text."""
     try:
@@ -602,6 +658,21 @@ def _load_caption_font(fontsize: int, bold: bool):
             return ImageFont.load_default()
 
 
+# ── Emoji investigation — Step 3 finding ──────────────────────────
+# Searched the entire pipeline (detection normalization in
+# analyze_with_claude_vision[_timed], and the text handling below) for
+# anything that could drop emojis before they reach the renderer:
+# unicode normalization (unicodedata.normalize), non-ASCII filtering
+# (.encode("ascii", ...), regex strips, str.isascii checks), emoji
+# libraries that substitute/describe emojis, etc.
+# CONFIRMED: no such code exists anywhere in app.py. The only two
+# transformations ever applied to a detected caption's text are
+# `.strip()` and the `\\n`-split + per-line `.strip()` used to respect
+# manual line breaks (see `text` / `orig_lines` below) — neither touches
+# emoji codepoints. Nothing to disable; documenting this here so no one
+# adds such a step by mistake. (The [EMOJI_DEBUG] log below proves this
+# at runtime: raw_text_from_vision == text_sent_to_renderer ==
+# text_after_cleanup for any caption containing emojis.)
 def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str:
     """
     Render all text objects onto a transparent RGBA image.
@@ -706,6 +777,19 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
 
             x = max(margin, min(x, wa - tw - margin))
 
+            # NOTE (emoji-loss fix): the fallback used to flip the shared
+            # `use_pilmoji` flag to False on ANY exception, which silently
+            # disabled emoji-aware rendering for every remaining line AND
+            # every remaining caption in the whole video — so a single
+            # transient failure (e.g. one emoji image fetch timing out)
+            # would make unrelated emojis later in the video "disappear"
+            # too. The fallback is now scoped to THIS LINE only
+            # (`line_rendered_with_emoji`); `use_pilmoji` still gates
+            # whether pilmoji is even attempted (e.g. if the import
+            # failed) but a per-line failure no longer poisons the rest
+            # of the render. Drawing itself — position, font, border,
+            # shadow, fill — is byte-for-byte identical either way.
+            line_rendered_with_emoji = False
             if use_pilmoji:
                 try:
                     with Pilmoji(overlay) as pm:
@@ -714,16 +798,48 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
                                 if abs(dx) + abs(dy) <= border + 1 and (dx or dy):
                                     pm.text((x+dx, y+dy), line, font=font, fill=shadow)
                         pm.text((x, y), line, font=font, fill=color)
-                except Exception:
-                    use_pilmoji = False
+                    line_rendered_with_emoji = True
+                except Exception as _pilmoji_exc:
+                    print(f"[EMOJI_DEBUG] pilmoji failed for line {i} of '{text[:40]}': "
+                          f"{type(_pilmoji_exc).__name__}: {_pilmoji_exc} — "
+                          f"falling back to plain text for THIS LINE only",
+                          file=sys.stderr)
 
-            if not use_pilmoji:
+            if not line_rendered_with_emoji:
                 draw = ImageDraw.Draw(overlay)
                 for dx in range(-border, border + 1):
                     for dy in range(-border, border + 1):
                         if abs(dx) + abs(dy) <= border + 1 and (dx or dy):
                             draw.text((x+dx, y+dy), line, font=font, fill=shadow)
                 draw.text((x, y), line, font=font, fill=color)
+
+        # ── Emoji investigation debug log (per caption object) ────────
+        # Traces the text end-to-end through every transformation this
+        # pipeline actually applies, so emoji loss can be pinpointed to
+        # one of: Vision output, JSON parsing, this cleanup step, or the
+        # renderer/font itself:
+        #   raw_text_from_vision  — block["text"] exactly as Vision/JSON
+        #                           produced it (before .strip()).
+        #   text_sent_to_renderer — `text` after .strip(), the value this
+        #                           function actually works with.
+        #   text_after_cleanup    — the \\n-split + per-line-trim result
+        #                           (`orig_lines`, the ONLY normalization
+        #                           this pipeline performs) re-joined.
+        # If raw == sent == cleaned but the emoji is still missing from
+        # the rendered frame, the loss is in the renderer/font fallback,
+        # not detection or text handling. This block never modifies the
+        # text — purely observational, mirrors [CAPTION_DEBUG]'s pattern.
+        _raw_text_fv   = block.get("text", "")
+        _cleaned_text  = "\n".join(orig_lines)
+        _emojis, _codes = _extract_emojis(_raw_text_fv)
+        emoji_debug_obj = {
+            "raw_text_from_vision":  _raw_text_fv[:200],
+            "emojis_detected":       _emojis,
+            "emoji_unicode_codes":   _codes,
+            "text_sent_to_renderer": text[:200],
+            "text_after_cleanup":    _cleaned_text[:200],
+        }
+        print(f"[EMOJI_DEBUG] {json.dumps(emoji_debug_obj, ensure_ascii=False)}", file=sys.stderr)
 
         # ── Debug log ─────────────────────────────────────────────────
         print(
