@@ -103,6 +103,16 @@
 </head>
 <body>
 
+{% if current_user %}
+<div style="max-width:680px;margin:0 auto 8px;display:flex;justify-content:flex-end;align-items:center;gap:14px;font-size:0.8rem;color:var(--muted);">
+  <span>{{ current_user.email }}{% if current_user.role == 'admin' %} · admin{% endif %}</span>
+  {% if current_user.role == 'admin' %}
+    <a href="{{ url_for('admin_users') }}" style="color:var(--accent2);text-decoration:none;">Gestion équipe</a>
+  {% endif %}
+  <a href="{{ url_for('logout') }}" style="color:var(--accent2);text-decoration:none;">Se déconnecter</a>
+</div>
+{% endif %}
+
 <header>
   <h1>🎬 VideoBot</h1>
   <p>Upload Vidéo A + Vidéo B → texte détecté et réécrit → Vidéo C propre</p>
