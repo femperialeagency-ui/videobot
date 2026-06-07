@@ -105,7 +105,7 @@ VISION_PROMPT = """These images are frames from the same TikTok/Reel video.
 
 Detect ONLY real overlay CAPTIONS — the meme-style / commentary text the
 creator deliberately typed on top of the video to be read as a caption
-(e.g. "volume up ❗❗", "me when I realize I'm losing the argument",
+(e.g. "volume up ❗❗", "that moment when you realize you're wrong",
 "\\"we're just friends\\" / also us:").
 
 DO NOT DETECT (these are not captions — never return them as text objects):
@@ -126,8 +126,8 @@ Return a JSON array. Each visually distinct CAPTION block = one separate object.
 
 For EACH object:
 - "text": exact text with ALL emojis. CRITICAL: if the text spans multiple visual lines, use \\n between each line exactly as displayed. Never merge separate visual lines into one.
-- "cx_pct": CENTER x as decimal fraction of frame width (0=left, 1=right, 0.5=center)
-- "cy_pct": CENTER y as decimal fraction of frame height (0=top, 1=bottom)
+- "cx_pct": the ACTUAL visual CENTER x of THIS caption's text block, AS YOU SEE IT IN THE IMAGE — measured, as a decimal fraction of frame width (0=left, 1=right, 0.5=center).
+- "cy_pct": the ACTUAL visual CENTER y of THIS caption's text block, AS YOU SEE IT IN THE IMAGE — measured, as a decimal fraction of frame height (0=top, 1=bottom).
 - "width_pct": width of the text block as fraction of frame width (how wide the text spans, 0.3–0.9)
 - "fontsize_pct": font height as fraction of frame height. Typical TikTok captions: 0.030–0.055. Large title text: 0.055–0.075.
 - "align": "left" | "center" | "right"
@@ -136,21 +136,30 @@ For EACH object:
 
 CRITICAL RULES:
 1. Blocks at DIFFERENT vertical positions = DIFFERENT JSON objects, even if all centered.
-2. Multi-line text = use \\n for EVERY visual line break. Example: "me when I realize I'm\\nlosing the argument"
+2. Multi-line text = use \\n for EVERY visual line break. Example: "first visual line\\nsecond visual line"
 3. fontsize_pct must reflect actual visible font size — do not underestimate. Large text in the frame should be 0.05–0.075.
 4. width_pct: estimate how wide the text block is (e.g. 0.75 if it spans 75% of frame width).
-5. CAPTION FILTER: Only return real overlay captions (see definition above). Never return watermarks, logos, usernames, stickers, small vertical labels, app UI, brand marks, tags, or other decorative/non-caption text — not even small ones that are technically legible. When in doubt whether something is a caption or a watermark/sticker/logo, DO NOT include it.
-6. EMOJIS — apply this to EVERY emoji you see, not just the examples below: Do not remove, replace, normalize, convert or describe emojis. If an emoji (including symbol-style ones like ❗, ‼️, ✨, 💯) appears on screen as part of or next to caption text, you MUST include it in the returned "text" string, in its exact position, using the exact Unicode character(s) — never as a description, never omitted, never substituted with a different emoji. Examples of correct output:
+5. POSITION = MEASUREMENT, NOT A GUESS. For cx_pct/cy_pct: look at where THIS caption's text block actually starts and ends — its top edge, bottom edge, left edge, and right edge in THIS frame — then report the CENTER of that exact box. Do NOT round to a generic zone like "near the top", "the middle", or "near the bottom". Do NOT estimate based on where captions usually go on TikTok/Reels. Do NOT reuse, infer, or pattern-match a position from a caption's wording, from a similar-looking caption you've processed before, or from any example in this prompt — every video and every caption gets its own fresh measurement of what is actually visible. A caption sitting at chest height with empty space below it must be reported near the frame's vertical center (cy_pct ≈ 0.5–0.6), NOT near the bottom (cy_pct ≈ 0.8+), even if similar-sounding captions are sometimes placed lower elsewhere.
+6. CAPTION FILTER: Only return real overlay captions (see definition above). Never return watermarks, logos, usernames, stickers, small vertical labels, app UI, brand marks, tags, or other decorative/non-caption text — not even small ones that are technically legible. When in doubt whether something is a caption or a watermark/sticker/logo, DO NOT include it.
+7. EMOJIS — apply this to EVERY emoji you see, not just the examples below: Do not remove, replace, normalize, convert or describe emojis. If an emoji (including symbol-style ones like ❗, ‼️, ✨, 💯) appears on screen as part of or next to caption text, you MUST include it in the returned "text" string, in its exact position, using the exact Unicode character(s) — never as a description, never omitted, never substituted with a different emoji. Examples of correct output:
    - on-screen "volume up ❗❗" → "text": "volume up ❗❗"   (NOT "volume up")
    - on-screen "i was 👉👌ing myself..." → "text": "i was 👉👌ing myself..."   (NOT "i was ing myself...")
    - ❤️, ⭐, 😈, 😴, 🥺, 😂, 😭 must all be returned as the exact Unicode characters shown here.
-7. Return ONLY a valid JSON array. No markdown, no explanation.
+8. Return ONLY a valid JSON array. No markdown, no explanation.
 
-Example:
+The example below shows the JSON FORMAT only. Its "text" strings are
+generic placeholders that will not match any real video, and its cx_pct/
+cy_pct values are arbitrary numbers chosen only to show that different
+blocks can sit at different coordinates — they are NOT typical positions
+and must NEVER be copied, reused, or treated as a hint about where a real
+caption "should" be. Every coordinate you output must come from measuring
+the actual frame(s) you were given, every single time.
+
+Example (format illustration only — do not reuse these values):
 [
-  {"text": "me when I realize I'm\\nlosing the argument", "cx_pct": 0.5, "cy_pct": 0.82, "width_pct": 0.80, "fontsize_pct": 0.048, "align": "center", "bold": true, "color": "white"},
-  {"text": "volume up ❗❗", "cx_pct": 0.5, "cy_pct": 0.22, "width_pct": 0.65, "fontsize_pct": 0.058, "align": "center", "bold": true, "color": "white"},
-  {"text": "❤️: Lover\\n❤: Romantic\\n⭐: Arrogant\\n😉: Boring\\n😴: Tender\\n😛: Eater\\n😈: Receiver", "cx_pct": 0.55, "cy_pct": 0.55, "width_pct": 0.50, "fontsize_pct": 0.038, "align": "left", "bold": true, "color": "white"}
+  {"text": "placeholder caption line one\\nplaceholder caption line two", "cx_pct": 0.5, "cy_pct": 0.43, "width_pct": 0.80, "fontsize_pct": 0.048, "align": "center", "bold": true, "color": "white"},
+  {"text": "placeholder overlay text ❗❗", "cx_pct": 0.5, "cy_pct": 0.71, "width_pct": 0.65, "fontsize_pct": 0.058, "align": "center", "bold": true, "color": "white"},
+  {"text": "placeholder list:\\nfirst entry\\nsecond entry\\nthird entry", "cx_pct": 0.55, "cy_pct": 0.18, "width_pct": 0.50, "fontsize_pct": 0.038, "align": "left", "bold": true, "color": "white"}
 ]
 
 (Note: a small vertical logo badge like "NO GLYPH ON" floating mid-frame, or
@@ -191,8 +200,8 @@ Also do not report text on clothing, objects, or the scene itself.
 Return a JSON array. Each object = ONE caption visible in ONE frame:
 - "frame_index": the 1-based index of the frame (1 to {n}) this caption is visible in
 - "text": exact text with ALL emojis. Use \\n between visual lines exactly as displayed.
-- "cx_pct": CENTER x as decimal fraction of frame width (0=left, 1=right, 0.5=center)
-- "cy_pct": CENTER y as decimal fraction of frame height (0=top, 1=bottom)
+- "cx_pct": the ACTUAL visual CENTER x of THIS caption's text block, AS YOU SEE IT IN THIS FRAME — measured, as a decimal fraction of frame width (0=left, 1=right, 0.5=center).
+- "cy_pct": the ACTUAL visual CENTER y of THIS caption's text block, AS YOU SEE IT IN THIS FRAME — measured, as a decimal fraction of frame height (0=top, 1=bottom).
 - "width_pct": width of the text block as fraction of frame width (0.3-0.9)
 - "fontsize_pct": font height as fraction of frame height (typical 0.030-0.055; large titles 0.055-0.075)
 - "align": "left" | "center" | "right"
@@ -204,12 +213,13 @@ CRITICAL RULES:
 2. If a caption is replaced by a DIFFERENT caption at the same position, treat them as separate texts with their own frame_index entries.
 3. Only report captions that are ACTUALLY visible in that frame — do not guess or carry text into frames where it isn't shown.
 4. Multi-line text = use \\n for every visual line break.
-5. CAPTION FILTER: Only return real overlay captions (see definition above). Never return watermarks, logos, usernames, stickers, small vertical labels, app UI, brand marks, tags, or other decorative/non-caption text — not even small ones that are technically legible. When in doubt whether something is a caption or a watermark/sticker/logo, DO NOT include it.
-6. EMOJIS — apply this to EVERY emoji you see, not just the examples below: Do not remove, replace, normalize, convert or describe emojis. If an emoji (including symbol-style ones like ❗, ‼️, ✨, 💯) appears on screen as part of or next to caption text, you MUST include it in the returned "text" string, in its exact position, using the exact Unicode character(s) — never as a description, never omitted, never substituted with a different emoji. Examples of correct output:
+5. POSITION = MEASUREMENT, NOT A GUESS. For cx_pct/cy_pct: look at where THIS caption's text block actually starts and ends in THIS frame — its top, bottom, left and right edges — then report the CENTER of that exact box. Do NOT round to a generic zone ("top"/"middle"/"bottom"). Do NOT estimate from where captions usually sit on TikTok/Reels, and do NOT carry over a position from a similar-sounding caption elsewhere — measure fresh, every frame, every caption. A caption sitting at chest height with empty space below it must be reported near the frame's vertical center (cy_pct ≈ 0.5–0.6), NOT near the bottom (cy_pct ≈ 0.8+).
+6. CAPTION FILTER: Only return real overlay captions (see definition above). Never return watermarks, logos, usernames, stickers, small vertical labels, app UI, brand marks, tags, or other decorative/non-caption text — not even small ones that are technically legible. When in doubt whether something is a caption or a watermark/sticker/logo, DO NOT include it.
+7. EMOJIS — apply this to EVERY emoji you see, not just the examples below: Do not remove, replace, normalize, convert or describe emojis. If an emoji (including symbol-style ones like ❗, ‼️, ✨, 💯) appears on screen as part of or next to caption text, you MUST include it in the returned "text" string, in its exact position, using the exact Unicode character(s) — never as a description, never omitted, never substituted with a different emoji. Examples of correct output:
    - on-screen "volume up ❗❗" → "text": "volume up ❗❗"   (NOT "volume up")
    - on-screen "i was 👉👌ing myself..." → "text": "i was 👉👌ing myself..."   (NOT "i was ing myself...")
    - ❤️, ⭐, 😈, 😴, 🥺, 😂, 😭 must all be returned as the exact Unicode characters shown here.
-7. Return ONLY a valid JSON array. No markdown, no explanation."""
+8. Return ONLY a valid JSON array. No markdown, no explanation."""
 
 
 # ── Global JSON error handler ─────────────────────────────────────
