@@ -7,27 +7,150 @@ import shutil
 import base64
 import zipfile
 import secrets
+import sqlite3
 import subprocess
 from pathlib import Path
+from functools import wraps
 from flask import Flask, render_template, request, send_file, jsonify, session, redirect, url_for
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
 
-# ── Access gate: session secret + password ────────────────────────
+# ── Access gate: session secret ───────────────────────────────────
 # SECRET_KEY signs the login session cookie. If it isn't set in the
 # Render environment, fall back to a random key generated at process
-# startup — sessions just won't survive a restart/redeploy, which is
-# an acceptable trade-off for a simple password gate (users log in
-# again). Setting SECRET_KEY in the Render env keeps sessions stable
-# across restarts.
+# startup — sessions just won't survive a restart/redeploy (users log
+# in again, an acceptable trade-off). Setting SECRET_KEY in the Render
+# env keeps sessions stable across restarts.
 app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 
-# APP_PASSWORD is read from the Render environment ONLY — it is never
-# hardcoded here and never logged. If it is not set, the gate fails
-# closed (no password will ever match an empty string), so the app is
-# inaccessible until an operator sets it in Render's Environment tab.
-APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+# ── Team accounts: persistent user store ──────────────────────────
+# Replaces the old single shared APP_PASSWORD with real per-person
+# accounts (email + password), stored in a small SQLite database on a
+# Render persistent disk so accounts survive restarts/redeploys.
+#
+# DATA_DIR must point at the mount path of that disk (set the DATA_DIR
+# env var in Render to match it). Falls back to /tmp if unset — in that
+# case accounts would be wiped on every deploy, so DATA_DIR should
+# always be configured in production.
+#
+# Passwords are hashed with werkzeug's PBKDF2 (generate_password_hash)
+# — never stored, logged, or hardcoded in plain text anywhere.
+DATA_DIR = Path(os.environ.get("DATA_DIR", "/tmp"))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+USERS_DB_PATH = DATA_DIR / "videobot_users.db"
+
+# Constant-effort dummy hash, checked when an email isn't found, so a
+# login attempt against a nonexistent account takes the same time as
+# one against a real account — response timing can't be used to
+# enumerate which emails have accounts.
+_DUMMY_PASSWORD_HASH = generate_password_hash("not-a-real-account-password")
+
+
+def _users_db():
+    conn = sqlite3.connect(USERS_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _init_users_db():
+    with _users_db() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                email         TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role          TEXT NOT NULL DEFAULT 'member',
+                is_active     INTEGER NOT NULL DEFAULT 1,
+                created_at    TEXT NOT NULL
+            )
+            """
+        )
+        conn.commit()
+
+
+def _bootstrap_admin():
+    """
+    On startup, create the very first admin account from the
+    ADMIN_EMAIL / ADMIN_PASSWORD env vars — but ONLY if no admin exists
+    yet. Both are read from the environment only, never hardcoded or
+    logged. Safe to leave the env vars set permanently afterwards: this
+    is a no-op as soon as one admin account exists, so it never resets
+    or overwrites a password an admin has since changed.
+    """
+    email = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    password = os.environ.get("ADMIN_PASSWORD", "")
+    if not email or not password:
+        return
+    with _users_db() as conn:
+        if conn.execute("SELECT 1 FROM users WHERE role = 'admin' LIMIT 1").fetchone():
+            return
+        conn.execute(
+            "INSERT OR IGNORE INTO users (email, password_hash, role, is_active, created_at) "
+            "VALUES (?, ?, 'admin', 1, ?)",
+            (email, generate_password_hash(password),
+             time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())),
+        )
+        conn.commit()
+
+
+def get_user_by_id(user_id):
+    with _users_db() as conn:
+        return conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+
+
+def get_user_by_email(email):
+    with _users_db() as conn:
+        return conn.execute(
+            "SELECT * FROM users WHERE email = ?", (email.strip().lower(),)
+        ).fetchone()
+
+
+def list_users():
+    with _users_db() as conn:
+        return conn.execute("SELECT * FROM users ORDER BY created_at ASC, id ASC").fetchall()
+
+
+def create_user(email, password, role="member"):
+    with _users_db() as conn:
+        conn.execute(
+            "INSERT INTO users (email, password_hash, role, is_active, created_at) "
+            "VALUES (?, ?, ?, 1, ?)",
+            (
+                email.strip().lower(),
+                generate_password_hash(password),
+                role,
+                time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
+            ),
+        )
+        conn.commit()
+
+
+def set_user_password(user_id, password):
+    with _users_db() as conn:
+        conn.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (generate_password_hash(password), user_id),
+        )
+        conn.commit()
+
+
+def set_user_active(user_id, active):
+    with _users_db() as conn:
+        conn.execute("UPDATE users SET is_active = ? WHERE id = ?", (1 if active else 0, user_id))
+        conn.commit()
+
+
+def delete_user(user_id):
+    with _users_db() as conn:
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        conn.commit()
+
+
+_init_users_db()
+_bootstrap_admin()
 
 UPLOAD_DIR = Path("/tmp/videobot_jobs")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -1200,14 +1323,16 @@ def _build_timed_overlay_cmd(path_a: str, path_b: str, overlay_specs: list, path
     return cmd
 
 
-# ── Access gate (login required) ──────────────────────────────────
-# Minimal password wall placed IN FRONT of the whole app: anyone who
-# has the Render URL must enter the password before reaching any page
-# or API route. This runs before every request and either lets it
-# through (session already authenticated, or it's the login page /
-# static assets) or redirects to /login. It does not change, wrap, or
-# touch any simple-mode or batch-mode route/handler — those are called
-# completely unchanged once a session is authenticated.
+# ── Access gate (team accounts) ───────────────────────────────────
+# Every request is checked against the signed session cookie's
+# user_id. The user row is re-fetched from the database on EVERY
+# request (never cached), so disabling or deleting an account takes
+# effect on that very next request — even if the browser still holds
+# a "valid" signed cookie. Only /login and static assets are reachable
+# while logged out. This gate runs strictly BEFORE route handlers; it
+# does not change, wrap, or touch any simple-mode or batch-mode logic
+# — those run completely unchanged once request.current_user holds an
+# active account.
 _PUBLIC_ENDPOINTS = {"login", "static"}
 
 
@@ -1215,26 +1340,46 @@ _PUBLIC_ENDPOINTS = {"login", "static"}
 def _require_login():
     if request.endpoint in _PUBLIC_ENDPOINTS:
         return None
-    if session.get("authenticated"):
-        return None
-    return redirect(url_for("login"))
+    user = get_user_by_id(session["user_id"]) if "user_id" in session else None
+    if user is None or not user["is_active"]:
+        session.clear()
+        return redirect(url_for("login"))
+    request.current_user = user
+    return None
+
+
+def admin_required(view):
+    """Gate a route to admins only. Runs after _require_login has
+    already populated request.current_user for this request."""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        user = getattr(request, "current_user", None)
+        if user is None or user["role"] != "admin":
+            return ("Accès refusé : réservé aux administrateurs.", 403)
+        return view(*args, **kwargs)
+    return wrapped
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     error = None
     if request.method == "POST":
+        email = request.form.get("email", "")
         submitted = request.form.get("password", "")
-        # Constant-time compare so response timing can't leak how much
-        # of the password was guessed correctly. APP_PASSWORD is read
-        # only from the environment (see top of file) — never logged,
-        # never echoed back, never stored anywhere but the env var.
-        if APP_PASSWORD and secrets.compare_digest(submitted, APP_PASSWORD):
+        user = get_user_by_email(email) if email else None
+        # Always run check_password_hash — against the real hash if the
+        # account exists, against a dummy hash otherwise — so a wrong
+        # password and a nonexistent email take the same time and can't
+        # be distinguished from response timing (no account enumeration).
+        password_ok = check_password_hash(
+            user["password_hash"] if user else _DUMMY_PASSWORD_HASH, submitted
+        )
+        if user is not None and user["is_active"] and password_ok:
             session.clear()
-            session["authenticated"] = True
+            session["user_id"] = user["id"]
             session.permanent = True
             return redirect(url_for("index"))
-        error = "Mot de passe incorrect."
+        error = "Identifiants incorrects, ou compte désactivé."
     return render_template("login.html", error=error)
 
 
@@ -1244,11 +1389,67 @@ def logout():
     return redirect(url_for("login"))
 
 
+# ── Admin: team account management ────────────────────────────────
+# Reachable only by an authenticated admin (admin_required stacks on
+# top of the global _require_login gate). Regular team members never
+# see these routes, any link to them, or any admin-only data.
+
+@app.route("/admin/users")
+@admin_required
+def admin_users():
+    return render_template("admin_users.html", users=list_users())
+
+
+@app.route("/admin/users/create", methods=["POST"])
+@admin_required
+def admin_users_create():
+    email = request.form.get("email", "").strip().lower()
+    password = request.form.get("password", "")
+    role = request.form.get("role", "member")
+    if role not in ("admin", "member"):
+        role = "member"
+    if email and password and get_user_by_email(email) is None:
+        create_user(email, password, role)
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/<int:user_id>/reset_password", methods=["POST"])
+@admin_required
+def admin_users_reset_password(user_id):
+    new_password = request.form.get("password", "")
+    if new_password:
+        set_user_password(user_id, new_password)
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/<int:user_id>/disable", methods=["POST"])
+@admin_required
+def admin_users_disable(user_id):
+    if user_id != request.current_user["id"]:  # an admin can't lock themselves out
+        set_user_active(user_id, False)
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/<int:user_id>/enable", methods=["POST"])
+@admin_required
+def admin_users_enable(user_id):
+    set_user_active(user_id, True)
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/<int:user_id>/delete", methods=["POST"])
+@admin_required
+def admin_users_delete(user_id):
+    if user_id != request.current_user["id"]:  # an admin can't delete themselves
+        delete_user(user_id)
+    return redirect(url_for("admin_users"))
+
+
 # ── Routes ────────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", current_user=request.current_user)
 
 
 @app.route("/analyze", methods=["POST"])
