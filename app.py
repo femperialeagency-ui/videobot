@@ -1,7 +1,9 @@
 import os
 import gc
+import time
 import uuid
 import json
+import shutil
 import base64
 import zipfile
 import subprocess
@@ -12,6 +14,43 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
 UPLOAD_DIR = Path("/tmp/videobot_jobs")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# ── Batch-mode-only: A×B combination matrix ───────────────────────
+# Lets the user upload several "source" (A) videos and several
+# "target" (B) videos, then renders every A×B combination. Each
+# unique file is staged to disk ONCE (via /batch_stage) and reused
+# across every combination it appears in — instead of re-uploading
+# the same A or B file up to 10x, which would multiply bandwidth and
+# disk usage for a 10×10 matrix. Captions are likewise detected ONCE
+# per B video (via /batch_detect) and reused for every A it's paired
+# with. /batch_render then renders one combination at a time, reusing
+# the exact same detection/rendering functions as /analyze and
+# /process — only the orchestration and output naming are new.
+BATCH_DIR = Path("/tmp/videobot_batches")
+BATCH_DIR.mkdir(parents=True, exist_ok=True)
+
+MAX_BATCH_FILES  = 10   # max source (A) videos AND max target (B) videos
+MAX_BATCH_COMBOS = 100  # MAX_BATCH_FILES × MAX_BATCH_FILES
+
+
+def _cleanup_stale_batches(max_age_hours: float = 3.0):
+    """
+    Opportunistic disk-space safety net: remove batch directories from
+    earlier sessions that were never explicitly cleaned up (e.g. the
+    user closed the tab before downloading the ZIP). Runs only when a
+    brand-new batch is being created, so it costs nothing on the hot
+    path of staging files for an in-progress batch.
+    """
+    cutoff = time.time() - max_age_hours * 3600
+    try:
+        for d in BATCH_DIR.iterdir():
+            try:
+                if d.is_dir() and d.stat().st_mtime < cutoff:
+                    shutil.rmtree(d, ignore_errors=True)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 FONT_BOLD = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
 FONT_REG  = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
@@ -904,9 +943,41 @@ def download(job_id):
 
 @app.route("/batch_zip", methods=["POST"])
 def batch_zip():
-    """Receive a list of job_ids, zip all c.mp4 files, return the ZIP."""
+    """
+    Two supported request shapes:
+      - {"batch_id": "..."} — NEW A×B combination-matrix flow: zips every
+        rendered file in that batch's out/ folder. Filenames already
+        encode both source and target (e.g. A01_B02_output.mp4), so no
+        renaming is needed here.
+      - {"job_ids": [...]} — original single-source batch flow, kept for
+        backward compatibility; zips each job's c.mp4 as video_C_N.mp4.
+    """
     try:
-        data = request.get_json(force=True)
+        data = request.get_json(force=True) or {}
+
+        batch_id = (data.get("batch_id") or "").strip()
+        if batch_id:
+            if ".." in batch_id or "/" in batch_id:
+                return jsonify({"error": "batch_id invalide"}), 400
+
+            out_dir = BATCH_DIR / batch_id / "out"
+            files = sorted(out_dir.glob("*.mp4")) if out_dir.exists() else []
+            if not files:
+                return jsonify({"error": "Aucun fichier valide trouvé"}), 400
+
+            zip_path = f"/tmp/batch_{uuid.uuid4().hex}.zip"
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as zf:
+                for p in files:
+                    zf.write(str(p), p.name)
+
+            return send_file(
+                zip_path,
+                as_attachment=True,
+                download_name="videos_C.zip",
+                mimetype="application/zip"
+            )
+
+        # ── Original job_ids-based flow (backward compatible) ──
         job_ids = data.get("job_ids", [])
 
         valid = []
@@ -932,6 +1003,283 @@ def batch_zip():
             download_name="videos_C.zip",
             mimetype="application/zip"
         )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ── Batch-mode-only: A×B combination matrix routes ────────────────
+# These four routes orchestrate the new "N source videos × M target
+# videos → N×M outputs" batch flow. None of them duplicate detection
+# or rendering LOGIC — they call the exact same functions that
+# /analyze and /process already use (analyze_with_claude_vision_timed,
+# analyze_with_claude_vision, analyze_with_tesseract_fallback,
+# extract_frames, render_text_overlay, _build_timed_overlay_cmd), so
+# caption fidelity (font, stroke, size, wrap, position, timing) is
+# pixel-identical to the existing single-source batch path. Simple
+# mode and the original /analyze, /process, /batch_zip(job_ids) paths
+# are completely untouched.
+
+@app.route("/batch_stage", methods=["POST"])
+def batch_stage():
+    """
+    Stage ONE source (A) or target (B) video for the combination matrix.
+    Each unique file is uploaded exactly once and saved to a per-batch
+    folder (A/<index>.mp4 or B/<index>.mp4); /batch_render then
+    references these staged copies by index instead of re-uploading the
+    same file for every combination — keeping total upload bandwidth and
+    disk usage bounded even at the maximum 10×10 = 100 matrix (vs. up to
+    ~10x redundant re-uploads with a naive per-combo upload approach).
+
+    First call for a batch may omit batch_id; the server creates one and
+    returns it for subsequent staging/detect/render/zip calls.
+    """
+    try:
+        kind = (request.form.get("kind") or "").strip().lower()
+        if kind not in ("a", "b"):
+            return jsonify({"error": "Paramètre 'kind' invalide (a ou b attendu)"}), 400
+
+        try:
+            index = int(request.form.get("index", "-1"))
+        except Exception:
+            index = -1
+        if index < 0 or index >= MAX_BATCH_FILES:
+            return jsonify({"error": f"Index invalide (0 à {MAX_BATCH_FILES - 1})"}), 400
+
+        if "file" not in request.files:
+            return jsonify({"error": "Fichier manquant"}), 400
+
+        batch_id = (request.form.get("batch_id") or "").strip()
+        is_new   = not batch_id or ".." in batch_id or "/" in batch_id
+        if is_new:
+            _cleanup_stale_batches()
+            batch_id = uuid.uuid4().hex
+
+        bdir = BATCH_DIR / batch_id
+        (bdir / "A").mkdir(parents=True, exist_ok=True)
+        (bdir / "B").mkdir(parents=True, exist_ok=True)
+        (bdir / "out").mkdir(parents=True, exist_ok=True)
+
+        sub  = "A" if kind == "a" else "B"
+        dest = bdir / sub / f"{index:02d}.mp4"
+        request.files["file"].save(str(dest))
+
+        return jsonify({"batch_id": batch_id, "kind": kind, "index": index})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/batch_detect", methods=["POST"])
+def batch_detect():
+    """
+    Run caption detection ONCE for a staged target (B) video so the same
+    detected captions are reused for every source (A) it gets combined
+    with, instead of re-running Vision detection up to 10x for the same
+    B file. Mirrors EXACTLY the detection sequence /analyze uses for
+    ui_mode == "batch" — timed detection first, falling back to the
+    original static single-pass flow — by calling the same unmodified
+    detection functions. Only the file source (staged path vs. fresh
+    upload) differs.
+    """
+    try:
+        batch_id = (request.form.get("batch_id") or "").strip()
+        if not batch_id or ".." in batch_id or "/" in batch_id:
+            return jsonify({"error": "batch_id invalide"}), 400
+        try:
+            b_index = int(request.form.get("b_index", "-1"))
+        except Exception:
+            b_index = -1
+
+        path_b = BATCH_DIR / batch_id / "B" / f"{b_index:02d}.mp4"
+        if not path_b.exists():
+            return jsonify({"error": "Vidéo B introuvable (étape de staging manquante)"}), 404
+        path_b = str(path_b)
+
+        has_key = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
+
+        # Identical sequence to /analyze's ui_mode == "batch" branch:
+        # timed detection first, falling back to the original single-pass
+        # detection (Vision or Tesseract) if it finds nothing.
+        try:
+            lines, _ = analyze_with_claude_vision_timed(path_b)
+        except Exception:
+            lines = []
+
+        frames = []
+        if not lines:
+            frames = extract_frames(path_b, count=4)
+            if has_key:
+                lines = analyze_with_claude_vision(frames)
+            else:
+                lines = []
+            if not lines:
+                lines = analyze_with_tesseract_fallback(frames)
+
+        for f in frames:
+            try:
+                Path(f).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+        _, hb = get_video_dims(path_b)
+        return jsonify({
+            "lines":          lines,
+            "video_b_height": hb,
+            "mode":           "vision" if has_key else "tesseract"
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/batch_render", methods=["POST"])
+def batch_render():
+    """
+    Render ONE (A_i, B_j) combination from already-staged files. Reuses
+    the EXACT SAME rendering path as /process's batch branch — the
+    has_timing check, render_text_overlay (one call per caption for
+    timed captions, identical to /process), _build_timed_overlay_cmd /
+    the original static-overlay ffmpeg command — so caption fidelity is
+    pixel-identical to the single-source batch path. Only file sourcing
+    (staged paths, reused — not re-uploaded) and output naming
+    (A<i>_B<j>_output.mp4, so every file in the final ZIP clearly
+    identifies both its source and target) are new.
+
+    Processes ONE combination per request — the client drives the A×B
+    loop sequentially (one ffmpeg job in flight at a time), exactly like
+    the existing single-source batch flow, so memory/disk stay bounded
+    even for the maximum 100-combination matrix. Cleans up overlay PNGs
+    and runs gc.collect() after every job, same as /process.
+    """
+    try:
+        batch_id = (request.form.get("batch_id") or "").strip()
+        if not batch_id or ".." in batch_id or "/" in batch_id:
+            return jsonify({"error": "batch_id invalide"}), 400
+        try:
+            a_index = int(request.form.get("a_index", "-1"))
+            b_index = int(request.form.get("b_index", "-1"))
+        except Exception:
+            return jsonify({"error": "Index invalide"}), 400
+        if not (0 <= a_index < MAX_BATCH_FILES) or not (0 <= b_index < MAX_BATCH_FILES):
+            return jsonify({"error": "Index hors limites"}), 400
+
+        bdir   = BATCH_DIR / batch_id
+        path_a = bdir / "A" / f"{a_index:02d}.mp4"
+        path_b = bdir / "B" / f"{b_index:02d}.mp4"
+        if not path_a.exists() or not path_b.exists():
+            return jsonify({"error": "Vidéo source introuvable (étape de staging manquante)"}), 404
+        path_a, path_b = str(path_a), str(path_b)
+
+        out_name = f"A{a_index + 1:02d}_B{b_index + 1:02d}_output.mp4"
+        path_out = str(bdir / "out" / out_name)
+
+        wa, ha = get_video_dims(path_a)
+        wb, hb = get_video_dims(path_b)
+
+        lines_json = request.form.get("lines_json", "[]")
+        try:
+            lines = json.loads(lines_json)
+        except Exception:
+            lines = []
+        if not lines:
+            return jsonify({"error": "Aucune ligne de texte fournie."}), 400
+
+        # Same has_timing detection /process uses — renders via the timed
+        # multi-overlay path when every line carries start_time/end_time,
+        # falling back to the original single static overlay otherwise.
+        has_timing = (
+            bool(lines)
+            and all(isinstance(l, dict) and "start_time" in l and "end_time" in l for l in lines)
+        )
+
+        overlay_paths = []
+        try:
+            if has_timing:
+                overlay_specs = []
+                for line in lines:
+                    try:
+                        start = max(0.0, float(line.get("start_time", 0.0)))
+                        end   = max(start + 0.05, float(line.get("end_time", start + 0.05)))
+                    except Exception:
+                        continue
+                    op = render_text_overlay([line], wa, ha, wb, hb)
+                    overlay_paths.append(op)
+                    overlay_specs.append((op, start, end))
+
+                if not overlay_specs:
+                    return jsonify({"error": "Aucune ligne de texte fournie."}), 400
+
+                cmd = _build_timed_overlay_cmd(path_a, path_b, overlay_specs, path_out)
+            else:
+                overlay_path = render_text_overlay(lines, wa, ha, wb, hb)
+                overlay_paths.append(overlay_path)
+
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-i", path_a,
+                    "-i", path_b,
+                    "-i", overlay_path,
+                    "-filter_complex",
+                    "[0:v][2:v]overlay=0:0[out]",
+                    "-map", "[out]",
+                    "-map", "1:a",
+                    "-shortest",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
+                    "-c:a", "aac", "-b:a", "128k",
+                    "-loglevel", "error",
+                    path_out
+                ]
+
+            try:
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+            except subprocess.TimeoutExpired:
+                return jsonify({"error": "Timeout (>3 min)"}), 500
+        finally:
+            for op in overlay_paths:
+                try:
+                    Path(op).unlink(missing_ok=True)
+                except Exception:
+                    pass
+            gc.collect()
+
+        if proc.returncode != 0 or not Path(path_out).exists():
+            err = proc.stderr[-800:] if proc.stderr else "ffmpeg a echoue"
+            return jsonify({"error": err}), 500
+
+        return jsonify({"ok": True, "filename": out_name})
+
+    except Exception as e:
+        return jsonify({"error": f"Erreur serveur: {str(e)}"}), 500
+
+
+@app.route("/batch_file/<batch_id>/<filename>")
+def batch_file(batch_id, filename):
+    """Download a single rendered combination output by its A/B-identifying filename."""
+    if ".." in batch_id or "/" in batch_id or ".." in filename or "/" in filename:
+        return jsonify({"error": "Invalid"}), 400
+    path = BATCH_DIR / batch_id / "out" / filename
+    if path.exists():
+        return send_file(str(path), as_attachment=True, download_name=filename, mimetype="video/mp4")
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.route("/batch_cleanup", methods=["POST"])
+def batch_cleanup():
+    """
+    Delete all staged inputs and rendered outputs for a finished batch to
+    free disk space (called by the client right after the ZIP has been
+    produced). Safe to call more than once / on an unknown batch_id.
+    """
+    try:
+        data = request.get_json(force=True) or {}
+        batch_id = (data.get("batch_id") or "").strip()
+        if not batch_id or ".." in batch_id or "/" in batch_id:
+            return jsonify({"error": "batch_id invalide"}), 400
+        bdir = BATCH_DIR / batch_id
+        if bdir.exists():
+            shutil.rmtree(bdir, ignore_errors=True)
+        gc.collect()
+        return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
