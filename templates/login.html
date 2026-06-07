@@ -37,10 +37,12 @@
 <body>
   <div class="card">
     <h1>VideoBot</h1>
-    <p class="sub">Accès protégé — entrez le mot de passe pour continuer.</p>
+    <p class="sub">Accès protégé — connectez-vous avec votre compte.</p>
     <form method="POST" action="{{ url_for('login') }}">
+      <label for="email">Email</label>
+      <input type="text" id="email" name="email" autofocus required autocomplete="username" style="margin-bottom:16px;" />
       <label for="password">Mot de passe</label>
-      <input type="password" id="password" name="password" autofocus required autocomplete="current-password" />
+      <input type="password" id="password" name="password" required autocomplete="current-password" />
       <button type="submit">Se connecter</button>
       {% if error %}
         <div class="error">{{ error }}</div>

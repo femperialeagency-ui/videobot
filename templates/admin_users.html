@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VideoBot — Gestion de l'équipe</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f0f13; --surface: #1a1a24; --border: #2e2e42;
+      --accent: #7c5cfc; --accent2: #a78bfa; --text: #e8e8f0;
+      --muted: #8888aa; --error: #f87171; --ok: #4ade80; --radius: 12px;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh;
+      padding: 32px 24px 64px; }
+    .wrap { max-width: 880px; margin: 0 auto; }
+    .topbar { display: flex; justify-content: space-between; align-items: baseline;
+      flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
+    h1 { font-size: 1.6rem; font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .topbar a { color: var(--accent2); text-decoration: none; font-size: 0.85rem; }
+    .topbar a:hover { text-decoration: underline; }
+    .card { background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px; margin-bottom: 24px; }
+    .card h2 { font-size: 1rem; font-weight: 600; color: var(--accent2); margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: .03em; }
+    td.actions { white-space: nowrap; }
+    .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.74rem; font-weight: 600; }
+    .badge.admin { background: rgba(124,92,252,.18); color: var(--accent2); }
+    .badge.member { background: rgba(136,136,170,.18); color: var(--muted); }
+    .badge.active { background: rgba(74,222,128,.14); color: var(--ok); }
+    .badge.disabled { background: rgba(248,113,113,.14); color: var(--error); }
+    form.inline { display: inline; }
+    button, input[type="submit"] {
+      font-size: 0.78rem; font-weight: 600; padding: 6px 12px; border-radius: 7px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text);
+      cursor: pointer; transition: border-color .15s, color .15s; margin: 2px 2px 2px 0;
+    }
+    button:hover { border-color: var(--accent); color: var(--accent2); }
+    button.danger:hover { border-color: var(--error); color: var(--error); }
+    .new-user-form { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 10px; align-items: end; }
+    .new-user-form label { display: block; font-size: 0.78rem; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+    .new-user-form input[type="text"], .new-user-form input[type="password"], .new-user-form select {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); padding: 9px 10px; font-size: 0.88rem; outline: none;
+    }
+    .new-user-form input:focus, .new-user-form select:focus { border-color: var(--accent); }
+    .new-user-form button[type="submit"] { background: var(--accent); border: none; color: #fff; padding: 10px 16px; }
+    .new-user-form button[type="submit"]:hover { background: var(--accent2); color: #fff; }
+    .muted { color: var(--muted); font-size: 0.82rem; }
+    .reset-row { display: flex; gap: 6px; align-items: center; }
+    .reset-row input[type="password"] {
+      width: 130px; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 7px; color: var(--text); padding: 5px 8px; font-size: 0.78rem; outline: none;
+    }
+    @media (max-width: 720px) {
+      .new-user-form { grid-template-columns: 1fr; }
+      table, thead, tbody, th, td, tr { display: block; }
+      thead { display: none; }
+      tr { border-bottom: 1px solid var(--border); padding: 10px 0; }
+      td { border: none; padding: 4px 0; }
+      td.actions { padding-top: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <h1>Gestion de l'équipe</h1>
+      <a href="{{ url_for('index') }}">← Retour au bot</a>
+    </div>
+
+    <div class="card">
+      <h2>Ajouter un membre</h2>
+      <form class="new-user-form" method="POST" action="{{ url_for('admin_users_create') }}">
+        <div>
+          <label for="new_email">Email</label>
+          <input type="text" id="new_email" name="email" placeholder="prenom@exemple.com" autocomplete="off" required />
+        </div>
+        <div>
+          <label for="new_password">Mot de passe</label>
+          <input type="password" id="new_password" name="password" required autocomplete="new-password" />
+        </div>
+        <div>
+          <label for="new_role">Rôle</label>
+          <select id="new_role" name="role">
+            <option value="member" selected>Membre</option>
+            <option value="admin">Administrateur</option>
+          </select>
+        </div>
+        <button type="submit">Créer le compte</button>
+      </form>
+      <p class="muted" style="margin-top:12px;">
+        Le membre se connecte avec cet email et ce mot de passe sur la page de connexion du bot.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Comptes ({{ users|length }})</h2>
+      {% if not users %}
+        <p class="muted">Aucun compte pour le moment.</p>
+      {% else %}
+      <table>
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Rôle</th>
+            <th>Statut</th>
+            <th>Créé le</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+          <tr>
+            <td>{{ u.email }}</td>
+            <td><span class="badge {{ 'admin' if u.role == 'admin' else 'member' }}">{{ 'Admin' if u.role == 'admin' else 'Membre' }}</span></td>
+            <td><span class="badge {{ 'active' if u.is_active else 'disabled' }}">{{ 'Actif' if u.is_active else 'Désactivé' }}</span></td>
+            <td class="muted">{{ u.created_at }}</td>
+            <td class="actions">
+              <div class="reset-row">
+                <form class="inline" method="POST" action="{{ url_for('admin_users_reset_password', user_id=u.id) }}">
+                  <input type="password" name="password" placeholder="nouveau mot de passe" autocomplete="new-password" />
+                  <button type="submit">Réinitialiser</button>
+                </form>
+              </div>
+              <div style="margin-top:6px;">
+                {% if u.is_active %}
+                  <form class="inline" method="POST" action="{{ url_for('admin_users_disable', user_id=u.id) }}">
+                    <button type="submit">Désactiver</button>
+                  </form>
+                {% else %}
+                  <form class="inline" method="POST" action="{{ url_for('admin_users_enable', user_id=u.id) }}">
+                    <button type="submit">Réactiver</button>
+                  </form>
+                {% endif %}
+                <form class="inline" method="POST" action="{{ url_for('admin_users_delete', user_id=u.id) }}" onsubmit="return confirm('Supprimer définitivement {{ u.email }} ? Cette action est irréversible.');">
+                  <button type="submit" class="danger">Supprimer</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+      <p class="muted" style="margin-top:14px;">
+        Un compte désactivé ou supprimé perd l'accès immédiatement, dès sa prochaine requête — même s'il est déjà connecté.
+        Vous ne pouvez pas désactiver ou supprimer votre propre compte depuis cette page.
+      </p>
+    </div>
+  </div>
+</body>
+</html>
