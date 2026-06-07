@@ -6,12 +6,29 @@ import json
 import shutil
 import base64
 import zipfile
+import secrets
 import subprocess
 from pathlib import Path
-from flask import Flask, render_template, request, send_file, jsonify
+from flask import Flask, render_template, request, send_file, jsonify, session, redirect, url_for
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
+
+# ── Access gate: session secret + password ────────────────────────
+# SECRET_KEY signs the login session cookie. If it isn't set in the
+# Render environment, fall back to a random key generated at process
+# startup — sessions just won't survive a restart/redeploy, which is
+# an acceptable trade-off for a simple password gate (users log in
+# again). Setting SECRET_KEY in the Render env keeps sessions stable
+# across restarts.
+app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+
+# APP_PASSWORD is read from the Render environment ONLY — it is never
+# hardcoded here and never logged. If it is not set, the gate fails
+# closed (no password will ever match an empty string), so the app is
+# inaccessible until an operator sets it in Render's Environment tab.
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+
 UPLOAD_DIR = Path("/tmp/videobot_jobs")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -1181,6 +1198,50 @@ def _build_timed_overlay_cmd(path_a: str, path_b: str, overlay_specs: list, path
         path_out
     ]
     return cmd
+
+
+# ── Access gate (login required) ──────────────────────────────────
+# Minimal password wall placed IN FRONT of the whole app: anyone who
+# has the Render URL must enter the password before reaching any page
+# or API route. This runs before every request and either lets it
+# through (session already authenticated, or it's the login page /
+# static assets) or redirects to /login. It does not change, wrap, or
+# touch any simple-mode or batch-mode route/handler — those are called
+# completely unchanged once a session is authenticated.
+_PUBLIC_ENDPOINTS = {"login", "static"}
+
+
+@app.before_request
+def _require_login():
+    if request.endpoint in _PUBLIC_ENDPOINTS:
+        return None
+    if session.get("authenticated"):
+        return None
+    return redirect(url_for("login"))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        submitted = request.form.get("password", "")
+        # Constant-time compare so response timing can't leak how much
+        # of the password was guessed correctly. APP_PASSWORD is read
+        # only from the environment (see top of file) — never logged,
+        # never echoed back, never stored anywhere but the env var.
+        if APP_PASSWORD and secrets.compare_digest(submitted, APP_PASSWORD):
+            session.clear()
+            session["authenticated"] = True
+            session.permanent = True
+            return redirect(url_for("index"))
+        error = "Mot de passe incorrect."
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 # ── Routes ────────────────────────────────────────────────────────
