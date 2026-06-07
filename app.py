@@ -99,9 +99,26 @@ _caption_debug_log = []
 
 VISION_PROMPT = """These images are frames from the same TikTok/Reel video.
 
-Detect EVERY text element added as a caption or overlay — NOT text on clothing, objects, or the scene itself.
+Detect ONLY real overlay CAPTIONS — the meme-style / commentary text the
+creator deliberately typed on top of the video to be read as a caption
+(e.g. "volume up ❗❗", "me when I realize I'm losing the argument",
+"\\"we're just friends\\" / also us:").
 
-Return a JSON array. Each visually distinct text block = one separate object.
+DO NOT DETECT (these are not captions — never return them as text objects):
+- Watermarks, app logos, or brand marks (e.g. a small "NO GLYPH ON" logo
+  badge, a TikTok/CapCut/InShot watermark)
+- Usernames, handles, or @ tags
+- Small VERTICAL text/labels (text rotated sideways or running top-to-bottom)
+- Stickers, emoji-stickers, or decorative graphic elements that aren't
+  typed caption text
+- App UI chrome (progress bars, icons, buttons, timestamps, view counts)
+- Any text that is small, faint, in a corner/edge, or clearly decorative
+  rather than a deliberate meme-style caption — even if it is technically
+  readable, IGNORE it if it isn't a caption a viewer is meant to read as
+  the "point" of the overlay.
+Also do NOT report text on clothing, objects, or the scene itself.
+
+Return a JSON array. Each visually distinct CAPTION block = one separate object.
 
 For EACH object:
 - "text": exact text with ALL emojis. CRITICAL: if the text spans multiple visual lines, use \\n between each line exactly as displayed. Never merge separate visual lines into one.
@@ -118,15 +135,23 @@ CRITICAL RULES:
 2. Multi-line text = use \\n for EVERY visual line break. Example: "me when I realize I'm\\nlosing the argument"
 3. fontsize_pct must reflect actual visible font size — do not underestimate. Large text in the frame should be 0.05–0.075.
 4. width_pct: estimate how wide the text block is (e.g. 0.75 if it spans 75% of frame width).
-5. EMOJIS: Do not remove, replace, normalize or describe emojis. If an emoji appears on screen, return the exact Unicode emoji. Preserve emojis exactly as visible. Examples: ❤️, ⭐, 😈, 😴, 👉, 👌, 🥺, 😂, 😭 must be returned as Unicode characters. Never omit emojis.
-6. Return ONLY a valid JSON array. No markdown, no explanation.
+5. CAPTION FILTER: Only return real overlay captions (see definition above). Never return watermarks, logos, usernames, stickers, small vertical labels, app UI, brand marks, tags, or other decorative/non-caption text — not even small ones that are technically legible. When in doubt whether something is a caption or a watermark/sticker/logo, DO NOT include it.
+6. EMOJIS — apply this to EVERY emoji you see, not just the examples below: Do not remove, replace, normalize, convert or describe emojis. If an emoji (including symbol-style ones like ❗, ‼️, ✨, 💯) appears on screen as part of or next to caption text, you MUST include it in the returned "text" string, in its exact position, using the exact Unicode character(s) — never as a description, never omitted, never substituted with a different emoji. Examples of correct output:
+   - on-screen "volume up ❗❗" → "text": "volume up ❗❗"   (NOT "volume up")
+   - on-screen "i was 👉👌ing myself..." → "text": "i was 👉👌ing myself..."   (NOT "i was ing myself...")
+   - ❤️, ⭐, 😈, 😴, 🥺, 😂, 😭 must all be returned as the exact Unicode characters shown here.
+7. Return ONLY a valid JSON array. No markdown, no explanation.
 
 Example:
 [
   {"text": "me when I realize I'm\\nlosing the argument", "cx_pct": 0.5, "cy_pct": 0.82, "width_pct": 0.80, "fontsize_pct": 0.048, "align": "center", "bold": true, "color": "white"},
   {"text": "volume up ❗❗", "cx_pct": 0.5, "cy_pct": 0.22, "width_pct": 0.65, "fontsize_pct": 0.058, "align": "center", "bold": true, "color": "white"},
   {"text": "❤️: Lover\\n❤: Romantic\\n⭐: Arrogant\\n😉: Boring\\n😴: Tender\\n😛: Eater\\n😈: Receiver", "cx_pct": 0.55, "cy_pct": 0.55, "width_pct": 0.50, "fontsize_pct": 0.038, "align": "left", "bold": true, "color": "white"}
-]"""
+]
+
+(Note: a small vertical logo badge like "NO GLYPH ON" floating mid-frame, or
+a username/watermark in a corner, would NOT appear in this array — those are
+not captions.)"""
 
 
 # ── Batch-mode-only: timed caption detection ──────────────────────
@@ -140,7 +165,24 @@ Example:
 VISION_PROMPT_TIMED = """These are {n} frames sampled from the SAME TikTok/Reel video, in chronological order. Each frame's capture time (seconds) is:
 {timestamps}
 
-For EACH frame, detect every text caption/overlay that is VISIBLE IN THAT SPECIFIC FRAME — not text on clothing, objects, or the scene itself.
+For EACH frame, detect ONLY real overlay CAPTIONS that are VISIBLE IN THAT
+SPECIFIC FRAME — the meme-style / commentary text the creator deliberately
+typed on top of the video to be read as a caption (e.g. "volume up ❗❗",
+"\\"we're just friends\\" / also us:").
+
+DO NOT DETECT (these are not captions — never return them as text objects):
+- Watermarks, app logos, or brand marks (e.g. a small "NO GLYPH ON" logo
+  badge, a TikTok/CapCut/InShot watermark)
+- Usernames, handles, or @ tags
+- Small VERTICAL text/labels (text rotated sideways or running top-to-bottom)
+- Stickers, emoji-stickers, or decorative graphic elements that aren't
+  typed caption text
+- App UI chrome (progress bars, icons, buttons, timestamps, view counts)
+- Any text that is small, faint, in a corner/edge, or clearly decorative
+  rather than a deliberate meme-style caption — even if technically
+  readable, IGNORE it if it isn't a caption a viewer is meant to read as
+  the "point" of the overlay.
+Also do not report text on clothing, objects, or the scene itself.
 
 Return a JSON array. Each object = ONE caption visible in ONE frame:
 - "frame_index": the 1-based index of the frame (1 to {n}) this caption is visible in
@@ -158,8 +200,12 @@ CRITICAL RULES:
 2. If a caption is replaced by a DIFFERENT caption at the same position, treat them as separate texts with their own frame_index entries.
 3. Only report captions that are ACTUALLY visible in that frame — do not guess or carry text into frames where it isn't shown.
 4. Multi-line text = use \\n for every visual line break.
-5. EMOJIS: Do not remove, replace, normalize or describe emojis. If an emoji appears on screen, return the exact Unicode emoji. Preserve emojis exactly as visible. Examples: ❤️, ⭐, 😈, 😴, 👉, 👌, 🥺, 😂, 😭 must be returned as Unicode characters. Never omit emojis.
-6. Return ONLY a valid JSON array. No markdown, no explanation."""
+5. CAPTION FILTER: Only return real overlay captions (see definition above). Never return watermarks, logos, usernames, stickers, small vertical labels, app UI, brand marks, tags, or other decorative/non-caption text — not even small ones that are technically legible. When in doubt whether something is a caption or a watermark/sticker/logo, DO NOT include it.
+6. EMOJIS — apply this to EVERY emoji you see, not just the examples below: Do not remove, replace, normalize, convert or describe emojis. If an emoji (including symbol-style ones like ❗, ‼️, ✨, 💯) appears on screen as part of or next to caption text, you MUST include it in the returned "text" string, in its exact position, using the exact Unicode character(s) — never as a description, never omitted, never substituted with a different emoji. Examples of correct output:
+   - on-screen "volume up ❗❗" → "text": "volume up ❗❗"   (NOT "volume up")
+   - on-screen "i was 👉👌ing myself..." → "text": "i was 👉👌ing myself..."   (NOT "i was ing myself...")
+   - ❤️, ⭐, 😈, 😴, 🥺, 😂, 😭 must all be returned as the exact Unicode characters shown here.
+7. Return ONLY a valid JSON array. No markdown, no explanation."""
 
 
 # ── Global JSON error handler ─────────────────────────────────────
@@ -255,6 +301,15 @@ def analyze_with_claude_vision(frame_paths: list) -> list:
         raw = raw.split("```")[1]
         if raw.startswith("json"):
             raw = raw[4:]
+
+    # ── Raw Vision debug log ──────────────────────────────────────────
+    # Dumps the EXACT JSON string Claude Vision returned (post fence-
+    # stripping, pre-parsing, pre-rendering) so caption-filtering and
+    # emoji-loss issues can be pinpointed to detection vs. parsing vs.
+    # rendering. Always on (cheap, stderr-only) — does not alter `raw`.
+    import sys as _sys
+    print(f"[VISION_RAW] analyze_with_claude_vision returned {len(raw)} chars: {raw}",
+          file=_sys.stderr)
 
     blocks = json.loads(raw)
 
@@ -426,6 +481,12 @@ def analyze_with_claude_vision_timed(video_path: str):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
                 raw = raw[4:]
+
+        # ── Raw Vision debug log (see analyze_with_claude_vision for the
+        # rationale — same idea, batch/timed path) ───────────────────────
+        import sys as _sys
+        print(f"[VISION_RAW] analyze_with_claude_vision_timed ({len(frame_paths)} frames) "
+              f"returned {len(raw)} chars: {raw}", file=_sys.stderr)
 
         detections = json.loads(raw)
 
