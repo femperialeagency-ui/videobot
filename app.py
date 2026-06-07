@@ -18,37 +18,37 @@ FONT_REG  = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
 
 VISION_PROMPT = """These images are frames from the same TikTok/Reel video.
 
-Detect EVERY text element added as a caption or overlay â NOT text on clothing, objects, or the scene itself.
+Detect EVERY text element added as a caption or overlay — NOT text on clothing, objects, or the scene itself.
 
 Return a JSON array. Each visually distinct text block = one separate object.
 
 For EACH object:
-- "text": exact text with ALL emojis. If 2 lines are tightly grouped together, join with \\n.
+- "text": exact text with ALL emojis. CRITICAL: if the text spans multiple visual lines, use \\n between each line exactly as displayed. Never merge separate visual lines into one.
 - "cx_pct": CENTER x as decimal fraction of frame width (0=left, 1=right, 0.5=center)
 - "cy_pct": CENTER y as decimal fraction of frame height (0=top, 1=bottom)
-- "fontsize_pct": font height as fraction of frame height. Be conservative: most TikTok captions are 0.025â0.045.
+- "width_pct": width of the text block as fraction of frame width (how wide the text spans, 0.3–0.9)
+- "fontsize_pct": font height as fraction of frame height. Typical TikTok captions: 0.030–0.055. Large title text: 0.055–0.075.
 - "align": "left" | "center" | "right"
 - "bold": true | false
 - "color": "white" | "black"
 
 CRITICAL RULES:
-1. Paragraphs/blocks at DIFFERENT vertical positions = DIFFERENT JSON objects, even if all centered.
-2. A number grid (keypad) = each number is its own object with its own cx_pct/cy_pct.
-3. Keep fontsize_pct realistic: 0.03â0.045 for typical captions, max 0.06 for very large text.
-4. Preserve ALL emojis exactly.
-5. Return ONLY a valid JSON array. No markdown, no explanation.
+1. Blocks at DIFFERENT vertical positions = DIFFERENT JSON objects, even if all centered.
+2. Multi-line text = use \\n for EVERY visual line break. Example: "me when I realize I'm\\nlosing the argument"
+3. fontsize_pct must reflect actual visible font size — do not underestimate. Large text in the frame should be 0.05–0.075.
+4. width_pct: estimate how wide the text block is (e.g. 0.75 if it spans 75% of frame width).
+5. Preserve ALL emojis exactly as they appear.
+6. Return ONLY a valid JSON array. No markdown, no explanation.
 
-Example â video with 3 separate caption blocks + 2 keypad numbers:
+Example:
 [
-  {"text": "if u got ts on ur fyp", "cx_pct": 0.5, "cy_pct": 0.25, "fontsize_pct": 0.034, "align": "center", "bold": false, "color": "white"},
-  {"text": "ur highk a\\nnonchalant & chill â¤ï¸ð¥º", "cx_pct": 0.5, "cy_pct": 0.42, "fontsize_pct": 0.038, "align": "center", "bold": true, "color": "white"},
-  {"text": "send ts to a corny twin ðâï¸", "cx_pct": 0.5, "cy_pct": 0.88, "fontsize_pct": 0.034, "align": "center", "bold": false, "color": "white"},
-  {"text": "1", "cx_pct": 0.18, "cy_pct": 0.55, "fontsize_pct": 0.06, "align": "center", "bold": false, "color": "white"},
-  {"text": "2", "cx_pct": 0.50, "cy_pct": 0.55, "fontsize_pct": 0.06, "align": "center", "bold": false, "color": "white"}
+  {"text": "me when I realize I'm\\nlosing the argument", "cx_pct": 0.5, "cy_pct": 0.82, "width_pct": 0.80, "fontsize_pct": 0.048, "align": "center", "bold": true, "color": "white"},
+  {"text": "volume up ❗❗", "cx_pct": 0.5, "cy_pct": 0.22, "width_pct": 0.65, "fontsize_pct": 0.058, "align": "center", "bold": true, "color": "white"},
+  {"text": "❤️: Lover\\n❤: Romantic\\n⭐: Arrogant\\n😉: Boring\\n😴: Tender\\n😛: Eater\\n😈: Receiver", "cx_pct": 0.55, "cy_pct": 0.55, "width_pct": 0.50, "fontsize_pct": 0.038, "align": "left", "bold": true, "color": "white"}
 ]"""
 
 
-# ââ Global JSON error handler âââââââââââââââââââââââââââââââââââââ
+# ── Global JSON error handler ─────────────────────────────────────
 @app.errorhandler(Exception)
 def handle_exception(e):
     return jsonify({"error": str(e)}), 500
@@ -58,7 +58,7 @@ def too_large(e):
     return jsonify({"error": "Fichier trop grand (max 200 MB)"}), 413
 
 
-# ââ Helpers âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ── Helpers ───────────────────────────────────────────────────────
 
 def get_video_dims(path):
     try:
@@ -159,6 +159,9 @@ def analyze_with_claude_vision(frame_paths: list) -> list:
         if "fontsize_pct" not in b:
             # Convert fontsize_b (px in 1280 frame) to fraction
             b["fontsize_pct"] = b.get("fontsize_b", 36) / 1280
+        # width_pct defaults to 0.85 if not provided
+        if "width_pct" not in b:
+            b["width_pct"] = 0.85
         normalized.append(b)
 
     normalized.sort(key=lambda l: l.get("cy_pct", 0))
@@ -178,7 +181,7 @@ def analyze_with_tesseract_fallback(frame_paths: list) -> list:
     arr  = np.array(img)
     h, w = arr.shape[:2]
 
-    white = (arr[:,:,0] > 175) & (arr[:,:,1] > 175) & (arr[:,:,2] > 175)
+    white = (arr[:,9,0] > 175) & (arr[:,9,1] > 175) & (arr[:,9,2] > 175)
     inv   = np.full((h, w), 255, dtype=np.uint8)
     inv[white] = 0
     from PIL import Image as PIL
@@ -226,12 +229,51 @@ def analyze_with_tesseract_fallback(frame_paths: list) -> list:
     return lines
 
 
+def _measure_text(font, text: str) -> int:
+    """Return rendered pixel width of text."""
+    try:
+        bb = font.getbbox(text)
+        return bb[2] - bb[0]
+    except Exception:
+        return max(1, len(text)) * getattr(font, "size", 30) // 2
+
+
+def _wrap_lines(orig_lines: list, font, max_w: int) -> list:
+    """
+    Word-wrap lines that are wider than max_w.
+    Preserves intentional \\n breaks; only adds wraps for overflowing single lines.
+    """
+    result = []
+    for line in orig_lines:
+        if _measure_text(font, line) <= max_w:
+            result.append(line)
+            continue
+        words = line.split(" ")
+        current = ""
+        for word in words:
+            candidate = (current + " " + word).strip() if current else word
+            if _measure_text(font, candidate) <= max_w:
+                current = candidate
+            else:
+                if current:
+                    result.append(current)
+                current = word  # single word wider than max_w: accept it
+        if current:
+            result.append(current)
+    return result if result else orig_lines
+
+
 def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str:
     """
     Render all text objects onto a transparent RGBA image.
-    Uses cx_pct/cy_pct as CENTER coordinates, supports multi-line with \\n.
-    Returns path to the PNG overlay file.
+    Improvements over v1:
+    - Word-wrap BEFORE shrinking font (preserves readability)
+    - Font size floor: never below max(24px, 60% of target size)
+    - Proper left/center/right alignment
+    - Stroke width proportional to font size
+    - Better vertical clamping
     """
+    import sys
     from PIL import Image, ImageDraw, ImageFont
 
     overlay = Image.new("RGBA", (wa, ha), (0, 0, 0, 0))
@@ -247,64 +289,81 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
         if not text:
             continue
 
-        # Font size: fontsize_pct is fraction of frame height (cap at 6%)
-        fontsize_pct = min(block.get("fontsize_pct", 0.035), 0.06)
-        fontsize     = max(10, int(ha * fontsize_pct))
+        # ── Font size ─────────────────────────────────────────────────
+        fontsize_pct   = max(0.022, min(block.get("fontsize_pct", 0.035), 0.08))
+        target_fontsize = int(ha * fontsize_pct)
+        fontsize        = max(24, target_fontsize)
+        # Floor: never shrink below 60% of the requested size (or 24px)
+        min_fontsize    = max(24, int(target_fontsize * 0.60))
 
-        # Center coordinates in pixels
+        # ── Position ──────────────────────────────────────────────────
         cx = int(wa * block.get("cx_pct", 0.5))
         cy = int(ha * block.get("cy_pct", 0.5))
 
+        # ── Style ─────────────────────────────────────────────────────
         bold      = block.get("bold", False)
         color_str = block.get("color", "white")
-        color = (255, 255, 255, 255) if "white" in color_str.lower() else (0, 0, 0, 255)
-
+        color     = (255, 255, 255, 255) if "white" in color_str.lower() else (0, 0, 0, 255)
+        align     = block.get("align", "center")
         font_path = FONT_BOLD if bold else FONT_REG
 
-        # Handle both literal \n (from JSON) and actual newlines
-        lines = text.replace("\\n", "\n").split("\n")
-        lines = [l.strip() for l in lines if l.strip()]
-        if not lines:
+        # ── Max width: use width_pct if provided, else 88% of frame ──
+        width_pct = block.get("width_pct", 0.88)
+        max_w     = int(wa * min(max(width_pct, 0.30), 0.92))
+
+        # ── Parse lines (respect existing \n) ─────────────────────────
+        orig_lines = text.replace("\\n", "\n").split("\n")
+        orig_lines = [l.strip() for l in orig_lines if l.strip()]
+        if not orig_lines:
             continue
 
-        # Auto-fit: reduce font size so no line overflows 90% of frame width
-        max_w = int(wa * 0.90)
-        for attempt in range(20):
+        # ── Phase 1: word-wrap at target font size ────────────────────
+        try:
+            font  = ImageFont.truetype(font_path, fontsize)
+            lines = _wrap_lines(orig_lines, font, max_w)
+        except Exception:
+            font  = ImageFont.load_default()
+            lines = orig_lines
+
+        # ── Phase 2: shrink only if still overflowing, respect floor ──
+        for _ in range(30):
             try:
                 font = ImageFont.truetype(font_path, fontsize)
             except Exception:
                 font = ImageFont.load_default()
                 break
-            widths = []
-            for ln in lines:
-                try:
-                    bb = font.getbbox(ln)
-                    widths.append(bb[2] - bb[0])
-                except Exception:
-                    widths.append(len(ln) * fontsize // 2)
-            if max(widths, default=0) <= max_w or fontsize <= 10:
+            max_line_w = max((_measure_text(font, ln) for ln in lines), default=0)
+            if max_line_w <= max_w or fontsize <= min_fontsize:
                 break
-            fontsize = max(10, fontsize - 2)
+            fontsize = max(min_fontsize, fontsize - 2)
 
-        border = max(1, fontsize // 10)
-        shadow = (0, 0, 0, 210)
-
-        line_h  = int(fontsize * 1.3)
+        # ── Layout ────────────────────────────────────────────────────
+        border  = max(2, fontsize // 7)
+        shadow  = (0, 0, 0, 225)
+        line_h  = int(fontsize * 1.22)
         total_h = len(lines) * line_h
         y_start = cy - total_h // 2
 
-        for i, line in enumerate(lines):
-            y = max(0, min(y_start + i * line_h, ha - fontsize - 1))
-            try:
-                bbox = font.getbbox(line)
-                tw   = bbox[2] - bbox[0]
-            except Exception:
-                tw = len(line) * fontsize // 2
+        margin  = border + 4
+        y_start = max(margin, min(y_start, ha - total_h - margin))
 
-            # Center this line on cx
-            x = cx - tw // 2
-            # Clamp so text stays on screen
-            x = max(0, min(x, wa - tw - 1))
+        # Pre-compute widths for alignment
+        line_widths = [_measure_text(font, ln) for ln in lines]
+        block_w     = max(line_widths) if line_widths else max_w
+
+        # ── Draw ──────────────────────────────────────────────────────
+        for i, line in enumerate(lines):
+            y  = y_start + i * line_h
+            tw = line_widths[i]
+
+            if align == "center":
+                x = cx - tw // 2
+            elif align == "right":
+                x = cx + block_w // 2 - tw
+            else:  # left
+                x = cx - block_w // 2
+
+            x = max(margin, min(x, wa - tw - margin))
 
             if use_pilmoji:
                 try:
@@ -325,12 +384,20 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
                             draw.text((x+dx, y+dy), line, font=font, fill=shadow)
                 draw.text((x, y), line, font=font, fill=color)
 
+        # ── Debug log ─────────────────────────────────────────────────
+        print(
+            f"[RENDER] '{text[:50]}' | cy={block.get('cy_pct',0):.2f} cx={block.get('cx_pct',0):.2f}"
+            f" | fontsize_pct={fontsize_pct:.3f} → {fontsize}px (min={min_fontsize})"
+            f" | lines={len(lines)} align={align} width_pct={width_pct:.2f}",
+            file=sys.stderr
+        )
+
     out_path = f"/tmp/overlay_{uuid.uuid4().hex}.png"
     overlay.save(out_path, "PNG")
     return out_path
 
 
-# ââ Routes ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ── Routes ────────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
@@ -339,7 +406,7 @@ def index():
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    """Upload Video B â detect text blocks via Claude Vision (or Tesseract fallback)."""
+    """Upload Video B → detect text blocks via Claude Vision (or Tesseract fallback)."""
     try:
         if "video_b" not in request.files:
             return jsonify({"error": "video_b manquant"}), 400
@@ -484,7 +551,7 @@ def batch_zip():
                 valid.append((jid, p))
 
         if not valid:
-            return jsonify({"error": "Aucun fichier valide trouvÃ©"}), 400
+            return jsonify({"error": "Aucun fichier valide trouvé"}), 400
 
         zip_path = f"/tmp/batch_{uuid.uuid4().hex}.zip"
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as zf:
@@ -504,3 +571,4 @@ def batch_zip():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
+
