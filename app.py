@@ -70,7 +70,12 @@ FONT_CAPTION = str(Path(__file__).parent / "fonts" / "Inter-Variable.ttf")
 # like meme-generator text.
 # Final refinement pass: still ~8% larger than native captions at 0.70, so
 # nudge the scale down once more (0.70 * 0.92 ≈ 0.644).
-CAPTION_SIZE_SCALE = 0.644
+# User feedback on video C: detection, wrapping, outline, weight and
+# positioning are all good — text just needs to read a bit larger, closer
+# to video B. Bumped +15% (0.644 * 1.15 ≈ 0.741). This is purely a font-size
+# multiplier; it does not touch font family, weight, stroke, alignment,
+# line spacing or text position.
+CAPTION_SIZE_SCALE = 0.741
 
 VISION_PROMPT = """These images are frames from the same TikTok/Reel video.
 
