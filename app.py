@@ -301,16 +301,16 @@ def _load_caption_font(fontsize: int, bold: bool):
             # Native TikTok/IG captions read closer to SemiBold than full Bold —
             # Bold/ExtraBold instances were part of why generated text looked
             # heavier and more "meme-generator" than the source captions.
-            # Final refinement: SemiBold (600) still read slightly heavier than
-            # native captions, so dial the weight axis to ~550 directly — Inter
-            # is a variable font and supports continuous wght values, not just
-            # named instances, so this lands between Medium and SemiBold.
-            font.set_variation_by_axes([550 if bold else 400])
+            # User feedback after the 550 tuning pass: captions read slightly
+            # too thin. Restore roughly half of that reduction — landing at
+            # 575, halfway between the too-thin 550 and the original SemiBold
+            # (600) — directly on the variable font's continuous wght axis.
+            font.set_variation_by_axes([575 if bold else 400])
         except Exception:
             try:
-                # Fallback for static/non-variable instances: closest named
-                # instance to ~550 between Regular (400) and SemiBold (600).
-                font.set_variation_by_name("Medium" if bold else "Regular")
+                # Fallback for static/non-variable instances: SemiBold (600)
+                # is the closest named instance to ~575.
+                font.set_variation_by_name("SemiBold" if bold else "Regular")
             except Exception:
                 pass  # static instance (e.g. default Regular) — still usable
         return font
