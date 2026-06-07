@@ -29,7 +29,9 @@ FONT_CAPTION = str(Path(__file__).parent / "fonts" / "Inter-Variable.ttf")
 # Inter. CAPTION_SIZE_SCALE shrinks the vision-estimated font size proportionally
 # so batch output matches native TikTok caption proportions instead of looking
 # like meme-generator text.
-CAPTION_SIZE_SCALE = 0.70
+# Final refinement pass: still ~8% larger than native captions at 0.70, so
+# nudge the scale down once more (0.70 * 0.92 ≈ 0.644).
+CAPTION_SIZE_SCALE = 0.644
 
 VISION_PROMPT = """These images are frames from the same TikTok/Reel video.
 
@@ -73,7 +75,7 @@ def too_large(e):
     return jsonify({"error": "Fichier trop grand (max 200 MB)"}), 413
 
 
-# ── Helpers ───────────────────────────────────────────────────────
+# ── Helpers ──────────────────────────────────────────────────────
 
 def get_video_dims(path):
     try:
@@ -299,11 +301,16 @@ def _load_caption_font(fontsize: int, bold: bool):
             # Native TikTok/IG captions read closer to SemiBold than full Bold —
             # Bold/ExtraBold instances were part of why generated text looked
             # heavier and more "meme-generator" than the source captions.
-            font.set_variation_by_name("SemiBold" if bold else "Regular")
+            # Final refinement: SemiBold (600) still read slightly heavier than
+            # native captions, so dial the weight axis to ~550 directly — Inter
+            # is a variable font and supports continuous wght values, not just
+            # named instances, so this lands between Medium and SemiBold.
+            font.set_variation_by_axes([550 if bold else 400])
         except Exception:
             try:
-                # Fallback: set weight axis directly (wght=600 SemiBold / 400 Regular).
-                font.set_variation_by_axes([600 if bold else 400])
+                # Fallback for static/non-variable instances: closest named
+                # instance to ~550 between Regular (400) and SemiBold (600).
+                font.set_variation_by_name("Medium" if bold else "Regular")
             except Exception:
                 pass  # static instance (e.g. default Regular) — still usable
         return font
@@ -341,7 +348,7 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
         if not text:
             continue
 
-        # ── Font size ────────────────────────────────────────────────
+        # ── Font size ─────────────────────────────────────────────────
         # Scale down from the vision-estimated size — generated captions were
         # consistently reading larger/heavier than native TikTok captions.
         fontsize_pct   = max(0.022, min(block.get("fontsize_pct", 0.035), 0.08)) * CAPTION_SIZE_SCALE
@@ -383,10 +390,12 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
             fontsize = max(min_fontsize, fontsize - 2)
 
         # ── Layout ────────────────────────────────────────────────────
-        # Native TikTok IG caption outlines read as a thin hairline stroke.
+        # Native TikTok/IG caption outlines read as a thin hairline stroke.
         # The 1/11 ratio was still ~2x thicker than source captions in
         # side-by-side comparison, so we halve it again to ~1/22.
-        border  = max(1, fontsize // 22)
+        # Final refinement: nudge ~10% thinner still (1/22 -> 1/24) to match
+        # the subtle native stroke even more closely.
+        border  = max(1, fontsize // 24)
         shadow  = (0, 0, 0, 225)
         # Slightly more breathing room between lines than native captions'
         # tightest spacing — keeps multi-line blocks from reading as a dense
