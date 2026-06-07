@@ -16,6 +16,14 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 FONT_BOLD = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
 FONT_REG  = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
 
+# Caption-style font: TikTok/IG captions render in a narrow, modern grotesque
+# (TikTok Sans / SF Pro Display / Helvetica Neue family) — visibly NARROWER and
+# LIGHTER than Liberation Sans Bold (an Arial-Black-ish metrics clone), which made
+# batch-mode captions look too wide/heavy and wrap differently than the source.
+# Inter is the closest readily-available open font to that family. It ships here
+# as a single variable-weight TTF; we select the Bold/Regular instance at runtime.
+FONT_CAPTION = str(Path(__file__).parent / "fonts" / "Inter-Variable.ttf")
+
 VISION_PROMPT = """These images are frames from the same TikTok/Reel video.
 
 Detect EVERY text element added as a caption or overlay — NOT text on clothing, objects, or the scene itself.
@@ -34,7 +42,7 @@ For EACH object:
 
 CRITICAL RULES:
 1. Blocks at DIFFERENT vertical positions = DIFFERENT JSON objects, even if all centered.
-2. Multi-line text = use \\n for EVERY visual line break. Example: "me when I realize I'm\\nlosing the argument"
+2. Multi-line text = use \\n for EVERY visual line break. Example: "me when I realize I'm \\nlosing the argument"
 3. fontsize_pct must reflect actual visible font size — do not underestimate. Large text in the frame should be 0.05–0.075.
 4. width_pct: estimate how wide the text block is (e.g. 0.75 if it spans 75% of frame width).
 5. Preserve ALL emojis exactly as they appear.
@@ -48,7 +56,7 @@ Example:
 ]"""
 
 
-# ── Global JSON error handler ─────────────────────────────────────
+# ── Global JSON error handler ────────────────────────────────────
 @app.errorhandler(Exception)
 def handle_exception(e):
     return jsonify({"error": str(e)}), 500
@@ -58,7 +66,7 @@ def too_large(e):
     return jsonify({"error": "Fichier trop grand (max 200 MB)"}), 413
 
 
-# ── Helpers ───────────────────────────────────────────────────────
+# ── Helpers ────────────────────────────────────────────────────
 
 def get_video_dims(path):
     try:
@@ -181,7 +189,7 @@ def analyze_with_tesseract_fallback(frame_paths: list) -> list:
     arr  = np.array(img)
     h, w = arr.shape[:2]
 
-    white = (arr[:,9,0] > 175) & (arr[:,9,1] > 175) & (arr[:,9,2] > 175)
+    white = (arr[:,:,0] > 175) & (arr[:,:,1] > 175) & (arr[:,:,2] > 175)
     inv   = np.full((h, w), 255, dtype=np.uint8)
     inv[white] = 0
     from PIL import Image as PIL
@@ -263,6 +271,40 @@ def _wrap_lines(orig_lines: list, font, max_w: int) -> list:
     return result if result else orig_lines
 
 
+def _load_caption_font(fontsize: int, bold: bool):
+    """
+    Load the caption font at the requested pixel size, selecting the
+    Bold or Regular weight from the bundled Inter variable font.
+
+    TikTok/IG captions render in a narrow modern grotesque (TikTok Sans /
+    SF Pro Display / Helvetica Neue). Liberation Sans (an Arial-Black-ish
+    metrics clone) is noticeably wider and heavier, which made batch-mode
+    text look bulkier and wrap differently than the source. Inter is the
+    closest open-source match to that family, so we prefer it and only
+    fall back to Liberation if the bundled font can't be loaded/instanced.
+    """
+    from PIL import ImageFont
+
+    try:
+        font = ImageFont.truetype(FONT_CAPTION, fontsize)
+        try:
+            # Variable font: pick the named instance matching the requested weight.
+            font.set_variation_by_name("Bold" if bold else "Regular")
+        except Exception:
+            try:
+                # Fallback: set weight axis directly (wght=700 Bold / 400 Regular).
+                font.set_variation_by_axes([700 if bold else 400])
+            except Exception:
+                pass  # static instance (e.g. default Regular) — still usable
+        return font
+    except Exception:
+        # Bundled font missing/unreadable — fall back to the prior Liberation fonts
+        try:
+            return ImageFont.truetype(FONT_BOLD if bold else FONT_REG, fontsize)
+        except Exception:
+            return ImageFont.load_default()
+
+
 def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str:
     """
     Render all text objects onto a transparent RGBA image.
@@ -305,7 +347,6 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
         color_str = block.get("color", "white")
         color     = (255, 255, 255, 255) if "white" in color_str.lower() else (0, 0, 0, 255)
         align     = block.get("align", "center")
-        font_path = FONT_BOLD if bold else FONT_REG
 
         # ── Max width: use width_pct if provided, else 88% of frame ──
         width_pct = block.get("width_pct", 0.88)
@@ -318,27 +359,23 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
             continue
 
         # ── Phase 1: word-wrap at target font size ────────────────────
-        try:
-            font  = ImageFont.truetype(font_path, fontsize)
-            lines = _wrap_lines(orig_lines, font, max_w)
-        except Exception:
-            font  = ImageFont.load_default()
-            lines = orig_lines
+        font  = _load_caption_font(fontsize, bold)
+        lines = _wrap_lines(orig_lines, font, max_w)
 
         # ── Phase 2: shrink only if still overflowing, respect floor ──
         for _ in range(30):
-            try:
-                font = ImageFont.truetype(font_path, fontsize)
-            except Exception:
-                font = ImageFont.load_default()
-                break
+            font = _load_caption_font(fontsize, bold)
             max_line_w = max((_measure_text(font, ln) for ln in lines), default=0)
             if max_line_w <= max_w or fontsize <= min_fontsize:
                 break
             fontsize = max(min_fontsize, fontsize - 2)
 
         # ── Layout ────────────────────────────────────────────────────
-        border  = max(2, fontsize // 7)
+        # TikTok/IG caption outlines read as a thin-to-moderate stroke, not the
+        # thick blocky border the previous ratio (1/7 of font size) produced —
+        # that exaggerated stroke was part of why batch text looked "heavier"
+        # than the source. ~1/11 tracks the originals much more closely.
+        border  = max(1, fontsize // 11)
         shadow  = (0, 0, 0, 225)
         line_h  = int(fontsize * 1.22)
         total_h = len(lines) * line_h
@@ -397,7 +434,7 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
     return out_path
 
 
-# ── Routes ────────────────────────────────────────────────────────
+# ── Routes ─────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
