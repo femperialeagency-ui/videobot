@@ -58,6 +58,10 @@
       border-radius: 8px; color: var(--text); padding: 8px 10px; font-size: 0.88rem; outline: none;
       transition: border-color .2s; }
     .line-row input:focus { border-color: var(--accent); }
+    .line-row textarea.line-preview { flex: 1; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); padding: 8px 10px; font-size: 0.88rem; outline: none;
+      transition: border-color .2s; font-family: inherit; white-space: pre-wrap; resize: vertical; line-height: 1.4; }
+    .line-row textarea.line-preview:focus { border-color: var(--accent); }
     .pbar { background: var(--border); border-radius: 999px; height: 7px; overflow: hidden; margin: 10px 0; }
     .pbar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
       border-radius: 999px; transition: width .4s; width: 0%; }
@@ -279,9 +283,10 @@ function renderLines() {
     const row = document.createElement("div");
     row.className = "line-row";
     row.innerHTML = `<span class="line-num">${i+1}</span>
-      <input type="text" value="${escapeHtml(line.text)}"
-        oninput="linesData[${i}].text=this.value; syncLinesJson()"
-        placeholder="Ligne ${i+1}…" />`;
+      <textarea class="line-preview" rows="2" placeholder="Ligne ${i+1}…"></textarea>`;
+    const ta = row.querySelector("textarea");
+    ta.value = line.text;
+    ta.addEventListener("input", () => { linesData[i].text = ta.value; syncLinesJson(); });
     container.appendChild(row);
   });
   syncLinesJson();
