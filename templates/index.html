@@ -34,7 +34,7 @@
 Single source of truth: every icon is a 18×18 stroke-based glyph in
 currentColor, so it inherits whatever color its container sets —
 exactly like Linear/Vercel/Stripe icon sets. */
-.ico-svg { width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; stroke-width: 1.8;
+.ico-svg { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; stroke-width: 1.8;
 fill: none; stroke-linecap: round; stroke-linejoin: round; vertical-align: -4px; }
 .ico-svg.sm { width: 15px; height: 15px; }
 .ico-svg.lg { width: 22px; height: 22px; }
@@ -176,12 +176,7 @@ border: 1px solid var(--border); background: rgba(255,255,255,.025); font-size: 
 .tab-content { display: none; flex-direction: column; align-items: center; width: 100%; }
 .tab-content.active { display: flex; }
 
-/* ══════════════════════════════════════════════════════════
-DASHBOARD OVERVIEW — KPI row, quick actions, activity feed,
-platform overview. Lives at the top of Mode Simple (the
-landing tab) so the first screen a user sees reads as a real
-SaaS home base, not two empty drop-zones.
-══════════════════════════════════════════════════════════ */
+/* ── Dashboard overview — KPI row, quick actions, activity feed ── */
 .dash-wrap { width: 100%; max-width: 1180px; display: flex; flex-direction: column; gap: var(--sp-4); margin-bottom: var(--sp-4); }
 .dash-greeting { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: var(--sp-3); }
 .dash-greeting h2 { font-size: 1.1rem; font-weight: 700; letter-spacing: -.015em; }
@@ -514,10 +509,10 @@ Nouvelle génération
 <nav class="sidebar-nav">
 <div class="nav-group">
 {% if current_user %}
-<a class="nav-item" href="{{ url_for('consumption') }}">
+<button class="tab-btn nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="2.5" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="2.5" y="10" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="10" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/></svg></span>
 Dashboard
-</a>
+</button>
 {% else %}
 <a class="nav-item soon">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="2.5" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="2.5" y="10" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="10" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/></svg></span>
@@ -528,15 +523,15 @@ Dashboard
 
 <div class="nav-group">
 <div class="nav-group-label">Création</div>
-<button class="tab-btn nav-item active" onclick="switchTab('simple')">
+<button class="tab-btn nav-item{% if not current_user %} active{% endif %}" data-tab="simple" onclick="switchTab('simple')">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="6" width="13" height="9.5" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 6 L4.2 2.5 L7 2.5 L5.6 6 Z M7.4 6 L9 2.7 L11.8 2.7 L10.4 6 Z M11.9 6 L13.4 2.7 L15.2 2.7 L14.5 6 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
 Mode Simple
 </button>
-<button class="tab-btn nav-item" onclick="switchTab('batch')">
+<button class="tab-btn nav-item" data-tab="batch" onclick="switchTab('batch')">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
 Mode Batch
 </button>
-<button class="tab-btn nav-item" onclick="switchTab('variation')">
+<button class="tab-btn nav-item" data-tab="variation" onclick="switchTab('variation')">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span>
 Variation Studio
 </button>
@@ -651,19 +646,15 @@ Se déconnecter
 <main class="app-content">
 
 <!-- ══════════════════════════════════════════
-SIMPLE MODE (unchanged)
+DASHBOARD TAB — KPI, activité récente, modes
 ══════════════════════════════════════════ -->
-<div id="simpleTab" class="tab-content active">
+<div id="dashboardTab" class="tab-content{% if current_user %} active{% endif %}">
 
 {% if current_user %}
 <!-- ══════════════════════════════════════════
-DASHBOARD OVERVIEW — built entirely from
-dashboard_summary / dashboard_usage_by_mode /
-dashboard_recent_activity, which the "/" route
-now passes from the existing get_user_usage_summary,
-get_usage_by_mode and get_recent_activity helpers
-(same helpers /consumption already relies on — no
-new aggregation, pricing or generation logic).
+DASHBOARD OVERVIEW — données réelles du compte
+(dashboard_summary / dashboard_usage_by_mode /
+dashboard_recent_activity passés par la route "/")
 ══════════════════════════════════════════ -->
 <div class="dash-wrap">
 <div class="dash-greeting">
@@ -820,6 +811,12 @@ class="kpi-label">Vidéos générées</div>
 </div>
 </div>
 {% endif %}
+</div><!-- /dashboardTab -->
+
+<!-- ══════════════════════════════════════════
+SIMPLE MODE
+══════════════════════════════════════════ -->
+<div id="simpleTab" class="tab-content{% if not current_user %} active{% endif %}">
 
 <!-- Upload -->
 <div class="card">
@@ -1114,10 +1111,11 @@ Score d'unicité et score de sécurité : indicateurs estimés côté navigateur
 // SHARED
 // ══════════════════════════════════════════
 function switchTab(tab) {
-const order = ['simple', 'batch', 'variation'];
-document.querySelectorAll('.tab-btn').forEach((b, i) => {
-b.classList.toggle('active', order[i] === tab);
+window.scrollTo(0, 0);
+document.querySelectorAll('.tab-btn').forEach(b => {
+b.classList.toggle('active', b.dataset.tab === tab);
 });
+document.getElementById('dashboardTab').classList.toggle('active', tab === 'dashboard');
 document.getElementById('simpleTab').classList.toggle('active', tab === 'simple');
 document.getElementById('batchTab').classList.toggle('active', tab === 'batch');
 document.getElementById('variationTab').classList.toggle('active', tab === 'variation');
