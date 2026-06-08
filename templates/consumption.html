@@ -210,6 +210,29 @@
         et l'utilisation de l'API Claude Vision — elles ne reflètent pas une facturation réelle.
       </p>
     </div>
+
+    {% if usage_by_mode %}
+    <div class="card">
+      <h2>Par mode</h2>
+      <div class="stat-grid">
+        {% for m in usage_by_mode %}
+        <div class="stat">
+          <div class="lbl">
+            {% if m.mode == 'simple' %}🎬 Simple
+            {% elif m.mode == 'batch' %}📦 Batch
+            {% elif m.mode == 'variation' %}🎲 Variation
+            {% else %}{{ m.mode }}
+            {% endif %}
+          </div>
+          <div class="val">{{ m.total }}</div>
+          <div class="muted" style="margin-top:4px;">
+            {{ m.successes }} réussies · {{ m.failures }} échouées · ${{ "%.2f"|format(m.total_cost) }}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
   </div>
 
   <script>

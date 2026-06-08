@@ -171,6 +171,46 @@
       </p>
     </div>
 
+    {% if usage_by_mode %}
+    <div class="card">
+      <h2>Consommation par mode</h2>
+      <table style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr style="text-align:left; color:var(--muted); font-size:0.78rem; text-transform:uppercase; letter-spacing:.03em;">
+            <th style="padding:6px 10px;">Mode</th>
+            <th style="padding:6px 10px;">Générations</th>
+            <th style="padding:6px 10px;">Réussies</th>
+            <th style="padding:6px 10px;">Échouées</th>
+            <th style="padding:6px 10px;">Minutes générées</th>
+            <th style="padding:6px 10px;">Vidéos sources</th>
+            <th style="padding:6px 10px;">Vidéos générées</th>
+            <th style="padding:6px 10px;">Coût estimé</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in usage_by_mode %}
+          <tr style="border-top:1px solid var(--border);">
+            <td style="padding:8px 10px; font-weight:600;">
+              {% if m.mode == 'simple' %}🎬 Simple
+              {% elif m.mode == 'batch' %}📦 Batch
+              {% elif m.mode == 'variation' %}🎲 Variation
+              {% else %}{{ m.mode }}
+              {% endif %}
+            </td>
+            <td style="padding:8px 10px;">{{ m.total }}</td>
+            <td style="padding:8px 10px; color:var(--ok);">{{ m.successes }}</td>
+            <td style="padding:8px 10px; color:var(--error);">{{ m.failures }}</td>
+            <td style="padding:8px 10px;">{{ (m.total_seconds / 60) | round(1) }}</td>
+            <td style="padding:8px 10px;">{{ m.total_source_videos }}</td>
+            <td style="padding:8px 10px;">{{ m.total_output_videos }}</td>
+            <td style="padding:8px 10px;">${{ "%.2f"|format(m.total_cost) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
     <div class="card">
       <h2>Activité quotidienne (14 derniers jours)</h2>
       <div class="chart-wrap">
