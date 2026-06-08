@@ -310,6 +310,51 @@ VARIATION_METADATA_PROFILES = [
     {"label": "Google Pixel 8",    "encoder": "Lavc60.3.100","software": "Android 15", "comment": "Pixel 8 camera"},
 ]
 
+# ── Advanced Mode (additive, opt-in slider system) ──────────────────
+# Each of these 16 sliders runs 0-100 (default 50, "0=disabled,
+# 50=normal/recommended, 100=maximum safe variation" per spec). The
+# value below is each parameter's "100 = maximum safe" ceiling — every
+# one was chosen to sit AT OR INSIDE the existing 'strong' preset's
+# proven-safe ranges (see VARIATION_STRENGTH_PRESETS above), and every
+# resulting value is still re-clamped to the SAME hard safety bounds
+# inside _build_variation_filter_graph regardless of slider input — so
+# slider=100 can never produce a visibly-degraded/corrupted result; it
+# can only ever reach the same ceiling Preset Mode's "strong" already
+# ships safely today. 'gamma' and 'blur' are the two genuinely-new
+# dimensions Preset Mode never exposed — both are additive optional
+# keys in the params dict that _build_variation_filter_graph only acts
+# on when present, so Preset Mode's filter graph is byte-identical to
+# before this feature existed.
+ADVANCED_PARAM_MAX = {
+    "brightness": 0.10,   # ±10%  (matches 'strong')
+    "contrast":   0.15,   # ±15%
+    "saturation": 0.15,   # ±15%
+    "gamma":      0.10,   # ±10%  (NEW — independent of brightness)
+    "noise":      6.0,    # absolute 'noise=alls=' strength (clamp ceiling is 10)
+    "sharpness":  0.4,    # 'unsharp' amount (clamp ceiling is 0.5)
+    "blur":       1.2,    # NEW — 'gblur=sigma=' (kept low: stays visually clean)
+    "zoom":       0.08,   # scale-up factor range, e.g. 1.00..1.08
+    "crop":       0.04,   # ±4% fractional re-frame
+    "rotation":   1.0,    # ±1°
+    "speed":      0.03,   # ±3% video/audio speed
+    "volume":     0.05,   # ±5% audio gain
+    "pitch":      0.02,   # ±2% audio pitch
+    "fps":        10,     # ±10 fps nudge
+    "bitrate":    0.20,   # ±20% target bitrate
+}
+# Order mirrors the UI's grouped layout (Visual / Motion / Audio /
+# Encoding / Metadata) — used to validate/sanitize saved presets so a
+# stored config_json can never contain unexpected keys.
+ADVANCED_SLIDER_KEYS = [
+    "brightness", "contrast", "saturation", "gamma", "noise", "sharpness",
+    "blur", "zoom", "crop", "rotation",
+    "speed",
+    "volume", "pitch",
+    "fps", "bitrate",
+    "metadata",
+]
+ADVANCED_SLIDER_DEFAULT = 50
+
 # Same FFmpeg-only cost model the rest of the app already uses for
 # pure-processing work (no Claude Vision is ever called by this mode,
 # so claude_requests stays 0 and estimated_claude_vision_cost stays 0).
@@ -389,6 +434,31 @@ def _migrate_usage_logs_variation_columns():
             conn.execute("ALTER TABLE usage_logs ADD COLUMN variation_strength TEXT")
         if "source_filename" not in existing:
             conn.execute("ALTER TABLE usage_logs ADD COLUMN source_filename TEXT")
+        conn.commit()
+
+
+def _migrate_variation_presets_table():
+    """Idempotent CREATE TABLE IF NOT EXISTS for Advanced Mode's saved
+    slider configurations — a brand-new, fully isolated table in the
+    same DB file (same _users_db() connection pattern as every other
+    table here). Nothing in users, usage_logs, or any existing query
+    references this table, and nothing here references them beyond a
+    plain user_id integer (same loose-coupling pattern usage_logs.user_id
+    already uses) — so this can never affect Simple/Batch/auth/teams.
+    Re-running on every redeploy is a safe no-op."""
+    with _users_db() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS variation_presets (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     INTEGER NOT NULL,
+                name        TEXT NOT NULL,
+                config_json TEXT NOT NULL,
+                created_at  TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_variation_presets_user_id ON variation_presets(user_id)")
         conn.commit()
 
 
@@ -758,6 +828,7 @@ def get_platform_profitability_summary(enriched_user_rows):
 _init_usage_db()
 _migrate_user_plan_columns()
 _migrate_usage_logs_variation_columns()
+_migrate_variation_presets_table()
 
 UPLOAD_DIR = Path("/tmp/videobot_jobs")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -870,6 +941,80 @@ def _pick_metadata_profile(rng: "random.Random") -> dict:
     return rng.choice(VARIATION_METADATA_PROFILES)
 
 
+def _pick_advanced_variation_params(config: dict, rng: "random.Random") -> dict:
+    """
+    Advanced Mode's slider→FFmpeg mapping. Converts the 16 user-set
+    slider values (0-100, see ADVANCED_PARAM_MAX) into EXACTLY the same
+    params dict shape _pick_variation_params already produces, so
+    _build_variation_filter_graph and _build_variation_ffmpeg_cmd need
+    NO changes to consume it (only two new optional keys are added —
+    'gamma' and 'blur_sigma' — which those functions only act on when
+    present; Preset Mode never sets them, so its output is unaffected).
+
+    Mapping per slider, for each parameter's max-safe ceiling C:
+        slider 0   -> sampled range is [0, 0]   -> filter fully disabled
+        slider 50  -> sampled range is ±0.5×C   -> "normal" (~'medium' preset)
+        slider 100 -> sampled range is ±C       -> "maximum safe variation"
+                      (matches the proven-safe 'strong' preset ceiling —
+                      _build_variation_filter_graph re-clamps every value
+                      to the SAME hard bounds either way, so 100 can
+                      never produce a visibly-degraded/corrupted result)
+
+    Never raises: missing/non-numeric/out-of-range slider values fall
+    back to ADVANCED_SLIDER_DEFAULT (50) before mapping.
+    """
+    def _norm(key):  # slider value -> 0.0..1.0
+        try:
+            raw = float(config.get(key, ADVANCED_SLIDER_DEFAULT))
+        except Exception:
+            raw = ADVANCED_SLIDER_DEFAULT
+        return max(0.0, min(100.0, raw)) / 100.0
+
+    def _spread(key):  # ± range scaled by slider position, e.g. rng.uniform(-spread, +spread)
+        return rng.uniform(-1.0, 1.0) * (_norm(key) * ADVANCED_PARAM_MAX[key])
+
+    zoom_top   = 1.0 + _norm("zoom") * ADVANCED_PARAM_MAX["zoom"]
+    speed_amt  = _norm("speed") * ADVANCED_PARAM_MAX["speed"]
+    fps_amt    = int(round(_norm("fps") * ADVANCED_PARAM_MAX["fps"]))
+
+    return {
+        "brightness":     _spread("brightness"),                 # additive, e.g. -0.10..+0.10
+        "contrast":       1.0 + _spread("contrast"),             # multiplicative around 1.0
+        "saturation":     1.0 + _spread("saturation"),
+        "gamma":          1.0 + _spread("gamma"),                # NEW — independent of brightness
+        "zoom":           rng.uniform(1.0, zoom_top) if zoom_top > 1.0005 else 1.0,
+        "crop_pct":       rng.uniform(0.0, _norm("crop") * ADVANCED_PARAM_MAX["crop"]),
+        "rotation_deg":   _spread("rotation"),
+        "speed":          rng.uniform(1.0 - speed_amt, 1.0 + speed_amt) if speed_amt > 0.0005 else 1.0,
+        "volume":         1.0 + _spread("volume"),
+        "pitch":          1.0 + _spread("pitch"),
+        "bitrate_mult":   1.0 + _spread("bitrate"),
+        "fps_delta":      rng.randint(-fps_amt, fps_amt) if fps_amt else 0,
+        "noise_strength": _norm("noise") * ADVANCED_PARAM_MAX["noise"],
+        "sharpen_amount": _norm("sharpness") * ADVANCED_PARAM_MAX["sharpness"],
+        "blur_sigma":     _norm("blur") * ADVANCED_PARAM_MAX["blur"],   # NEW
+    }
+
+
+def _pick_advanced_metadata_profile(level: float, rng: "random.Random") -> dict:
+    """
+    Maps the 'Metadata Randomization' slider (passed in already-normalized
+    as 0.0-1.0) onto device-profile selection. At level 0 every variant in
+    the run keeps the same baseline profile (no metadata variation); at
+    level 1.0 each variant independently gets a fully random profile —
+    identical odds to _pick_metadata_profile's plain rng.choice. In
+    between, each variant has `level` probability of being randomized and
+    otherwise keeps the baseline. Never raises — the profiles list is a
+    static non-empty constant."""
+    baseline = VARIATION_METADATA_PROFILES[0]
+    level = max(0.0, min(1.0, float(level or 0.0)))
+    if level <= 0.0:
+        return baseline
+    if rng.random() < level:
+        return rng.choice(VARIATION_METADATA_PROFILES)
+    return baseline
+
+
 def _build_variation_filter_graph(params: dict, src_w: int, src_h: int):
     """
     Builds the -vf / -af FFmpeg filter strings for ONE variation from an
@@ -916,7 +1061,16 @@ def _build_variation_filter_graph(params: dict, src_w: int, src_h: int):
     brightness = max(-0.15, min(0.15, float(params.get("brightness", 0.0))))
     contrast   = max(0.5,  min(1.5,  float(params.get("contrast", 1.0))))
     saturation = max(0.5,  min(1.5,  float(params.get("saturation", 1.0))))
-    gamma      = max(0.85, min(1.15, 1.0 + brightness * 0.3))
+    # 'gamma' is an OPTIONAL key — only Advanced Mode's
+    # _pick_advanced_variation_params ever sets it (independent slider).
+    # _pick_variation_params (Preset Mode) never includes this key, so
+    # .get(...) returns None and the exact original brightness-derived
+    # formula runs — Preset Mode's eq= string is byte-identical to before.
+    _gamma_override = params.get("gamma")
+    if _gamma_override is not None:
+        gamma = max(0.85, min(1.15, float(_gamma_override)))
+    else:
+        gamma = max(0.85, min(1.15, 1.0 + brightness * 0.3))
     vf_parts.append(f"eq=brightness={brightness:.4f}:contrast={contrast:.4f}:saturation={saturation:.4f}:gamma={gamma:.4f}")
 
     # Subtle grain/noise — technical fingerprint, imperceptible at low strength.
@@ -930,6 +1084,16 @@ def _build_variation_filter_graph(params: dict, src_w: int, src_h: int):
     sharpen = max(0.0, min(0.5, float(params.get("sharpen_amount", 0.0))))
     if sharpen > 0.02:
         vf_parts.append(f"unsharp=5:5:{sharpen:.3f}:5:5:0.0")
+
+    # 'blur_sigma' is an OPTIONAL key — only Advanced Mode's Blur slider
+    # ever sets it (_pick_variation_params/Preset Mode never does, so
+    # .get(...) returns 0.0 and this branch never fires for Preset Mode —
+    # its filter chain is unaffected). Capped low (ADVANCED_PARAM_MAX caps
+    # the slider's ceiling at 1.2, hard-clamped to 2.0 here too) so even
+    # slider=100 reads as a faint softening, never a degraded/blurry video.
+    blur_sigma = max(0.0, min(2.0, float(params.get("blur_sigma", 0.0))))
+    if blur_sigma > 0.05:
+        vf_parts.append(f"gblur=sigma={blur_sigma:.3f}")
 
     # Speed change (video side) — setpts inversely scales presentation
     # timestamps; audio side is handled in the audio chain with atempo
@@ -3149,6 +3313,23 @@ def variation_run():
         if strength not in VARIATION_STRENGTH_PRESETS:
             strength = VARIATION_DEFAULT_STRENGTH
 
+        # ── Advanced Mode (additive, opt-in) ────────────────────────
+        # Only takes over when the client explicitly sends
+        # config_mode=advanced WITH a parsable, non-empty advanced_config
+        # JSON object. Any other value — including every request from an
+        # older/cached client that has never heard of this field — falls
+        # straight through to the untouched Preset Mode path below, with
+        # byte-identical behavior to before this feature existed.
+        config_mode = (request.form.get("config_mode") or "preset").strip().lower()
+        advanced_config = None
+        if config_mode == "advanced":
+            try:
+                _raw_cfg = json.loads(request.form.get("advanced_config") or "{}")
+                if isinstance(_raw_cfg, dict) and _raw_cfg:
+                    advanced_config = _raw_cfg
+            except Exception:
+                advanced_config = None
+
         jdir = VARIATION_DIR / job_id
         path_in = jdir / "in" / "source.mp4"
         if not path_in.exists():
@@ -3165,12 +3346,20 @@ def variation_run():
         filename  = f"video_{index + 1:03d}.mp4"
         path_out  = jdir / "out" / filename
 
-        # Deterministic-per-(job, index) RNG — same params if this single
-        # index is ever retried, different from every other index.
-        rng     = random.Random(f"{job_id}:{index}")
-        params  = _pick_variation_params(strength, rng)
-        profile = _pick_metadata_profile(rng)
-        cmd     = _build_variation_ffmpeg_cmd(str(path_in), str(path_out), params, profile, width, height)
+        # Deterministic-per-(job, index) RNG either way — same params if
+        # this single index is ever retried, different from every other
+        # index in the run (and from every other run — job_id is fresh).
+        rng = random.Random(f"{job_id}:{index}")
+        if advanced_config is not None:
+            params         = _pick_advanced_variation_params(advanced_config, rng)
+            metadata_level = max(0.0, min(1.0, float(advanced_config.get("metadata", ADVANCED_SLIDER_DEFAULT)) / 100.0))
+            profile        = _pick_advanced_metadata_profile(metadata_level, rng)
+            strength_label = "advanced"   # what gets stamped into usage_logs.variation_strength
+        else:
+            params         = _pick_variation_params(strength, rng)
+            profile        = _pick_metadata_profile(rng)
+            strength_label = strength
+        cmd = _build_variation_ffmpeg_cmd(str(path_in), str(path_out), params, profile, width, height)
 
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
@@ -3221,7 +3410,7 @@ def variation_run():
                             estimated_cost = ?, estimated_processing_cost = ?
                         WHERE id = (SELECT MAX(id) FROM usage_logs WHERE user_id = ? AND mode = 'variation')
                         """,
-                        (strength, meta.get("source_filename"),
+                        (strength_label, meta.get("source_filename"),
                          correct_cost, correct_cost,
                          request.current_user["id"]),
                     )
@@ -3240,6 +3429,98 @@ def variation_run():
         return jsonify({"index": index, "filename": filename, "ok": True})
     except Exception as e:
         return jsonify({"error": str(e), "index": request.form.get("index")}), 200
+
+
+# ── Advanced Mode preset storage — three new, fully isolated routes ──
+# Operate ONLY on the brand-new variation_presets table (scoped by
+# user_id, exactly like every per-user query elsewhere in the app).
+# They never read or write users, usage_logs, or any generation-pipeline
+# state — saving/loading a preset cannot affect Simple, Batch, or any
+# in-flight variation job.
+
+@app.route("/variation_preset_save", methods=["POST"])
+def variation_preset_save():
+    """Save (or overwrite-by-name, for this user) one Advanced Mode
+    slider configuration. Body: {"name": "...", "config": {slider: 0-100, ...}}.
+    Every value is sanitized to a known slider key clamped to 0-100
+    before being stored as JSON text — a malformed/garbage config can
+    never be persisted or replayed."""
+    try:
+        data = request.get_json(force=True) or {}
+        name = (data.get("name") or "").strip()[:80]
+        config = data.get("config")
+        if not name:
+            return jsonify({"error": "Nom de preset requis"}), 400
+        if not isinstance(config, dict) or not config:
+            return jsonify({"error": "Configuration invalide"}), 400
+
+        clean = {}
+        for k in ADVANCED_SLIDER_KEYS:
+            try:
+                clean[k] = max(0, min(100, int(round(float(config.get(k, ADVANCED_SLIDER_DEFAULT))))))
+            except Exception:
+                clean[k] = ADVANCED_SLIDER_DEFAULT
+
+        with _users_db() as conn:
+            conn.execute(
+                "DELETE FROM variation_presets WHERE user_id = ? AND name = ?",
+                (request.current_user["id"], name),
+            )
+            conn.execute(
+                "INSERT INTO variation_presets (user_id, name, config_json, created_at) VALUES (?, ?, ?, ?)",
+                (request.current_user["id"], name, json.dumps(clean),
+                 time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())),
+            )
+            conn.commit()
+        return jsonify({"ok": True, "name": name, "config": clean})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/variation_presets", methods=["GET"])
+def variation_presets_list():
+    """List the current user's saved Advanced Mode presets (newest
+    first) — scoped strictly to user_id, mirrors every other per-user
+    listing query in the app (e.g. get_user_usage_summary)."""
+    try:
+        with _users_db() as conn:
+            rows = conn.execute(
+                "SELECT id, name, config_json, created_at FROM variation_presets "
+                "WHERE user_id = ? ORDER BY id DESC",
+                (request.current_user["id"],),
+            ).fetchall()
+        out = []
+        for r in rows:
+            try:
+                cfg = json.loads(r["config_json"])
+            except Exception:
+                cfg = {}
+            out.append({"id": r["id"], "name": r["name"], "config": cfg, "created_at": r["created_at"]})
+        return jsonify({"presets": out})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/variation_preset_delete", methods=["POST"])
+def variation_preset_delete():
+    """Delete one of the current user's saved presets by id. The
+    WHERE clause requires BOTH id AND user_id = ? — a user can never
+    delete (or even address) another user's preset row."""
+    try:
+        data = request.get_json(force=True) or {}
+        try:
+            preset_id = int(data.get("id"))
+        except Exception:
+            return jsonify({"error": "id invalide"}), 400
+        with _users_db() as conn:
+            conn.execute(
+                "DELETE FROM variation_presets WHERE id = ? AND user_id = ?",
+                (preset_id, request.current_user["id"]),
+            )
+            conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/variation_zip", methods=["POST"])
