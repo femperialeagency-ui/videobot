@@ -1076,7 +1076,7 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
         # reads as a crisp, solid line — darker edge separation without
         # adding any extra pixels of width. Border math, weight, size,
         # colour, font family, position, wrap and spacing untouched.
-        border  = max(1, fontsize // 22)
+        border  = max(1, round(fontsize / 22 * 1.20))  # ~20% stronger outline (was //22); size/weight/font untouched
         shadow  = (0, 0, 0, 255)
         # Slightly more breathing room between lines than native captions'
         # tightest spacing — keeps multi-line blocks from reading as a dense
