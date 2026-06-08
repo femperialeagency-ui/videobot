@@ -161,6 +161,7 @@
   </style>
 </head>
 <body>
+  {% set me = (users | selectattr('id', 'equalto', session.user_id) | first) if session.user_id is defined else None %}
   <div class="app-shell">
     <aside class="sidebar">
       <div class="sidebar-logo">🎬 VideoBot</div>
@@ -171,7 +172,7 @@
         <a class="nav-item" href="{{ url_for('index') }}"><span class="ico">📦</span> Mode Batch</a>
         <a class="nav-item" href="{{ url_for('index') }}"><span class="ico">🎲</span> Mode Variation</a>
         <div class="nav-section-label">Compte</div>
-        {% if current_user.role == 'admin' %}
+        {% if me and me.role == 'admin' %}
           <a class="nav-item" href="{{ url_for('admin_consumption') }}"><span class="ico">📈</span> Analytics</a>
         {% else %}
           <a class="nav-item" href="{{ url_for('consumption') }}"><span class="ico">📈</span> Analytics</a>
@@ -180,13 +181,15 @@
         <a class="nav-item active" href="{{ url_for('admin_users') }}"><span class="ico">👥</span> Équipe</a>
         <a class="nav-item soon"><span class="ico">⚙️</span> Paramètres <span class="soon-badge">Bientôt</span></a>
       </nav>
+      {% if me %}
       <div class="sidebar-profile">
-        <div class="sidebar-avatar">{{ current_user.email[0]|upper }}</div>
+        <div class="sidebar-avatar">{{ me.email[0]|upper }}</div>
         <div class="sidebar-profile-info">
-          <div class="sidebar-profile-email">{{ current_user.email }}</div>
-          <div class="sidebar-profile-role">{{ 'Administrateur' if current_user.role == 'admin' else 'Membre' }}{% if current_user.plan_name %} · {{ current_user.plan_name|capitalize }}{% endif %}</div>
+          <div class="sidebar-profile-email">{{ me.email }}</div>
+          <div class="sidebar-profile-role">{{ 'Administrateur' if me.role == 'admin' else 'Membre' }}{% if me.plan_name %} · {{ me.plan_name|capitalize }}{% endif %}</div>
         </div>
       </div>
+      {% endif %}
       <a class="sidebar-logout" href="{{ url_for('logout') }}">Se déconnecter</a>
     </aside>
 
@@ -197,7 +200,7 @@
           <div class="subtitle">Gérez les comptes, rôles et plans de votre organisation</div>
         </div>
         <div class="header-right">
-          {% if current_user.plan_name %}<span class="plan-pill">✨ {{ current_user.plan_name|capitalize }}</span>{% endif %}
+          {% if me and me.plan_name %}<span class="plan-pill">✨ {{ me.plan_name|capitalize }}</span>{% endif %}
           <span class="icon-btn" title="Aucune notification">🔔</span>
         </div>
       </header>
