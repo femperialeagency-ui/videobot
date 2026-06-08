@@ -276,7 +276,7 @@ For EACH object:
 
 CRITICAL RULES:
 1. Blocks at DIFFERENT vertical positions = DIFFERENT JSON objects, even if all centered.
-2. Multi-line text = use \\n for EVERY visual line break. Example: "first visual line\\nsecond visual line"
+2. Multi-line text = use \\n for EVERY visual line break. Example: "first visual line\\nsecond visual line" Also: if a line contains ONLY emoji characters (with optional spaces and no words), keep it as its own separate visual line in the transcription — never merge it with the line before or after, and never let neighboring words attach to it. If there is a visible blank gap between groups of lines within the same caption block, represent that gap as an empty line (an extra \\n) at that exact point in 'text'.
 3. fontsize_pct must reflect actual visible font size — do not underestimate. Large text in the frame should be 0.05–0.075.
 4. width_pct: estimate how wide the text block is (e.g. 0.75 if it spans 75% of frame width).
 5. POSITION = MEASUREMENT, NOT A GUESS. For cx_pct/cy_pct: look at where THIS caption's text block actually starts and ends — its top edge, bottom edge, left edge, and right edge in THIS frame — then report the CENTER of that exact box. Do NOT round to a generic zone like "near the top", "the middle", or "near the bottom". Do NOT estimate based on where captions usually go on TikTok/Reels. Do NOT reuse, infer, or pattern-match a position from a caption's wording, from a similar-looking caption you've processed before, or from any example in this prompt — every video and every caption gets its own fresh measurement of what is actually visible. A caption sitting at chest height with empty space below it must be reported near the frame's vertical center (cy_pct ≈ 0.5–0.6), NOT near the bottom (cy_pct ≈ 0.8+), even if similar-sounding captions are sometimes placed lower elsewhere.
@@ -352,7 +352,7 @@ CRITICAL RULES:
 1. If the SAME caption is visible across several consecutive frames, output ONE object per frame it appears in (repeat the same text/position/style, just change frame_index). This is how we learn when it appears and disappears.
 2. If a caption is replaced by a DIFFERENT caption at the same position, treat them as separate texts with their own frame_index entries.
 3. Only report captions that are ACTUALLY visible in that frame — do not guess or carry text into frames where it isn't shown.
-4. Multi-line text = use \\n for every visual line break.
+4. Multi-line text = use \\n for every visual line break. Also: if a line contains ONLY emoji characters (with optional spaces and no words), keep it as its own separate visual line in the transcription — never merge it with the line before or after, and never let neighboring words attach to it. If there is a visible blank gap between groups of lines within the same caption block, represent that gap as an empty line (an extra \\n) at that exact point in 'text'.
 5. POSITION = MEASUREMENT, NOT A GUESS. For cx_pct/cy_pct: look at where THIS caption's text block actually starts and ends in THIS frame — its top, bottom, left and right edges — then report the CENTER of that exact box. Do NOT round to a generic zone ("top"/"middle"/"bottom"). Do NOT estimate from where captions usually sit on TikTok/Reels, and do NOT carry over a position from a similar-sounding caption elsewhere — measure fresh, every frame, every caption. A caption sitting at chest height with empty space below it must be reported near the frame's vertical center (cy_pct ≈ 0.5–0.6), NOT near the bottom (cy_pct ≈ 0.8+).
 6. CAPTION FILTER: Only return real overlay captions (see definition above). Never return watermarks, logos, usernames, stickers, small vertical labels, app UI, brand marks, tags, or other decorative/non-caption text — not even small ones that are technically legible. When in doubt whether something is a caption or a watermark/sticker/logo, DO NOT include it.
 7. EMOJIS — apply this to EVERY emoji you see, not just the examples below: Do not remove, replace, normalize, convert or describe emojis. If an emoji (including symbol-style ones like ❗, ‼️, ✨, 💯) appears on screen as part of or next to caption text, you MUST include it in the returned "text" string, in its exact position, using the exact Unicode character(s) — never as a description, never omitted, never substituted with a different emoji. Examples of correct output:
@@ -1041,7 +1041,11 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
 
         # ── Parse lines (respect existing \n) ─────────────────────────
         orig_lines = text.replace("\\n", "\n").split("\n")
-        orig_lines = [l.strip() for l in orig_lines if l.strip()]
+        orig_lines = [l.strip() for l in orig_lines]
+        while orig_lines and not orig_lines[0]:
+            orig_lines.pop(0)
+        while orig_lines and not orig_lines[-1]:
+            orig_lines.pop()
         if not orig_lines:
             continue
 
