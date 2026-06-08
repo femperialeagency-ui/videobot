@@ -7,67 +7,142 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #0f0f13; --surface: #1a1a24; --border: #2e2e42;
-      --accent: #7c5cfc; --accent2: #a78bfa; --text: #e8e8f0;
-      --muted: #8888aa; --error: #f87171; --ok: #4ade80; --warn: #fbbf24; --radius: 12px;
+      --bg: #05060A; --surface: #0D1018; --surface-2: rgba(255,255,255,.025);
+      --border: rgba(255,255,255,.08); --border-strong: rgba(255,255,255,.14);
+      --accent: #7C5CFF; --accent2: #2F6BFF; --text: #F0F1F7;
+      --muted: #8B92A8; --success: #20D98A; --warn: #FFB547; --error: #f87171; --ok: #20D98A;
+      --radius: 14px;
+      --glass: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.015));
+      --shadow-card: 0 10px 36px rgba(0,0,0,.40);
+      --shadow-glow: 0 0 0 1px rgba(124,92,255,.14), 0 16px 46px rgba(124,92,255,.12);
+      --sidebar-w: 248px;
     }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: var(--bg); color: var(--text); min-height: 100vh;
-      padding: 32px 24px 64px; }
-    .wrap { max-width: 1100px; margin: 0 auto; }
-    .topbar { display: flex; justify-content: space-between; align-items: baseline;
-      flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
-    h1 { font-size: 1.6rem; font-weight: 700;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      background:
+        radial-gradient(1100px 560px at 14% -10%, rgba(124,92,255,.16), transparent 60%),
+        radial-gradient(900px 520px at 100% 0%, rgba(47,107,255,.12), transparent 55%),
+        var(--bg);
+      color: var(--text); min-height: 100vh; }
+
+    /* ── App shell ── */
+    .app-shell { display: flex; min-height: 100vh; width: 100%; }
+    .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar-w);
+      display: flex; flex-direction: column; padding: 22px 16px;
+      background: linear-gradient(180deg, rgba(124,92,255,.06), rgba(13,16,24,.2)), rgba(13,16,24,.75);
+      border-right: 1px solid var(--border); backdrop-filter: blur(22px); z-index: 20; }
+    .sidebar-logo { font-size: 1.18rem; font-weight: 800; letter-spacing: -.01em; padding: 6px 10px 22px;
+      background: linear-gradient(135deg, #fff, var(--accent2));
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .topbar-links { display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
-    .topbar a { color: var(--accent2); text-decoration: none; font-size: 0.85rem; }
+    .sidebar-nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+    .nav-item { display: flex; align-items: center; gap: 11px; padding: 10px 14px; border-radius: 11px;
+      color: var(--muted); text-decoration: none; font-size: 0.88rem; font-weight: 600; border: none;
+      background: transparent; cursor: pointer; width: 100%; text-align: left;
+      transition: background .15s ease, color .15s ease, transform .15s ease; }
+    .nav-item .ico { font-size: 1.02rem; width: 20px; text-align: center; flex-shrink: 0; }
+    .nav-item:hover { background: rgba(255,255,255,.04); color: var(--text); transform: translateX(2px); }
+    .nav-item.active { background: linear-gradient(135deg, rgba(124,92,255,.22), rgba(47,107,255,.14));
+      color: #fff; box-shadow: inset 0 0 0 1px rgba(124,92,255,.3); }
+    .nav-item.active:hover { transform: none; }
+    .nav-item.soon { opacity: .45; cursor: default; }
+    .nav-item.soon:hover { background: transparent; color: var(--muted); transform: none; }
+    .soon-badge { margin-left: auto; font-size: 0.62rem; font-weight: 800; letter-spacing: .04em;
+      text-transform: uppercase; color: var(--accent2); background: rgba(47,107,255,.14);
+      border: 1px solid rgba(47,107,255,.28); border-radius: 999px; padding: 2px 7px; }
+    .nav-section-label { font-size: 0.68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--muted); opacity: .6; padding: 18px 14px 6px; }
+    .sidebar-profile { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-top: 8px;
+      border-radius: 12px; background: rgba(255,255,255,.03); border: 1px solid var(--border); }
+    .sidebar-avatar { width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+      background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff;
+      display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.95rem;
+      box-shadow: 0 6px 18px rgba(124,92,255,.35); }
+    .sidebar-profile-info { min-width: 0; }
+    .sidebar-profile-email { font-size: 0.8rem; font-weight: 700; white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; }
+    .sidebar-profile-role { font-size: 0.72rem; color: var(--muted); white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; }
+    .sidebar-logout { display: block; text-align: center; margin-top: 10px; padding: 9px 12px;
+      border-radius: 10px; border: 1px solid var(--border); color: var(--muted); text-decoration: none;
+      font-size: 0.8rem; font-weight: 700; transition: border-color .15s, color .15s, background .15s; }
+    .sidebar-logout:hover { border-color: rgba(248,113,113,.4); color: var(--error); background: rgba(248,113,113,.06); }
+
+    .app-main { flex: 1; margin-left: var(--sidebar-w); display: flex; flex-direction: column; min-height: 100vh; }
+    .app-header { position: sticky; top: 0; z-index: 15; display: flex; align-items: center; justify-content: space-between;
+      gap: 16px; padding: 18px 32px; background: rgba(13,16,24,.55); backdrop-filter: blur(18px);
+      border-bottom: 1px solid var(--border); }
+    .app-header h1 { font-size: 1.18rem; font-weight: 800; letter-spacing: -.01em; }
+    .app-header .subtitle { font-size: 0.8rem; color: var(--muted); margin-top: 3px; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .plan-pill { font-size: 0.76rem; font-weight: 800; letter-spacing: .02em; padding: 6px 13px; border-radius: 999px;
+      background: linear-gradient(135deg, rgba(124,92,255,.25), rgba(47,107,255,.18)); color: #fff;
+      border: 1px solid rgba(124,92,255,.32); white-space: nowrap; }
+    .icon-btn { width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,.03); border: 1px solid var(--border); color: var(--muted); font-size: 1rem;
+      cursor: default; transition: border-color .15s, color .15s; }
+    .icon-btn:hover { border-color: var(--border-strong); color: var(--text); }
+    .app-content { flex: 1; padding: 28px 32px 64px; display: flex; flex-direction: column; align-items: center; }
+    .page-wrap { width: 100%; max-width: 1180px; display: flex; flex-direction: column; }
+
+    /* ── Page-specific ── */
+    .topbar { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+    .topbar h1 { font-size: 1.4rem; font-weight: 800; letter-spacing: -.01em;
+      background: linear-gradient(135deg, #fff, var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .topbar-links { display: flex; gap: 18px; align-items: baseline; flex-wrap: wrap; }
+    .topbar a { color: var(--accent2); text-decoration: none; font-size: 0.85rem; font-weight: 600; }
     .topbar a:hover { text-decoration: underline; }
-    .card { background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 24px; margin-bottom: 24px; }
-    .card h2 { font-size: 1rem; font-weight: 600; color: var(--accent2); margin-bottom: 16px; }
-    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; }
-    .stat { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
-    .stat .lbl { font-size: 0.74rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 6px; }
-    .stat .val { font-size: 1.35rem; font-weight: 700; }
-    .stat .val.success { color: var(--ok); }
+    .card { background: var(--glass), var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 26px; width: 100%; margin-bottom: 20px;
+      box-shadow: var(--shadow-card); backdrop-filter: blur(16px);
+      transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+    .card:hover { transform: translateY(-2px); border-color: rgba(124,92,255,.28);
+      box-shadow: var(--shadow-card), var(--shadow-glow); }
+    .card h2 { font-size: 0.95rem; font-weight: 700; color: #cdc3ff; margin-bottom: 18px; letter-spacing: .01em; }
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 13px; }
+    .stat { background: linear-gradient(160deg, rgba(255,255,255,.035), rgba(255,255,255,.01));
+      border: 1px solid var(--border); border-radius: 12px; padding: 15px 17px;
+      transition: transform .2s, border-color .2s; }
+    .stat:hover { transform: translateY(-2px); border-color: rgba(124,92,255,.26); }
+    .stat .lbl { font-size: 0.72rem; color: var(--muted); font-weight: 800; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 7px; }
+    .stat .val { font-size: 1.32rem; font-weight: 800; }
+    .stat .val.success { color: var(--success); }
     .stat .val.error { color: var(--error); }
-    .period-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-    .period-btn { padding: 7px 16px; border: 1px solid var(--border); border-radius: 8px;
-      background: var(--bg); color: var(--muted); cursor: pointer; font-size: 0.82rem;
-      font-weight: 600; transition: all .15s; }
-    .period-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .period-btn:hover:not(.active) { border-color: var(--accent); color: var(--accent2); }
+    .period-tabs { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+    .period-btn { padding: 8px 17px; border: 1px solid var(--border); border-radius: 10px;
+      background: rgba(255,255,255,.025); color: var(--muted); cursor: pointer; font-size: 0.82rem;
+      font-weight: 700; transition: all .15s; }
+    .period-btn.active { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff;
+      border-color: transparent; box-shadow: 0 8px 24px rgba(124,92,255,.32); }
+    .period-btn:hover:not(.active) { border-color: var(--border-strong); color: var(--text); }
     .period-panel { display: none; }
     .period-panel.active { display: block; }
     table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
-    th { color: var(--muted); font-weight: 600; font-size: 0.74rem; text-transform: uppercase; letter-spacing: .03em; }
+    th, td { text-align: left; padding: 11px 9px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 700; font-size: 0.72rem; text-transform: uppercase; letter-spacing: .04em; }
     th a { color: var(--muted); text-decoration: none; }
     th a:hover { color: var(--accent2); }
     th a.active-sort { color: var(--accent2); }
     td.num { text-align: right; font-variant-numeric: tabular-nums; }
-    .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; margin: 1px 3px 1px 0; white-space: nowrap; }
-    .badge.admin { background: rgba(124,92,252,.18); color: var(--accent2); }
-    .badge.member { background: rgba(136,136,170,.18); color: var(--muted); }
-    .badge.plan { background: rgba(124,92,252,.14); color: var(--accent2); }
-    .badge.warn-generations { background: rgba(251,191,36,.16); color: var(--warn); }
-    .badge.warn-cost { background: rgba(248,113,113,.16); color: var(--error); }
-    .badge.warn-claude { background: rgba(167,139,250,.18); color: var(--accent2); }
-    .badge.warn-margin { background: rgba(251,191,36,.16); color: var(--warn); }
-    .badge.warn-negative { background: rgba(248,113,113,.18); color: var(--error); }
-    .badge.warn-heavy { background: rgba(251,146,60,.18); color: #fb923c; }
-    /* Profitability color states — green/orange/red/neutral per spec thresholds */
-    .stat.profit-good .val { color: var(--ok); }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; margin: 1px 3px 1px 0; white-space: nowrap; }
+    .badge.admin { background: rgba(124,92,255,.18); color: #cdc3ff; border: 1px solid rgba(124,92,255,.28); }
+    .badge.member { background: rgba(139,146,168,.16); color: var(--muted); border: 1px solid var(--border); }
+    .badge.plan { background: rgba(124,92,255,.14); color: #cdc3ff; border: 1px solid rgba(124,92,255,.24); }
+    .badge.warn-generations { background: rgba(255,181,71,.16); color: var(--warn); border: 1px solid rgba(255,181,71,.28); }
+    .badge.warn-cost { background: rgba(248,113,113,.16); color: var(--error); border: 1px solid rgba(248,113,113,.28); }
+    .badge.warn-claude { background: rgba(47,107,255,.18); color: #a9c1ff; border: 1px solid rgba(47,107,255,.3); }
+    .badge.warn-margin { background: rgba(255,181,71,.16); color: var(--warn); border: 1px solid rgba(255,181,71,.28); }
+    .badge.warn-negative { background: rgba(248,113,113,.18); color: var(--error); border: 1px solid rgba(248,113,113,.32); }
+    .badge.warn-heavy { background: rgba(255,146,96,.18); color: #ff9260; border: 1px solid rgba(255,146,96,.3); }
+    .stat.profit-good .val { color: var(--success); }
     .stat.profit-warn .val { color: var(--warn); }
     .stat.profit-bad .val { color: var(--error); }
-    .profit-good { color: var(--ok); font-weight: 700; }
+    .profit-good { color: var(--success); font-weight: 700; }
     .profit-warn { color: var(--warn); font-weight: 700; }
     .profit-bad { color: var(--error); font-weight: 700; }
     .profit-na { color: var(--muted); }
     .muted { color: var(--muted); font-size: 0.82rem; }
     .chart-wrap { overflow-x: auto; }
-    .chart-caption { font-size: 0.74rem; color: var(--muted); text-align: center; margin-top: 6px; }
+    .chart-caption { font-size: 0.74rem; color: var(--muted); text-align: center; margin-top: 8px; }
     @media (max-width: 720px) {
       .stat-grid { grid-template-columns: repeat(2, 1fr); }
       table, thead, tbody, th, td, tr { display: block; }
@@ -80,232 +155,273 @@
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="topbar">
-      <h1>Consommation — vue admin</h1>
-      <div class="topbar-links">
-        <a href="{{ url_for('consumption') }}">Ma consommation</a>
-        <a href="{{ url_for('admin_users') }}">Gestion équipe</a>
-        <a href="{{ url_for('index') }}">← Retour au bot</a>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Statistiques globales ({{ total_users }} compte{{ "s" if total_users != 1 else "" }})</h2>
-      <div class="period-tabs">
-        <button class="period-btn active" data-period="all_time" onclick="showPeriod('all_time', this)">Tout</button>
-        <button class="period-btn" data-period="today" onclick="showPeriod('today', this)">Aujourd'hui</button>
-        <button class="period-btn" data-period="last_7d" onclick="showPeriod('last_7d', this)">7 derniers jours</button>
-        <button class="period-btn" data-period="last_30d" onclick="showPeriod('last_30d', this)">30 derniers jours</button>
-      </div>
-
-      {% for key, label in [('all_time','Tout'), ('today',"Aujourd'hui"), ('last_7d','7 derniers jours'), ('last_30d','30 derniers jours')] %}
-      <div class="period-panel {% if loop.first %}active{% endif %}" data-period="{{ key }}">
-        {% set s = global_summary[key] %}
-        <div class="stat-grid">
-          <div class="stat">
-            <div class="lbl">Générations</div>
-            <div class="val">{{ s.total }}</div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Réussies</div>
-            <div class="val success">{{ s.successes }}</div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Échouées</div>
-            <div class="val error">{{ s.failures }}</div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Minutes générées</div>
-            <div class="val">{{ (s.total_seconds / 60) | round(1) }}</div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Coût estimé</div>
-            <div class="val">${{ "%.2f"|format(s.total_cost) }}</div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Vidéos sources</div>
-            <div class="val">{{ s.total_source_videos }}</div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Vidéos générées</div>
-            <div class="val">{{ s.total_output_videos }}</div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Requêtes Claude</div>
-            <div class="val">{{ s.total_claude_requests }}</div>
-          </div>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-logo">🎬 VideoBot</div>
+      <nav class="sidebar-nav">
+        <a class="nav-item" href="{{ url_for('consumption') }}"><span class="ico">📊</span> Dashboard</a>
+        <div class="nav-section-label">Génération</div>
+        <a class="nav-item" href="{{ url_for('index') }}"><span class="ico">🎬</span> Mode Simple</a>
+        <a class="nav-item" href="{{ url_for('index') }}"><span class="ico">📦</span> Mode Batch</a>
+        <a class="nav-item" href="{{ url_for('index') }}"><span class="ico">🎲</span> Mode Variation</a>
+        <div class="nav-section-label">Compte</div>
+        <a class="nav-item active" href="{{ url_for('admin_consumption') }}"><span class="ico">📈</span> Analytics</a>
+        <a class="nav-item soon"><span class="ico">🕓</span> Historique <span class="soon-badge">Bientôt</span></a>
+        <a class="nav-item" href="{{ url_for('admin_users') }}"><span class="ico">👥</span> Équipe</a>
+        <a class="nav-item soon"><span class="ico">⚙️</span> Paramètres <span class="soon-badge">Bientôt</span></a>
+      </nav>
+      <div class="sidebar-profile">
+        <div class="sidebar-avatar">{{ current_user.email[0]|upper }}</div>
+        <div class="sidebar-profile-info">
+          <div class="sidebar-profile-email">{{ current_user.email }}</div>
+          <div class="sidebar-profile-role">{{ 'Administrateur' if current_user.role == 'admin' else 'Membre' }}{% if current_user.plan_name %} · {{ current_user.plan_name|capitalize }}{% endif %}</div>
         </div>
       </div>
-      {% endfor %}
-    </div>
+      <a class="sidebar-logout" href="{{ url_for('logout') }}">Se déconnecter</a>
+    </aside>
 
-    <div class="card">
-      <h2>Rentabilité de la plateforme <span class="muted" style="font-weight:400;">— estimation, basée sur les prix d'abonnement et les coûts depuis le début</span></h2>
-      {% set pp = platform_profitability %}
-      {% set _profit_state = 'good' if (pp.avg_margin_percent is not none and pp.avg_margin_percent >= margin_green_threshold and pp.total_profit >= 0)
-                        else ('bad' if (pp.total_profit < 0 or (pp.avg_margin_percent is not none and pp.avg_margin_percent < margin_orange_threshold))
-                        else ('warn' if pp.avg_margin_percent is not none else 'na')) %}
-      <div class="stat-grid">
-        <div class="stat">
-          <div class="lbl">Revenu estimé</div>
-          <div class="val">{{ "%.2f"|format(pp.total_revenue) }} €</div>
+    <div class="app-main">
+      <header class="app-header">
+        <div>
+          <h1>Analytics — vue admin</h1>
+          <div class="subtitle">Statistiques globales, rentabilité de la plateforme et activité par compte</div>
         </div>
-        <div class="stat">
-          <div class="lbl">Coût estimé</div>
-          <div class="val">{{ "%.2f"|format(pp.total_cost) }} €</div>
+        <div class="header-right">
+          {% if current_user.plan_name %}<span class="plan-pill">✨ {{ current_user.plan_name|capitalize }}</span>{% endif %}
+          <span class="icon-btn" title="Aucune notification">🔔</span>
         </div>
-        <div class="stat profit-{{ 'good' if pp.total_profit >= 0 else 'bad' }}">
-          <div class="lbl">Profit estimé</div>
-          <div class="val">{{ "%.2f"|format(pp.total_profit) }} €</div>
-        </div>
-        <div class="stat profit-{{ _profit_state }}">
-          <div class="lbl">Marge moyenne</div>
-          <div class="val">{{ ("%.1f"|format(pp.avg_margin_percent) ~ "%") if pp.avg_margin_percent is not none else "N/A" }}</div>
-        </div>
-      </div>
-      <p class="muted" style="margin-top:14px;">
-        Le revenu utilise le prix mensuel de chaque compte (prix personnalisé si défini, sinon le tarif par défaut du plan :
-        Starter 29€ · Pro 79€ · Agency 199€ · Internal 0€). Les comptes à 0€ (internes / sans facturation) ne sont pas
-        comptés dans la marge moyenne. Ce sont des estimations, pas une comptabilité réelle.
-      </p>
-    </div>
+      </header>
 
-    {% if usage_by_mode %}
-    <div class="card">
-      <h2>Consommation par mode</h2>
-      <table style="width:100%; border-collapse:collapse;">
-        <thead>
-          <tr style="text-align:left; color:var(--muted); font-size:0.78rem; text-transform:uppercase; letter-spacing:.03em;">
-            <th style="padding:6px 10px;">Mode</th>
-            <th style="padding:6px 10px;">Générations</th>
-            <th style="padding:6px 10px;">Réussies</th>
-            <th style="padding:6px 10px;">Échouées</th>
-            <th style="padding:6px 10px;">Minutes générées</th>
-            <th style="padding:6px 10px;">Vidéos sources</th>
-            <th style="padding:6px 10px;">Vidéos générées</th>
-            <th style="padding:6px 10px;">Coût estimé</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for m in usage_by_mode %}
-          <tr style="border-top:1px solid var(--border);">
-            <td style="padding:8px 10px; font-weight:600;">
-              {% if m.mode == 'simple' %}🎬 Simple
-              {% elif m.mode == 'batch' %}📦 Batch
-              {% elif m.mode == 'variation' %}🎲 Variation
-              {% else %}{{ m.mode }}
-              {% endif %}
-            </td>
-            <td style="padding:8px 10px;">{{ m.total }}</td>
-            <td style="padding:8px 10px; color:var(--ok);">{{ m.successes }}</td>
-            <td style="padding:8px 10px; color:var(--error);">{{ m.failures }}</td>
-            <td style="padding:8px 10px;">{{ (m.total_seconds / 60) | round(1) }}</td>
-            <td style="padding:8px 10px;">{{ m.total_source_videos }}</td>
-            <td style="padding:8px 10px;">{{ m.total_output_videos }}</td>
-            <td style="padding:8px 10px;">${{ "%.2f"|format(m.total_cost) }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% endif %}
+      <main class="app-content">
+        <div class="page-wrap">
+          <div class="topbar">
+            <h1>Consommation — vue admin</h1>
+            <div class="topbar-links">
+              <a href="{{ url_for('consumption') }}">Ma consommation</a>
+              <a href="{{ url_for('admin_users') }}">Gestion équipe</a>
+              <a href="{{ url_for('index') }}">← Retour au bot</a>
+            </div>
+          </div>
 
-    <div class="card">
-      <h2>Activité quotidienne (14 derniers jours)</h2>
-      <div class="chart-wrap">
-        <svg viewBox="0 0 700 180" width="100%" height="180" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Générations par jour">
-          {% set max_total = (daily | map(attribute='total') | max) %}
-          {% set chart_max = max_total if max_total and max_total > 0 else 1 %}
-          {% set bar_w = 700 / (daily|length) %}
-          {% for d in daily %}
-            {% set h_total = (d.total / chart_max) * 140 %}
-            {% set h_success = (d.successes / chart_max) * 140 %}
-            {% set x = loop.index0 * bar_w %}
-            <rect x="{{ x + bar_w*0.18 }}" y="{{ 150 - h_total }}" width="{{ bar_w*0.64 }}" height="{{ h_total }}"
-                  fill="rgba(124,92,252,.32)" rx="2"></rect>
-            <rect x="{{ x + bar_w*0.18 }}" y="{{ 150 - h_success }}" width="{{ bar_w*0.64 }}" height="{{ h_success }}"
-                  fill="#7c5cfc" rx="2"></rect>
-            <text x="{{ x + bar_w/2 }}" y="168" text-anchor="middle" font-size="9" fill="#8888aa">{{ d.day[5:] }}</text>
-            <title>{{ d.day }} — {{ d.total }} générations ({{ d.successes }} réussies)</title>
-          {% endfor %}
-        </svg>
-      </div>
-      <p class="chart-caption">Barre claire = total des générations · barre violette = générations réussies</p>
-    </div>
+          <div class="card">
+            <h2>Statistiques globales ({{ total_users }} compte{{ "s" if total_users != 1 else "" }})</h2>
+            <div class="period-tabs">
+              <button class="period-btn active" data-period="all_time" onclick="showPeriod('all_time', this)">Tout</button>
+              <button class="period-btn" data-period="today" onclick="showPeriod('today', this)">Aujourd'hui</button>
+              <button class="period-btn" data-period="last_7d" onclick="showPeriod('last_7d', this)">7 derniers jours</button>
+              <button class="period-btn" data-period="last_30d" onclick="showPeriod('last_30d', this)">30 derniers jours</button>
+            </div>
 
-    <div class="card">
-      <h2>Consommation par utilisateur</h2>
-      {% if not user_table %}
-        <p class="muted">Aucune donnée de consommation pour le moment.</p>
-      {% else %}
-      <table>
-        <thead>
-          <tr>
-            <th>Email</th>
-            <th>Rôle</th>
-            <th>Plan</th>
-            <th><a href="?sort=videos" class="{{ 'active-sort' if sort_by == 'videos' else '' }}">Vidéos ↕</a></th>
-            <th>Sources</th>
-            <th>Sorties</th>
-            <th>Requêtes Claude</th>
-            <th>Minutes</th>
-            <th><a href="?sort=cost" class="{{ 'active-sort' if sort_by == 'cost' else '' }}">Coût ↕</a></th>
-            <th>Prix mensuel</th>
-            <th>Coût estimé</th>
-            <th>Profit estimé</th>
-            <th>Marge %</th>
-            <th><a href="?sort=last_activity" class="{{ 'active-sort' if sort_by == 'last_activity' else '' }}">Dernière activité ↕</a></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for u in user_table %}
-          {% set p = u.profitability %}
-          {% set pst = u.profitability_status %}
-          {% set _cur_sym = currency_symbols.get(u.currency, u.currency) %}
-          <tr>
-            <td data-label="Email">
-              {{ u.email }}
-              {% if u.videos_generated > heavy_generations_threshold %}
-                <span class="badge warn-generations" title="Plus de {{ heavy_generations_threshold }} générations">⚠ volume élevé</span>
-                <span class="badge warn-heavy" title="Usage intensif — plus de {{ heavy_generations_threshold }} générations">🔥 usage intensif</span>
-              {% endif %}
-              {% if u.total_cost > cost_threshold %}
-                <span class="badge warn-cost" title="Coût estimé au-delà de ${{ cost_threshold }}">⚠ coût élevé</span>
-              {% endif %}
-              {% if u.claude_requests > heavy_claude_requests_threshold %}
-                <span class="badge warn-claude" title="Plus de {{ heavy_claude_requests_threshold }} requêtes Claude">⚠ usage Claude élevé</span>
-              {% endif %}
-              {% if pst == 'bad' and p.profit < 0 %}
-                <span class="badge warn-negative" title="Le coût estimé dépasse le revenu mensuel">❌ profit négatif</span>
-              {% elif pst == 'bad' or pst == 'warn' %}
-                <span class="badge warn-margin" title="Marge estimée sous le seuil sain ({{ margin_green_threshold }}%)">⚠️ marge faible</span>
-              {% endif %}
-            </td>
-            <td data-label="Rôle"><span class="badge {{ 'admin' if u.role == 'admin' else 'member' }}">{{ 'Admin' if u.role == 'admin' else 'Membre' }}</span></td>
-            <td data-label="Plan"><span class="badge plan">{{ (u.plan_name or 'starter')|capitalize }}</span></td>
-            <td class="num" data-label="Vidéos">{{ u.videos_generated }} <span class="muted">({{ u.successes }}✓ / {{ u.failures }}✗)</span></td>
-            <td class="num" data-label="Sources">{{ u.source_videos }}</td>
-            <td class="num" data-label="Sorties">{{ u.output_videos }}</td>
-            <td class="num" data-label="Requêtes Claude">{{ u.claude_requests }}</td>
-            <td class="num" data-label="Minutes">{{ (u.total_seconds / 60) | round(1) }}</td>
-            <td class="num" data-label="Coût">${{ "%.2f"|format(u.total_cost) }}</td>
-            <td class="num" data-label="Prix mensuel">{{ "%.2f"|format(p.revenue) }} {{ _cur_sym }}</td>
-            <td class="num" data-label="Coût estimé">{{ "%.2f"|format(p.cost) }} {{ _cur_sym }}</td>
-            <td class="num profit-{{ pst }}" data-label="Profit estimé">{{ "%.2f"|format(p.profit) }} {{ _cur_sym }}</td>
-            <td class="num profit-{{ pst }}" data-label="Marge %">{{ (("%.1f"|format(p.margin_percent)) ~ "%") if p.margin_percent is not none else "N/A" }}</td>
-            <td data-label="Dernière activité">{{ u.last_activity or '—' }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      {% endif %}
-      <p class="muted" style="margin-top:14px;">
-        Les coûts sont des estimations approximatives (durée vidéo + usage Claude Vision), pas une facturation réelle.
-        Le profit/marge utilisent le prix mensuel effectif (personnalisé si défini, sinon le tarif par défaut du plan)
-        comparé au coût total estimé depuis le début. Une marge "N/A" signifie un compte sans facturation (prix = 0,
-        ex. compte interne). Cliquez sur les en-têtes soulignés pour trier.
-      </p>
+            {% for key, label in [('all_time','Tout'), ('today',"Aujourd'hui"), ('last_7d','7 derniers jours'), ('last_30d','30 derniers jours')] %}
+            <div class="period-panel {% if loop.first %}active{% endif %}" data-period="{{ key }}">
+              {% set s = global_summary[key] %}
+              <div class="stat-grid">
+                <div class="stat">
+                  <div class="lbl">Générations</div>
+                  <div class="val">{{ s.total }}</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Réussies</div>
+                  <div class="val success">{{ s.successes }}</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Échouées</div>
+                  <div class="val error">{{ s.failures }}</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Minutes générées</div>
+                  <div class="val">{{ (s.total_seconds / 60) | round(1) }}</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Coût estimé</div>
+                  <div class="val">${{ "%.2f"|format(s.total_cost) }}</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Vidéos sources</div>
+                  <div class="val">{{ s.total_source_videos }}</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Vidéos générées</div>
+                  <div class="val">{{ s.total_output_videos }}</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Requêtes Claude</div>
+                  <div class="val">{{ s.total_claude_requests }}</div>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+
+          <div class="card">
+            <h2>Rentabilité de la plateforme <span class="muted" style="font-weight:400;">— estimation, basée sur les prix d'abonnement et les coûts depuis le début</span></h2>
+            {% set pp = platform_profitability %}
+            {% set _profit_state = 'good' if (pp.avg_margin_percent is not none and pp.avg_margin_percent >= margin_green_threshold and pp.total_profit >= 0)
+                              else ('bad' if (pp.total_profit < 0 or (pp.avg_margin_percent is not none and pp.avg_margin_percent < margin_orange_threshold))
+                              else ('warn' if pp.avg_margin_percent is not none else 'na')) %}
+            <div class="stat-grid">
+              <div class="stat">
+                <div class="lbl">Revenu estimé</div>
+                <div class="val">{{ "%.2f"|format(pp.total_revenue) }} €</div>
+              </div>
+              <div class="stat">
+                <div class="lbl">Coût estimé</div>
+                <div class="val">{{ "%.2f"|format(pp.total_cost) }} €</div>
+              </div>
+              <div class="stat profit-{{ 'good' if pp.total_profit >= 0 else 'bad' }}">
+                <div class="lbl">Profit estimé</div>
+                <div class="val">{{ "%.2f"|format(pp.total_profit) }} €</div>
+              </div>
+              <div class="stat profit-{{ _profit_state }}">
+                <div class="lbl">Marge moyenne</div>
+                <div class="val">{{ ("%.1f"|format(pp.avg_margin_percent) ~ "%") if pp.avg_margin_percent is not none else "N/A" }}</div>
+              </div>
+            </div>
+            <p class="muted" style="margin-top:16px;">
+              Le revenu utilise le prix mensuel de chaque compte (prix personnalisé si défini, sinon le tarif par défaut du plan :
+              Starter 29€ · Pro 79€ · Agency 199€ · Internal 0€). Les comptes à 0€ (internes / sans facturation) ne sont pas
+              comptés dans la marge moyenne. Ce sont des estimations, pas une comptabilité réelle.
+            </p>
+          </div>
+
+          {% if usage_by_mode %}
+          <div class="card">
+            <h2>Consommation par mode</h2>
+            <table style="width:100%; border-collapse:collapse;">
+              <thead>
+                <tr>
+                  <th>Mode</th>
+                  <th>Générations</th>
+                  <th>Réussies</th>
+                  <th>Échouées</th>
+                  <th>Minutes générées</th>
+                  <th>Vidéos sources</th>
+                  <th>Vidéos générées</th>
+                  <th>Coût estimé</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for m in usage_by_mode %}
+                <tr>
+                  <td style="font-weight:700;">
+                    {% if m.mode == 'simple' %}🎬 Simple
+                    {% elif m.mode == 'batch' %}📦 Batch
+                    {% elif m.mode == 'variation' %}🎲 Variation
+                    {% else %}{{ m.mode }}
+                    {% endif %}
+                  </td>
+                  <td>{{ m.total }}</td>
+                  <td style="color:var(--success);">{{ m.successes }}</td>
+                  <td style="color:var(--error);">{{ m.failures }}</td>
+                  <td>{{ (m.total_seconds / 60) | round(1) }}</td>
+                  <td>{{ m.total_source_videos }}</td>
+                  <td>{{ m.total_output_videos }}</td>
+                  <td>${{ "%.2f"|format(m.total_cost) }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+
+          <div class="card">
+            <h2>Activité quotidienne (14 derniers jours)</h2>
+            <div class="chart-wrap">
+              <svg viewBox="0 0 700 180" width="100%" height="180" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Générations par jour">
+                {% set max_total = (daily | map(attribute='total') | max) %}
+                {% set chart_max = max_total if max_total and max_total > 0 else 1 %}
+                {% set bar_w = 700 / (daily|length) %}
+                {% for d in daily %}
+                  {% set h_total = (d.total / chart_max) * 140 %}
+                  {% set h_success = (d.successes / chart_max) * 140 %}
+                  {% set x = loop.index0 * bar_w %}
+                  <rect x="{{ x + bar_w*0.18 }}" y="{{ 150 - h_total }}" width="{{ bar_w*0.64 }}" height="{{ h_total }}"
+                        fill="rgba(124,92,255,.30)" rx="2"></rect>
+                  <rect x="{{ x + bar_w*0.18 }}" y="{{ 150 - h_success }}" width="{{ bar_w*0.64 }}" height="{{ h_success }}"
+                        fill="#7C5CFF" rx="2"></rect>
+                  <text x="{{ x + bar_w/2 }}" y="168" text-anchor="middle" font-size="9" fill="#8B92A8">{{ d.day[5:] }}</text>
+                  <title>{{ d.day }} — {{ d.total }} générations ({{ d.successes }} réussies)</title>
+                {% endfor %}
+              </svg>
+            </div>
+            <p class="chart-caption">Barre claire = total des générations · barre violette = générations réussies</p>
+          </div>
+
+          <div class="card">
+            <h2>Consommation par utilisateur</h2>
+            {% if not user_table %}
+              <p class="muted">Aucune donnée de consommation pour le moment.</p>
+            {% else %}
+            <table>
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Rôle</th>
+                  <th>Plan</th>
+                  <th><a href="?sort=videos" class="{{ 'active-sort' if sort_by == 'videos' else '' }}">Vidéos ↕</a></th>
+                  <th>Sources</th>
+                  <th>Sorties</th>
+                  <th>Requêtes Claude</th>
+                  <th>Minutes</th>
+                  <th><a href="?sort=cost" class="{{ 'active-sort' if sort_by == 'cost' else '' }}">Coût ↕</a></th>
+                  <th>Prix mensuel</th>
+                  <th>Coût estimé</th>
+                  <th>Profit estimé</th>
+                  <th>Marge %</th>
+                  <th><a href="?sort=last_activity" class="{{ 'active-sort' if sort_by == 'last_activity' else '' }}">Dernière activité ↕</a></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for u in user_table %}
+                {% set p = u.profitability %}
+                {% set pst = u.profitability_status %}
+                {% set _cur_sym = currency_symbols.get(u.currency, u.currency) %}
+                <tr>
+                  <td data-label="Email">
+                    {{ u.email }}
+                    {% if u.videos_generated > heavy_generations_threshold %}
+                      <span class="badge warn-generations" title="Plus de {{ heavy_generations_threshold }} générations">⚠ volume élevé</span>
+                      <span class="badge warn-heavy" title="Usage intensif — plus de {{ heavy_generations_threshold }} générations">🔥 usage intensif</span>
+                    {% endif %}
+                    {% if u.total_cost > cost_threshold %}
+                      <span class="badge warn-cost" title="Coût estimé au-delà de ${{ cost_threshold }}">⚠ coût élevé</span>
+                    {% endif %}
+                    {% if u.claude_requests > heavy_claude_requests_threshold %}
+                      <span class="badge warn-claude" title="Plus de {{ heavy_claude_requests_threshold }} requêtes Claude">⚠ usage Claude élevé</span>
+                    {% endif %}
+                    {% if pst == 'bad' and p.profit < 0 %}
+                      <span class="badge warn-negative" title="Le coût estimé dépasse le revenu mensuel">❌ profit négatif</span>
+                    {% elif pst == 'bad' or pst == 'warn' %}
+                      <span class="badge warn-margin" title="Marge estimée sous le seuil sain ({{ margin_green_threshold }}%)">⚠️ marge faible</span>
+                    {% endif %}
+                  </td>
+                  <td data-label="Rôle"><span class="badge {{ 'admin' if u.role == 'admin' else 'member' }}">{{ 'Admin' if u.role == 'admin' else 'Membre' }}</span></td>
+                  <td data-label="Plan"><span class="badge plan">{{ (u.plan_name or 'starter')|capitalize }}</span></td>
+                  <td class="num" data-label="Vidéos">{{ u.videos_generated }} <span class="muted">({{ u.successes }}✓ / {{ u.failures }}✗)</span></td>
+                  <td class="num" data-label="Sources">{{ u.source_videos }}</td>
+                  <td class="num" data-label="Sorties">{{ u.output_videos }}</td>
+                  <td class="num" data-label="Requêtes Claude">{{ u.claude_requests }}</td>
+                  <td class="num" data-label="Minutes">{{ (u.total_seconds / 60) | round(1) }}</td>
+                  <td class="num" data-label="Coût">${{ "%.2f"|format(u.total_cost) }}</td>
+                  <td class="num" data-label="Prix mensuel">{{ "%.2f"|format(p.revenue) }} {{ _cur_sym }}</td>
+                  <td class="num" data-label="Coût estimé">{{ "%.2f"|format(p.cost) }} {{ _cur_sym }}</td>
+                  <td class="num profit-{{ pst }}" data-label="Profit estimé">{{ "%.2f"|format(p.profit) }} {{ _cur_sym }}</td>
+                  <td class="num profit-{{ pst }}" data-label="Marge %">{{ (("%.1f"|format(p.margin_percent)) ~ "%") if p.margin_percent is not none else "N/A" }}</td>
+                  <td data-label="Dernière activité">{{ u.last_activity or '—' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% endif %}
+            <p class="muted" style="margin-top:16px;">
+              Les coûts sont des estimations approximatives (durée vidéo + usage Claude Vision), pas une facturation réelle.
+              Le profit/marge utilisent le prix mensuel effectif (personnalisé si défini, sinon le tarif par défaut du plan)
+              comparé au coût total estimé depuis le début. Une marge "N/A" signifie un compte sans facturation (prix = 0,
+              ex. compte interne). Cliquez sur les en-têtes soulignés pour trier.
+            </p>
+          </div>
+        </div>
+      </main>
     </div>
   </div>
 

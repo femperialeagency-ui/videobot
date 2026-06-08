@@ -7,67 +7,146 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #0f0f13; --surface: #1a1a24; --border: #2e2e42;
-      --accent: #7c5cfc; --accent2: #a78bfa; --text: #e8e8f0;
-      --muted: #8888aa; --error: #f87171; --ok: #4ade80; --radius: 12px;
+      --bg: #05060A; --surface: #0D1018; --surface-2: rgba(255,255,255,.025);
+      --border: rgba(255,255,255,.08); --border-strong: rgba(255,255,255,.14);
+      --accent: #7C5CFF; --accent2: #2F6BFF; --text: #F0F1F7;
+      --muted: #8B92A8; --success: #20D98A; --warn: #FFB547; --error: #f87171; --ok: #20D98A;
+      --radius: 14px;
+      --glass: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.015));
+      --shadow-card: 0 10px 36px rgba(0,0,0,.40);
+      --shadow-glow: 0 0 0 1px rgba(124,92,255,.14), 0 16px 46px rgba(124,92,255,.12);
+      --sidebar-w: 248px;
     }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: var(--bg); color: var(--text); min-height: 100vh;
-      padding: 32px 24px 64px; }
-    .wrap { max-width: 880px; margin: 0 auto; }
-    .topbar { display: flex; justify-content: space-between; align-items: baseline;
-      flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
-    h1 { font-size: 1.6rem; font-weight: 700;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      background:
+        radial-gradient(1100px 560px at 14% -10%, rgba(124,92,255,.16), transparent 60%),
+        radial-gradient(900px 520px at 100% 0%, rgba(47,107,255,.12), transparent 55%),
+        var(--bg);
+      color: var(--text); min-height: 100vh; }
+
+    /* ── App shell ── */
+    .app-shell { display: flex; min-height: 100vh; width: 100%; }
+    .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar-w);
+      display: flex; flex-direction: column; padding: 22px 16px;
+      background: linear-gradient(180deg, rgba(124,92,255,.06), rgba(13,16,24,.2)), rgba(13,16,24,.75);
+      border-right: 1px solid var(--border); backdrop-filter: blur(22px); z-index: 20; }
+    .sidebar-logo { font-size: 1.18rem; font-weight: 800; letter-spacing: -.01em; padding: 6px 10px 22px;
+      background: linear-gradient(135deg, #fff, var(--accent2));
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .topbar a { color: var(--accent2); text-decoration: none; font-size: 0.85rem; }
+    .sidebar-nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+    .nav-item { display: flex; align-items: center; gap: 11px; padding: 10px 14px; border-radius: 11px;
+      color: var(--muted); text-decoration: none; font-size: 0.88rem; font-weight: 600; border: none;
+      background: transparent; cursor: pointer; width: 100%; text-align: left;
+      transition: background .15s ease, color .15s ease, transform .15s ease; }
+    .nav-item .ico { font-size: 1.02rem; width: 20px; text-align: center; flex-shrink: 0; }
+    .nav-item:hover { background: rgba(255,255,255,.04); color: var(--text); transform: translateX(2px); }
+    .nav-item.active { background: linear-gradient(135deg, rgba(124,92,255,.22), rgba(47,107,255,.14));
+      color: #fff; box-shadow: inset 0 0 0 1px rgba(124,92,255,.3); }
+    .nav-item.active:hover { transform: none; }
+    .nav-item.soon { opacity: .45; cursor: default; }
+    .nav-item.soon:hover { background: transparent; color: var(--muted); transform: none; }
+    .soon-badge { margin-left: auto; font-size: 0.62rem; font-weight: 800; letter-spacing: .04em;
+      text-transform: uppercase; color: var(--accent2); background: rgba(47,107,255,.14);
+      border: 1px solid rgba(47,107,255,.28); border-radius: 999px; padding: 2px 7px; }
+    .nav-section-label { font-size: 0.68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--muted); opacity: .6; padding: 18px 14px 6px; }
+    .sidebar-profile { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-top: 8px;
+      border-radius: 12px; background: rgba(255,255,255,.03); border: 1px solid var(--border); }
+    .sidebar-avatar { width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+      background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff;
+      display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.95rem;
+      box-shadow: 0 6px 18px rgba(124,92,255,.35); }
+    .sidebar-profile-info { min-width: 0; }
+    .sidebar-profile-email { font-size: 0.8rem; font-weight: 700; white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; }
+    .sidebar-profile-role { font-size: 0.72rem; color: var(--muted); white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; }
+    .sidebar-logout { display: block; text-align: center; margin-top: 10px; padding: 9px 12px;
+      border-radius: 10px; border: 1px solid var(--border); color: var(--muted); text-decoration: none;
+      font-size: 0.8rem; font-weight: 700; transition: border-color .15s, color .15s, background .15s; }
+    .sidebar-logout:hover { border-color: rgba(248,113,113,.4); color: var(--error); background: rgba(248,113,113,.06); }
+
+    .app-main { flex: 1; margin-left: var(--sidebar-w); display: flex; flex-direction: column; min-height: 100vh; }
+    .app-header { position: sticky; top: 0; z-index: 15; display: flex; align-items: center; justify-content: space-between;
+      gap: 16px; padding: 18px 32px; background: rgba(13,16,24,.55); backdrop-filter: blur(18px);
+      border-bottom: 1px solid var(--border); }
+    .app-header h1 { font-size: 1.18rem; font-weight: 800; letter-spacing: -.01em; }
+    .app-header .subtitle { font-size: 0.8rem; color: var(--muted); margin-top: 3px; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .plan-pill { font-size: 0.76rem; font-weight: 800; letter-spacing: .02em; padding: 6px 13px; border-radius: 999px;
+      background: linear-gradient(135deg, rgba(124,92,255,.25), rgba(47,107,255,.18)); color: #fff;
+      border: 1px solid rgba(124,92,255,.32); white-space: nowrap; }
+    .icon-btn { width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,.03); border: 1px solid var(--border); color: var(--muted); font-size: 1rem;
+      cursor: default; transition: border-color .15s, color .15s; }
+    .icon-btn:hover { border-color: var(--border-strong); color: var(--text); }
+    .app-content { flex: 1; padding: 28px 32px 64px; display: flex; flex-direction: column; align-items: center; }
+    .page-wrap { width: 100%; max-width: 920px; display: flex; flex-direction: column; }
+
+    /* ── Page-specific ── */
+    .topbar { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 12px; margin-bottom: 22px; }
+    .topbar h1 { font-size: 1.4rem; font-weight: 800; letter-spacing: -.01em;
+      background: linear-gradient(135deg, #fff, var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .topbar a { color: var(--accent2); text-decoration: none; font-size: 0.85rem; font-weight: 600; }
     .topbar a:hover { text-decoration: underline; }
-    .card { background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 24px; margin-bottom: 24px; }
-    .card h2 { font-size: 1rem; font-weight: 600; color: var(--accent2); margin-bottom: 16px; }
+    .card { background: var(--glass), var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 26px; margin-bottom: 22px;
+      box-shadow: var(--shadow-card); backdrop-filter: blur(16px);
+      transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+    .card:hover { transform: translateY(-2px); border-color: rgba(124,92,255,.28);
+      box-shadow: var(--shadow-card), var(--shadow-glow); }
+    .card h2 { font-size: 0.95rem; font-weight: 700; color: #cdc3ff; margin-bottom: 18px; letter-spacing: .01em; }
     table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
-    th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: .03em; }
+    th, td { text-align: left; padding: 11px 9px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 700; font-size: 0.72rem; text-transform: uppercase; letter-spacing: .04em; }
     td.actions { white-space: nowrap; }
-    .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.74rem; font-weight: 600; }
-    .badge.admin { background: rgba(124,92,252,.18); color: var(--accent2); }
-    .badge.member { background: rgba(136,136,170,.18); color: var(--muted); }
-    .badge.active { background: rgba(74,222,128,.14); color: var(--ok); }
-    .badge.disabled { background: rgba(248,113,113,.14); color: var(--error); }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.74rem; font-weight: 700; }
+    .badge.admin { background: rgba(124,92,255,.18); color: #cdc3ff; border: 1px solid rgba(124,92,255,.28); }
+    .badge.member { background: rgba(139,146,168,.16); color: var(--muted); border: 1px solid var(--border); }
+    .badge.active { background: rgba(32,217,138,.14); color: var(--success); border: 1px solid rgba(32,217,138,.28); }
+    .badge.disabled { background: rgba(248,113,113,.14); color: var(--error); border: 1px solid rgba(248,113,113,.28); }
     form.inline { display: inline; }
     button, input[type="submit"] {
-      font-size: 0.78rem; font-weight: 600; padding: 6px 12px; border-radius: 7px;
-      border: 1px solid var(--border); background: var(--bg); color: var(--text);
-      cursor: pointer; transition: border-color .15s, color .15s; margin: 2px 2px 2px 0;
+      font-size: 0.78rem; font-weight: 700; padding: 7px 13px; border-radius: 9px;
+      border: 1px solid var(--border); background: rgba(255,255,255,.03); color: var(--text);
+      cursor: pointer; transition: border-color .15s, color .15s, background .15s; margin: 2px 2px 2px 0;
     }
-    button:hover { border-color: var(--accent); color: var(--accent2); }
-    button.danger:hover { border-color: var(--error); color: var(--error); }
-    .new-user-form { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 10px; align-items: end; }
-    .new-user-form label { display: block; font-size: 0.78rem; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+    button:hover { border-color: rgba(124,92,255,.4); color: #cdc3ff; background: rgba(124,92,255,.08); }
+    button.danger:hover { border-color: rgba(248,113,113,.4); color: var(--error); background: rgba(248,113,113,.08); }
+    .new-user-form { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 12px; align-items: end; }
+    .new-user-form label { display: block; font-size: 0.78rem; font-weight: 700; color: var(--muted); margin-bottom: 7px; }
     .new-user-form input[type="text"], .new-user-form input[type="password"], .new-user-form select {
-      width: 100%; background: var(--bg); border: 1px solid var(--border);
-      border-radius: 8px; color: var(--text); padding: 9px 10px; font-size: 0.88rem; outline: none;
+      width: 100%; background: rgba(255,255,255,.025); border: 1px solid var(--border);
+      border-radius: 9px; color: var(--text); padding: 10px 12px; font-size: 0.88rem; outline: none;
+      transition: border-color .15s, background .15s;
     }
-    .new-user-form input:focus, .new-user-form select:focus { border-color: var(--accent); }
-    .new-user-form button[type="submit"] { background: var(--accent); border: none; color: #fff; padding: 10px 16px; }
-    .new-user-form button[type="submit"]:hover { background: var(--accent2); color: #fff; }
+    .new-user-form input:focus, .new-user-form select:focus { border-color: var(--accent); background: rgba(124,92,255,.06); }
+    .new-user-form button[type="submit"] {
+      background: linear-gradient(135deg, var(--accent), var(--accent2)); border: none; color: #fff; padding: 11px 18px;
+      box-shadow: 0 8px 22px rgba(124,92,255,.3);
+    }
+    .new-user-form button[type="submit"]:hover { filter: brightness(1.08); color: #fff; }
     .muted { color: var(--muted); font-size: 0.82rem; }
     .reset-row { display: flex; gap: 6px; align-items: center; }
     .reset-row input[type="password"] {
-      width: 130px; background: var(--bg); border: 1px solid var(--border);
-      border-radius: 7px; color: var(--text); padding: 5px 8px; font-size: 0.78rem; outline: none;
+      width: 130px; background: rgba(255,255,255,.025); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); padding: 6px 9px; font-size: 0.78rem; outline: none;
+      transition: border-color .15s;
     }
+    .reset-row input[type="password"]:focus { border-color: var(--accent); }
     .plan-edit { margin-top: 8px; }
-    .plan-edit summary { cursor: pointer; font-size: 0.78rem; font-weight: 600; color: var(--accent2);
+    .plan-edit summary { cursor: pointer; font-size: 0.78rem; font-weight: 700; color: var(--accent2);
       list-style: none; padding: 4px 0; }
     .plan-edit summary::-webkit-details-marker { display: none; }
     .plan-edit summary:hover { text-decoration: underline; }
-    .plan-edit-form { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 8px;
+    .plan-edit-form { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; margin-top: 10px;
       max-width: 360px; }
-    .plan-edit-form label { display: block; font-size: 0.72rem; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+    .plan-edit-form label { display: block; font-size: 0.72rem; font-weight: 700; color: var(--muted); margin-bottom: 5px; }
     .plan-edit-form input, .plan-edit-form select {
-      width: 100%; background: var(--bg); border: 1px solid var(--border);
-      border-radius: 7px; color: var(--text); padding: 6px 8px; font-size: 0.78rem; outline: none;
+      width: 100%; background: rgba(255,255,255,.025); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); padding: 7px 9px; font-size: 0.78rem; outline: none;
+      transition: border-color .15s;
     }
     .plan-edit-form input:focus, .plan-edit-form select:focus { border-color: var(--accent); }
     .plan-edit-form .full { grid-column: 1 / -1; }
@@ -82,124 +161,169 @@
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="topbar">
-      <h1>Gestion de l'équipe</h1>
-      <a href="{{ url_for('index') }}">← Retour au bot</a>
-    </div>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-logo">🎬 VideoBot</div>
+      <nav class="sidebar-nav">
+        <a class="nav-item" href="{{ url_for('consumption') }}"><span class="ico">📊</span> Dashboard</a>
+        <div class="nav-section-label">Génération</div>
+        <a class="nav-item" href="{{ url_for('index') }}"><span class="ico">🎬</span> Mode Simple</a>
+        <a class="nav-item" href="{{ url_for('index') }}"><span class="ico">📦</span> Mode Batch</a>
+        <a class="nav-item" href="{{ url_for('index') }}"><span class="ico">🎲</span> Mode Variation</a>
+        <div class="nav-section-label">Compte</div>
+        {% if current_user.role == 'admin' %}
+          <a class="nav-item" href="{{ url_for('admin_consumption') }}"><span class="ico">📈</span> Analytics</a>
+        {% else %}
+          <a class="nav-item" href="{{ url_for('consumption') }}"><span class="ico">📈</span> Analytics</a>
+        {% endif %}
+        <a class="nav-item soon"><span class="ico">🕓</span> Historique <span class="soon-badge">Bientôt</span></a>
+        <a class="nav-item active" href="{{ url_for('admin_users') }}"><span class="ico">👥</span> Équipe</a>
+        <a class="nav-item soon"><span class="ico">⚙️</span> Paramètres <span class="soon-badge">Bientôt</span></a>
+      </nav>
+      <div class="sidebar-profile">
+        <div class="sidebar-avatar">{{ current_user.email[0]|upper }}</div>
+        <div class="sidebar-profile-info">
+          <div class="sidebar-profile-email">{{ current_user.email }}</div>
+          <div class="sidebar-profile-role">{{ 'Administrateur' if current_user.role == 'admin' else 'Membre' }}{% if current_user.plan_name %} · {{ current_user.plan_name|capitalize }}{% endif %}</div>
+        </div>
+      </div>
+      <a class="sidebar-logout" href="{{ url_for('logout') }}">Se déconnecter</a>
+    </aside>
 
-    <div class="card">
-      <h2>Ajouter un membre</h2>
-      <form class="new-user-form" method="POST" action="{{ url_for('admin_users_create') }}">
+    <div class="app-main">
+      <header class="app-header">
         <div>
-          <label for="new_email">Email</label>
-          <input type="text" id="new_email" name="email" placeholder="prenom@exemple.com" autocomplete="off" required />
+          <h1>Équipe</h1>
+          <div class="subtitle">Gérez les comptes, rôles et plans de votre organisation</div>
         </div>
-        <div>
-          <label for="new_password">Mot de passe</label>
-          <input type="password" id="new_password" name="password" required autocomplete="new-password" />
+        <div class="header-right">
+          {% if current_user.plan_name %}<span class="plan-pill">✨ {{ current_user.plan_name|capitalize }}</span>{% endif %}
+          <span class="icon-btn" title="Aucune notification">🔔</span>
         </div>
-        <div>
-          <label for="new_role">Rôle</label>
-          <select id="new_role" name="role">
-            <option value="member" selected>Membre</option>
-            <option value="admin">Administrateur</option>
-          </select>
-        </div>
-        <button type="submit">Créer le compte</button>
-      </form>
-      <p class="muted" style="margin-top:12px;">
-        Le membre se connecte avec cet email et ce mot de passe sur la page de connexion du bot.
-      </p>
-    </div>
+      </header>
 
-    <div class="card">
-      <h2>Comptes ({{ users|length }})</h2>
-      {% if not users %}
-        <p class="muted">Aucun compte pour le moment.</p>
-      {% else %}
-      <table>
-        <thead>
-          <tr>
-            <th>Email</th>
-            <th>Rôle</th>
-            <th>Statut</th>
-            <th>Créé le</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for u in users %}
-          <tr>
-            <td>{{ u.email }}</td>
-            <td><span class="badge {{ 'admin' if u.role == 'admin' else 'member' }}">{{ 'Admin' if u.role == 'admin' else 'Membre' }}</span></td>
-            <td><span class="badge {{ 'active' if u.is_active else 'disabled' }}">{{ 'Actif' if u.is_active else 'Désactivé' }}</span></td>
-            <td class="muted">{{ u.created_at }}</td>
-            <td class="actions">
-              <div class="reset-row">
-                <form class="inline" method="POST" action="{{ url_for('admin_users_reset_password', user_id=u.id) }}">
-                  <input type="password" name="password" placeholder="nouveau mot de passe" autocomplete="new-password" />
-                  <button type="submit">Réinitialiser</button>
-                </form>
+      <main class="app-content">
+        <div class="page-wrap">
+          <div class="topbar">
+            <h1>Gestion de l'équipe</h1>
+            <a href="{{ url_for('index') }}">← Retour au bot</a>
+          </div>
+
+          <div class="card">
+            <h2>Ajouter un membre</h2>
+            <form class="new-user-form" method="POST" action="{{ url_for('admin_users_create') }}">
+              <div>
+                <label for="new_email">Email</label>
+                <input type="text" id="new_email" name="email" placeholder="prenom@exemple.com" autocomplete="off" required />
               </div>
-              <div style="margin-top:6px;">
-                {% if u.is_active %}
-                  <form class="inline" method="POST" action="{{ url_for('admin_users_disable', user_id=u.id) }}">
-                    <button type="submit">Désactiver</button>
-                  </form>
-                {% else %}
-                  <form class="inline" method="POST" action="{{ url_for('admin_users_enable', user_id=u.id) }}">
-                    <button type="submit">Réactiver</button>
-                  </form>
-                {% endif %}
-                <form class="inline" method="POST" action="{{ url_for('admin_users_delete', user_id=u.id) }}" onsubmit="return confirm('Supprimer définitivement {{ u.email }} ? Cette action est irréversible.');">
-                  <button type="submit" class="danger">Supprimer</button>
-                </form>
+              <div>
+                <label for="new_password">Mot de passe</label>
+                <input type="password" id="new_password" name="password" required autocomplete="new-password" />
               </div>
-              <details class="plan-edit">
-                <summary>⚙️ Plan &amp; tarification</summary>
-                <form class="plan-edit-form" method="POST" action="{{ url_for('admin_users_edit_plan', user_id=u.id) }}">
-                  <div>
-                    <label for="plan_name_{{ u.id }}">Plan</label>
-                    <select id="plan_name_{{ u.id }}" name="plan_name">
-                      {% for pn in ['starter', 'pro', 'agency', 'internal', 'custom'] %}
-                        <option value="{{ pn }}" {{ 'selected' if (u.plan_name or 'starter')|lower == pn else '' }}>{{ pn|capitalize }}</option>
-                      {% endfor %}
-                    </select>
-                  </div>
-                  <div>
-                    <label for="monthly_price_{{ u.id }}">Prix mensuel ({{ u.currency or 'EUR' }})</label>
-                    <input type="text" id="monthly_price_{{ u.id }}" name="monthly_price"
-                           placeholder="ex: 29" value="{{ '%.2f'|format(u.monthly_price) if u.monthly_price else '' }}" />
-                  </div>
-                  <div>
-                    <label for="monthly_generation_limit_{{ u.id }}">Limite mensuelle</label>
-                    <input type="text" id="monthly_generation_limit_{{ u.id }}" name="monthly_generation_limit"
-                           placeholder="ex: 100" value="{{ u.monthly_generation_limit if u.monthly_generation_limit is not none else '' }}" />
-                  </div>
-                  <div>
-                    <label for="credits_remaining_{{ u.id }}">Crédits restants</label>
-                    <input type="text" id="credits_remaining_{{ u.id }}" name="credits_remaining"
-                           placeholder="ex: 100" value="{{ u.credits_remaining if u.credits_remaining is not none else '' }}" />
-                  </div>
-                  <div class="full">
-                    <button type="submit">Mettre à jour le plan</button>
-                  </div>
-                  <p class="muted full" style="margin-top:2px;">
-                    Laissez un champ vide pour ne pas le modifier. Un prix manuel &gt; 0 remplace le tarif par défaut du plan.
-                  </p>
-                </form>
-              </details>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      {% endif %}
-      <p class="muted" style="margin-top:14px;">
-        Un compte désactivé ou supprimé perd l'accès immédiatement, dès sa prochaine requête — même s'il est déjà connecté.
-        Vous ne pouvez pas désactiver ou supprimer votre propre compte depuis cette page.
-      </p>
+              <div>
+                <label for="new_role">Rôle</label>
+                <select id="new_role" name="role">
+                  <option value="member" selected>Membre</option>
+                  <option value="admin">Administrateur</option>
+                </select>
+              </div>
+              <button type="submit">Créer le compte</button>
+            </form>
+            <p class="muted" style="margin-top:12px;">
+              Le membre se connecte avec cet email et ce mot de passe sur la page de connexion du bot.
+            </p>
+          </div>
+
+          <div class="card">
+            <h2>Comptes ({{ users|length }})</h2>
+            {% if not users %}
+              <p class="muted">Aucun compte pour le moment.</p>
+            {% else %}
+            <table>
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Rôle</th>
+                  <th>Statut</th>
+                  <th>Créé le</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for u in users %}
+                <tr>
+                  <td>{{ u.email }}</td>
+                  <td><span class="badge {{ 'admin' if u.role == 'admin' else 'member' }}">{{ 'Admin' if u.role == 'admin' else 'Membre' }}</span></td>
+                  <td><span class="badge {{ 'active' if u.is_active else 'disabled' }}">{{ 'Actif' if u.is_active else 'Désactivé' }}</span></td>
+                  <td class="muted">{{ u.created_at }}</td>
+                  <td class="actions">
+                    <div class="reset-row">
+                      <form class="inline" method="POST" action="{{ url_for('admin_users_reset_password', user_id=u.id) }}">
+                        <input type="password" name="password" placeholder="nouveau mot de passe" autocomplete="new-password" />
+                        <button type="submit">Réinitialiser</button>
+                      </form>
+                    </div>
+                    <div style="margin-top:6px;">
+                      {% if u.is_active %}
+                        <form class="inline" method="POST" action="{{ url_for('admin_users_disable', user_id=u.id) }}">
+                          <button type="submit">Désactiver</button>
+                        </form>
+                      {% else %}
+                        <form class="inline" method="POST" action="{{ url_for('admin_users_enable', user_id=u.id) }}">
+                          <button type="submit">Réactiver</button>
+                        </form>
+                      {% endif %}
+                      <form class="inline" method="POST" action="{{ url_for('admin_users_delete', user_id=u.id) }}" onsubmit="return confirm('Supprimer définitivement {{ u.email }} ? Cette action est irréversible.');">
+                        <button type="submit" class="danger">Supprimer</button>
+                      </form>
+                    </div>
+                    <details class="plan-edit">
+                      <summary>⚙️ Plan &amp; tarification</summary>
+                      <form class="plan-edit-form" method="POST" action="{{ url_for('admin_users_edit_plan', user_id=u.id) }}">
+                        <div>
+                          <label for="plan_name_{{ u.id }}">Plan</label>
+                          <select id="plan_name_{{ u.id }}" name="plan_name">
+                            {% for pn in ['starter', 'pro', 'agency', 'internal', 'custom'] %}
+                              <option value="{{ pn }}" {{ 'selected' if (u.plan_name or 'starter')|lower == pn else '' }}>{{ pn|capitalize }}</option>
+                            {% endfor %}
+                          </select>
+                        </div>
+                        <div>
+                          <label for="monthly_price_{{ u.id }}">Prix mensuel ({{ u.currency or 'EUR' }})</label>
+                          <input type="text" id="monthly_price_{{ u.id }}" name="monthly_price"
+                                 placeholder="ex: 29" value="{{ '%.2f'|format(u.monthly_price) if u.monthly_price else '' }}" />
+                        </div>
+                        <div>
+                          <label for="monthly_generation_limit_{{ u.id }}">Limite mensuelle</label>
+                          <input type="text" id="monthly_generation_limit_{{ u.id }}" name="monthly_generation_limit"
+                                 placeholder="ex: 100" value="{{ u.monthly_generation_limit if u.monthly_generation_limit is not none else '' }}" />
+                        </div>
+                        <div>
+                          <label for="credits_remaining_{{ u.id }}">Crédits restants</label>
+                          <input type="text" id="credits_remaining_{{ u.id }}" name="credits_remaining"
+                                 placeholder="ex: 100" value="{{ u.credits_remaining if u.credits_remaining is not none else '' }}" />
+                        </div>
+                        <div class="full">
+                          <button type="submit">Mettre à jour le plan</button>
+                        </div>
+                        <p class="muted full" style="margin-top:2px;">
+                          Laissez un champ vide pour ne pas le modifier. Un prix manuel &gt; 0 remplace le tarif par défaut du plan.
+                        </p>
+                      </form>
+                    </details>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% endif %}
+            <p class="muted" style="margin-top:14px;">
+              Un compte désactivé ou supprimé perd l'accès immédiatement, dès sa prochaine requête — même s'il est déjà connecté.
+              Vous ne pouvez pas désactiver ou supprimer votre propre compte depuis cette page.
+            </p>
+          </div>
+        </div>
+      </main>
     </div>
   </div>
 </body>

@@ -7,47 +7,130 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #0f0f13; --surface: #1a1a24; --border: #2e2e42;
-      --accent: #7c5cfc; --accent2: #a78bfa; --text: #e8e8f0;
-      --muted: #8888aa; --success: #34d399; --error: #f87171; --ok: #4ade80; --radius: 12px;
+      --bg: #05060A; --surface: #0D1018; --surface-2: rgba(255,255,255,.025);
+      --border: rgba(255,255,255,.08); --border-strong: rgba(255,255,255,.14);
+      --accent: #7C5CFF; --accent2: #2F6BFF; --text: #F0F1F7;
+      --muted: #8B92A8; --success: #20D98A; --warn: #FFB547; --error: #f87171; --ok: #20D98A;
+      --radius: 14px;
+      --glass: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.015));
+      --shadow-card: 0 10px 36px rgba(0,0,0,.40);
+      --shadow-glow: 0 0 0 1px rgba(124,92,255,.14), 0 16px 46px rgba(124,92,255,.12);
+      --sidebar-w: 248px;
     }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: var(--bg); color: var(--text); min-height: 100vh;
-      padding: 32px 24px 64px; }
-    .wrap { max-width: 880px; margin: 0 auto; }
-    .topbar { display: flex; justify-content: space-between; align-items: baseline;
-      flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
-    h1 { font-size: 1.6rem; font-weight: 700;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      background:
+        radial-gradient(1100px 560px at 14% -10%, rgba(124,92,255,.16), transparent 60%),
+        radial-gradient(900px 520px at 100% 0%, rgba(47,107,255,.12), transparent 55%),
+        var(--bg);
+      color: var(--text); min-height: 100vh; }
+
+    /* ── App shell: fixed sidebar + main column ── */
+    .app-shell { display: flex; min-height: 100vh; width: 100%; }
+    .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar-w);
+      display: flex; flex-direction: column; padding: 22px 16px;
+      background: linear-gradient(180deg, rgba(124,92,255,.06), rgba(13,16,24,.2)), rgba(13,16,24,.75);
+      border-right: 1px solid var(--border); backdrop-filter: blur(22px); z-index: 20; }
+    .sidebar-logo { font-size: 1.18rem; font-weight: 800; letter-spacing: -.01em; padding: 6px 10px 22px;
+      background: linear-gradient(135deg, #fff, var(--accent2));
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .topbar a { color: var(--accent2); text-decoration: none; font-size: 0.85rem; }
+    .sidebar-nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+    .nav-item { display: flex; align-items: center; gap: 11px; padding: 10px 14px; border-radius: 11px;
+      color: var(--muted); text-decoration: none; font-size: 0.88rem; font-weight: 600; border: none;
+      background: transparent; cursor: pointer; width: 100%; text-align: left;
+      transition: background .15s ease, color .15s ease, transform .15s ease; }
+    .nav-item .ico { font-size: 1.02rem; width: 20px; text-align: center; flex-shrink: 0; }
+    .nav-item:hover { background: rgba(255,255,255,.04); color: var(--text); transform: translateX(2px); }
+    .nav-item.active { background: linear-gradient(135deg, rgba(124,92,255,.22), rgba(47,107,255,.14));
+      color: #fff; box-shadow: inset 0 0 0 1px rgba(124,92,255,.3); }
+    .nav-item.active:hover { transform: none; }
+    .nav-item.soon { opacity: .45; cursor: default; }
+    .nav-item.soon:hover { background: transparent; color: var(--muted); transform: none; }
+    .soon-badge { margin-left: auto; font-size: 0.62rem; font-weight: 800; letter-spacing: .04em;
+      text-transform: uppercase; color: var(--accent2); background: rgba(47,107,255,.14);
+      border: 1px solid rgba(47,107,255,.28); border-radius: 999px; padding: 2px 7px; }
+    .nav-section-label { font-size: 0.68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--muted); opacity: .6; padding: 18px 14px 6px; }
+    .sidebar-profile { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-top: 8px;
+      border-radius: 12px; background: rgba(255,255,255,.03); border: 1px solid var(--border); }
+    .sidebar-avatar { width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+      background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff;
+      display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.95rem;
+      box-shadow: 0 6px 18px rgba(124,92,255,.35); }
+    .sidebar-profile-info { min-width: 0; }
+    .sidebar-profile-email { font-size: 0.8rem; font-weight: 700; white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; }
+    .sidebar-profile-role { font-size: 0.72rem; color: var(--muted); white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; }
+    .sidebar-logout { display: block; text-align: center; margin-top: 10px; padding: 9px 12px;
+      border-radius: 10px; border: 1px solid var(--border); color: var(--muted); text-decoration: none;
+      font-size: 0.8rem; font-weight: 700; transition: border-color .15s, color .15s, background .15s; }
+    .sidebar-logout:hover { border-color: rgba(248,113,113,.4); color: var(--error); background: rgba(248,113,113,.06); }
+
+    .app-main { flex: 1; margin-left: var(--sidebar-w); display: flex; flex-direction: column; min-height: 100vh; }
+    .app-header { position: sticky; top: 0; z-index: 15; display: flex; align-items: center; justify-content: space-between;
+      gap: 16px; padding: 18px 32px; background: rgba(13,16,24,.55); backdrop-filter: blur(18px);
+      border-bottom: 1px solid var(--border); }
+    .app-header h1 { font-size: 1.18rem; font-weight: 800; letter-spacing: -.01em; }
+    .app-header .subtitle { font-size: 0.8rem; color: var(--muted); margin-top: 3px; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .plan-pill { font-size: 0.76rem; font-weight: 800; letter-spacing: .02em; padding: 6px 13px; border-radius: 999px;
+      background: linear-gradient(135deg, rgba(124,92,255,.25), rgba(47,107,255,.18)); color: #fff;
+      border: 1px solid rgba(124,92,255,.32); white-space: nowrap; }
+    .icon-btn { width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,.03); border: 1px solid var(--border); color: var(--muted); font-size: 1rem;
+      cursor: default; transition: border-color .15s, color .15s; }
+    .icon-btn:hover { border-color: var(--border-strong); color: var(--text); }
+    .credit-pill { display: flex; flex-direction: column; gap: 5px; padding: 8px 14px; border-radius: 12px;
+      background: rgba(255,255,255,.03); border: 1px solid var(--border); font-size: 0.76rem; font-weight: 700;
+      color: var(--text); min-width: 132px; }
+    .credit-track { display: block; height: 5px; border-radius: 999px; background: rgba(255,255,255,.07); overflow: hidden; }
+    .credit-fill { display: block; height: 100%; border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+    .app-content { flex: 1; padding: 28px 32px 64px; display: flex; flex-direction: column; align-items: center; }
+    .page-wrap { width: 100%; max-width: 920px; display: flex; flex-direction: column; }
+
+    /* ── Page-specific ── */
+    .topbar { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+    .topbar h1 { font-size: 1.4rem; font-weight: 800; letter-spacing: -.01em;
+      background: linear-gradient(135deg, #fff, var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .topbar a { color: var(--accent2); text-decoration: none; font-size: 0.85rem; font-weight: 600; }
     .topbar a:hover { text-decoration: underline; }
-    .card { background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 24px; margin-bottom: 24px; }
-    .card h2 { font-size: 1rem; font-weight: 600; color: var(--accent2); margin-bottom: 16px; }
-    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; }
-    .stat { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
-    .stat .lbl { font-size: 0.74rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 6px; }
-    .stat .val { font-size: 1.35rem; font-weight: 700; }
-    .stat .val.success { color: var(--ok); }
+    .card { background: var(--glass), var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 26px; width: 100%; margin-bottom: 20px;
+      box-shadow: var(--shadow-card); backdrop-filter: blur(16px);
+      transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+    .card:hover { transform: translateY(-2px); border-color: rgba(124,92,255,.28);
+      box-shadow: var(--shadow-card), var(--shadow-glow); }
+    .card h2 { font-size: 0.95rem; font-weight: 700; color: #cdc3ff; margin-bottom: 18px;
+      letter-spacing: .01em; }
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 13px; }
+    .stat { background: linear-gradient(160deg, rgba(255,255,255,.035), rgba(255,255,255,.01));
+      border: 1px solid var(--border); border-radius: 12px; padding: 15px 17px;
+      transition: transform .2s, border-color .2s; }
+    .stat:hover { transform: translateY(-2px); border-color: rgba(124,92,255,.26); }
+    .stat .lbl { font-size: 0.72rem; color: var(--muted); font-weight: 800; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 7px; }
+    .stat .val { font-size: 1.32rem; font-weight: 800; }
+    .stat .val.success { color: var(--success); }
     .stat .val.error { color: var(--error); }
-    .period-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-    .period-btn { padding: 7px 16px; border: 1px solid var(--border); border-radius: 8px;
-      background: var(--bg); color: var(--muted); cursor: pointer; font-size: 0.82rem;
-      font-weight: 600; transition: all .15s; }
-    .period-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .period-btn:hover:not(.active) { border-color: var(--accent); color: var(--accent2); }
+    .period-tabs { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+    .period-btn { padding: 8px 17px; border: 1px solid var(--border); border-radius: 10px;
+      background: rgba(255,255,255,.025); color: var(--muted); cursor: pointer; font-size: 0.82rem;
+      font-weight: 700; transition: all .15s; }
+    .period-btn.active { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff;
+      border-color: transparent; box-shadow: 0 8px 24px rgba(124,92,255,.32); }
+    .period-btn:hover:not(.active) { border-color: var(--border-strong); color: var(--text); }
     .period-panel { display: none; }
     .period-panel.active { display: block; }
-    .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.74rem; font-weight: 600; }
-    .badge.plan { background: rgba(124,92,252,.18); color: var(--accent2); }
+    .badge { display: inline-block; padding: 3px 11px; border-radius: 999px; font-size: 0.74rem; font-weight: 700; }
+    .badge.plan { background: rgba(124,92,255,.18); color: #cdc3ff; border: 1px solid rgba(124,92,255,.28); }
     .muted { color: var(--muted); font-size: 0.82rem; }
-    .credit-bar-track { background: var(--bg); border: 1px solid var(--border); border-radius: 999px;
-      height: 10px; overflow: hidden; margin-top: 8px; }
+    .credit-bar-track { background: rgba(255,255,255,.06); border: 1px solid var(--border); border-radius: 999px;
+      height: 10px; overflow: hidden; margin-top: 10px; }
     .credit-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
-      border-radius: 999px; transition: width .4s; }
-    .stat.profit-good .val { color: var(--ok); }
-    .stat.profit-warn .val { color: var(--warn, #fbbf24); }
+      border-radius: 999px; transition: width .4s; box-shadow: 0 0 14px rgba(124,92,255,.5); }
+    .stat.profit-good .val { color: var(--success); }
+    .stat.profit-warn .val { color: var(--warn); }
     .stat.profit-bad .val { color: var(--error); }
     @media (max-width: 640px) {
       .stat-grid { grid-template-columns: repeat(2, 1fr); }
@@ -55,184 +138,239 @@
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="topbar">
-      <h1>Ma consommation</h1>
-      <a href="{{ url_for('index') }}">← Retour au bot</a>
-    </div>
-
-    <div class="card">
-      <h2>Mon abonnement</h2>
-      <div class="stat-grid">
-        <div class="stat">
-          <div class="lbl">Plan</div>
-          <div class="val"><span class="badge plan">{{ current_user.plan_name|capitalize }}</span></div>
-        </div>
-        <div class="stat">
-          <div class="lbl">Crédits utilisés</div>
-          <div class="val">{{ current_user.credits_used }}</div>
-        </div>
-        <div class="stat">
-          <div class="lbl">Crédits restants</div>
-          <div class="val">{{ current_user.credits_remaining }}</div>
-        </div>
-        <div class="stat">
-          <div class="lbl">Limite mensuelle</div>
-          <div class="val">{{ current_user.monthly_generation_limit }}</div>
-        </div>
-      </div>
-      {% set _limit = current_user.monthly_generation_limit or 0 %}
-      {% if _limit > 0 %}
-      {% set _pct = ((current_user.credits_used / _limit) * 100) | round(1) %}
-      <div class="credit-bar-track">
-        <div class="credit-bar-fill" style="width: {{ [_pct, 100] | min }}%;"></div>
-      </div>
-      <p class="muted" style="margin-top:6px;">{{ _pct }}% de votre limite mensuelle utilisée</p>
-      {% endif %}
-      <p class="muted" style="margin-top:12px;">
-        Le système de crédits est une fondation pour de futurs plans tarifaires — vos générations ne sont pas
-        actuellement limitées.
-      </p>
-    </div>
-
-    {% set _cur_sym = currency_symbols.get(currency, currency) %}
-    <div class="card">
-      <h2>Mon plan &amp; ma rentabilité</h2>
-      {% if monthly_price <= 0 %}
-        <p class="muted">Compte interne / sans facturation — aucun prix mensuel n'est associé à ce compte.</p>
-        <div class="stat-grid" style="margin-top:14px;">
-          <div class="stat">
-            <div class="lbl">Plan</div>
-            <div class="val"><span class="badge plan">{{ current_user.plan_name|capitalize }}</span></div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Coût estimé généré</div>
-            <div class="val">{{ "%.2f"|format(profitability.cost) }} {{ _cur_sym }}</div>
-          </div>
-        </div>
-      {% else %}
-        <div class="stat-grid">
-          <div class="stat">
-            <div class="lbl">Plan</div>
-            <div class="val"><span class="badge plan">{{ current_user.plan_name|capitalize }}</span></div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Prix mensuel</div>
-            <div class="val">{{ "%.2f"|format(monthly_price) }} {{ _cur_sym }}</div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Crédits utilisés</div>
-            <div class="val">{{ current_user.credits_used }}</div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Crédits restants</div>
-            <div class="val">{{ current_user.credits_remaining }}</div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Limite mensuelle</div>
-            <div class="val">{{ current_user.monthly_generation_limit }}</div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Coût estimé généré</div>
-            <div class="val">{{ "%.2f"|format(profitability.cost) }} {{ _cur_sym }}</div>
-          </div>
-          <div class="stat profit-{{ profitability_state }}">
-            <div class="lbl">Marge restante (buffer)</div>
-            <div class="val">{{ "%.2f"|format(profitability.profit) }} {{ _cur_sym }}</div>
-          </div>
-          <div class="stat profit-{{ profitability_state }}">
-            <div class="lbl">Marge %</div>
-            <div class="val">{{ (("%.1f"|format(profitability.margin_percent)) ~ "%") if profitability.margin_percent is not none else "N/A" }}</div>
-          </div>
-        </div>
-        <p class="muted" style="margin-top:14px;">
-          Exemple de lecture : Plan {{ current_user.plan_name|capitalize }} · Prix mensuel {{ "%.2f"|format(monthly_price) }} {{ _cur_sym }} ·
-          Coût estimé généré {{ "%.2f"|format(profitability.cost) }} {{ _cur_sym }} · Marge restante {{ "%.2f"|format(profitability.profit) }} {{ _cur_sym }}.
-        </p>
-      {% endif %}
-      <p class="muted" style="margin-top:12px;">
-        Ces chiffres sont des estimations basées sur la durée des vidéos traitées et l'usage de Claude Vision —
-        ils servent à comprendre la rentabilité de votre compte, pas à établir une facture.
-      </p>
-    </div>
-
-    <div class="card">
-      <h2>Vue d'ensemble</h2>
-      <div class="period-tabs">
-        <button class="period-btn active" data-period="all_time" onclick="showPeriod('all_time', this)">Total</button>
-        <button class="period-btn" data-period="today" onclick="showPeriod('today', this)">Aujourd'hui</button>
-        <button class="period-btn" data-period="week" onclick="showPeriod('week', this)">7 derniers jours</button>
-        <button class="period-btn" data-period="month" onclick="showPeriod('month', this)">30 derniers jours</button>
-      </div>
-
-      {% for key, label in [('all_time','Total'), ('today',"Aujourd'hui"), ('week','7 derniers jours'), ('month','30 derniers jours')] %}
-      <div class="period-panel {% if loop.first %}active{% endif %}" data-period="{{ key }}">
-        {% set s = summary[key] %}
-        <div class="stat-grid">
-          <div class="stat">
-            <div class="lbl">Générations</div>
-            <div class="val">{{ s.total }}</div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Réussies</div>
-            <div class="val success">{{ s.successes }}</div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Échouées</div>
-            <div class="val error">{{ s.failures }}</div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Minutes générées</div>
-            <div class="val">{{ (s.total_seconds / 60) | round(1) }}</div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Coût estimé</div>
-            <div class="val">${{ "%.2f"|format(s.total_cost) }}</div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Vidéos sources</div>
-            <div class="val">{{ s.total_source_videos }}</div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Vidéos générées</div>
-            <div class="val">{{ s.total_output_videos }}</div>
-          </div>
-          <div class="stat">
-            <div class="lbl">Requêtes Claude</div>
-            <div class="val">{{ s.total_claude_requests }}</div>
-          </div>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-logo">🎬 VideoBot</div>
+      <nav class="sidebar-nav">
+        <a class="nav-item active" href="{{ url_for('consumption') }}"><span class="ico">📊</span> Dashboard</a>
+        <div class="nav-section-label">Génération</div>
+        <a class="nav-item" href="{{ url_for('index') }}"><span class="ico">🎬</span> Mode Simple</a>
+        <a class="nav-item" href="{{ url_for('index') }}"><span class="ico">📦</span> Mode Batch</a>
+        <a class="nav-item" href="{{ url_for('index') }}"><span class="ico">🎲</span> Mode Variation</a>
+        <div class="nav-section-label">Compte</div>
+        {% if current_user.role == 'admin' %}
+          <a class="nav-item" href="{{ url_for('admin_consumption') }}"><span class="ico">📈</span> Analytics</a>
+        {% else %}
+          <a class="nav-item" href="{{ url_for('consumption') }}"><span class="ico">📈</span> Analytics</a>
+        {% endif %}
+        <a class="nav-item soon"><span class="ico">🕓</span> Historique <span class="soon-badge">Bientôt</span></a>
+        {% if current_user.role == 'admin' %}
+        <a class="nav-item" href="{{ url_for('admin_users') }}"><span class="ico">👥</span> Équipe</a>
+        {% endif %}
+        <a class="nav-item soon"><span class="ico">⚙️</span> Paramètres <span class="soon-badge">Bientôt</span></a>
+      </nav>
+      <div class="sidebar-profile">
+        <div class="sidebar-avatar">{{ current_user.email[0]|upper }}</div>
+        <div class="sidebar-profile-info">
+          <div class="sidebar-profile-email">{{ current_user.email }}</div>
+          <div class="sidebar-profile-role">{{ 'Administrateur' if current_user.role == 'admin' else 'Membre' }}{% if current_user.plan_name %} · {{ current_user.plan_name|capitalize }}{% endif %}</div>
         </div>
       </div>
-      {% endfor %}
+      <a class="sidebar-logout" href="{{ url_for('logout') }}">Se déconnecter</a>
+    </aside>
 
-      <p class="muted" style="margin-top:16px;">
-        Les coûts affichés sont des estimations approximatives basées sur la durée des vidéos traitées
-        et l'utilisation de l'API Claude Vision — elles ne reflètent pas une facturation réelle.
-      </p>
-    </div>
+    <div class="app-main">
+      <header class="app-header">
+        <div>
+          <h1>Ma consommation</h1>
+          <div class="subtitle">Suivi de votre usage, vos crédits et votre rentabilité</div>
+        </div>
+        <div class="header-right">
+          {% if current_user.plan_name %}<span class="plan-pill">✨ {{ current_user.plan_name|capitalize }}</span>{% endif %}
+          <span class="icon-btn" title="Aucune notification">🔔</span>
+          {% set _limit = current_user.monthly_generation_limit or 0 %}
+          {% if _limit > 0 %}
+          {% set _pct_h = ((current_user.credits_used / _limit) * 100) | round(0) %}
+          <div class="credit-pill" title="{{ current_user.credits_used }} / {{ _limit }} générations utilisées ce mois">
+            <span>{{ current_user.credits_remaining }} crédits</span>
+            <span class="credit-track"><span class="credit-fill" style="width:{{ [_pct_h, 100] | min }}%;"></span></span>
+          </div>
+          {% endif %}
+        </div>
+      </header>
 
-    {% if usage_by_mode %}
-    <div class="card">
-      <h2>Par mode</h2>
-      <div class="stat-grid">
-        {% for m in usage_by_mode %}
-        <div class="stat">
-          <div class="lbl">
-            {% if m.mode == 'simple' %}🎬 Simple
-            {% elif m.mode == 'batch' %}📦 Batch
-            {% elif m.mode == 'variation' %}🎲 Variation
-            {% else %}{{ m.mode }}
+      <main class="app-content">
+        <div class="page-wrap">
+          <div class="topbar">
+            <h1>Ma consommation</h1>
+            <a href="{{ url_for('index') }}">← Retour au bot</a>
+          </div>
+
+          <div class="card">
+            <h2>Mon abonnement</h2>
+            <div class="stat-grid">
+              <div class="stat">
+                <div class="lbl">Plan</div>
+                <div class="val"><span class="badge plan">{{ current_user.plan_name|capitalize }}</span></div>
+              </div>
+              <div class="stat">
+                <div class="lbl">Crédits utilisés</div>
+                <div class="val">{{ current_user.credits_used }}</div>
+              </div>
+              <div class="stat">
+                <div class="lbl">Crédits restants</div>
+                <div class="val">{{ current_user.credits_remaining }}</div>
+              </div>
+              <div class="stat">
+                <div class="lbl">Limite mensuelle</div>
+                <div class="val">{{ current_user.monthly_generation_limit }}</div>
+              </div>
+            </div>
+            {% set _limit = current_user.monthly_generation_limit or 0 %}
+            {% if _limit > 0 %}
+            {% set _pct = ((current_user.credits_used / _limit) * 100) | round(1) %}
+            <div class="credit-bar-track">
+              <div class="credit-bar-fill" style="width: {{ [_pct, 100] | min }}%;"></div>
+            </div>
+            <p class="muted" style="margin-top:8px;">{{ _pct }}% de votre limite mensuelle utilisée</p>
             {% endif %}
+            <p class="muted" style="margin-top:14px;">
+              Le système de crédits est une fondation pour de futurs plans tarifaires — vos générations ne sont pas
+              actuellement limitées.
+            </p>
           </div>
-          <div class="val">{{ m.total }}</div>
-          <div class="muted" style="margin-top:4px;">
-            {{ m.successes }} réussies · {{ m.failures }} échouées · ${{ "%.2f"|format(m.total_cost) }}
+
+          {% set _cur_sym = currency_symbols.get(currency, currency) %}
+          <div class="card">
+            <h2>Mon plan &amp; ma rentabilité</h2>
+            {% if monthly_price <= 0 %}
+              <p class="muted">Compte interne / sans facturation — aucun prix mensuel n'est associé à ce compte.</p>
+              <div class="stat-grid" style="margin-top:16px;">
+                <div class="stat">
+                  <div class="lbl">Plan</div>
+                  <div class="val"><span class="badge plan">{{ current_user.plan_name|capitalize }}</span></div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Coût estimé généré</div>
+                  <div class="val">{{ "%.2f"|format(profitability.cost) }} {{ _cur_sym }}</div>
+                </div>
+              </div>
+            {% else %}
+              <div class="stat-grid">
+                <div class="stat">
+                  <div class="lbl">Plan</div>
+                  <div class="val"><span class="badge plan">{{ current_user.plan_name|capitalize }}</span></div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Prix mensuel</div>
+                  <div class="val">{{ "%.2f"|format(monthly_price) }} {{ _cur_sym }}</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Crédits utilisés</div>
+                  <div class="val">{{ current_user.credits_used }}</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Crédits restants</div>
+                  <div class="val">{{ current_user.credits_remaining }}</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Limite mensuelle</div>
+                  <div class="val">{{ current_user.monthly_generation_limit }}</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Coût estimé généré</div>
+                  <div class="val">{{ "%.2f"|format(profitability.cost) }} {{ _cur_sym }}</div>
+                </div>
+                <div class="stat profit-{{ profitability_state }}">
+                  <div class="lbl">Marge restante (buffer)</div>
+                  <div class="val">{{ "%.2f"|format(profitability.profit) }} {{ _cur_sym }}</div>
+                </div>
+                <div class="stat profit-{{ profitability_state }}">
+                  <div class="lbl">Marge %</div>
+                  <div class="val">{{ (("%.1f"|format(profitability.margin_percent)) ~ "%") if profitability.margin_percent is not none else "N/A" }}</div>
+                </div>
+              </div>
+              <p class="muted" style="margin-top:16px;">
+                Exemple de lecture : Plan {{ current_user.plan_name|capitalize }} · Prix mensuel {{ "%.2f"|format(monthly_price) }} {{ _cur_sym }} ·
+                Coût estimé généré {{ "%.2f"|format(profitability.cost) }} {{ _cur_sym }} · Marge restante {{ "%.2f"|format(profitability.profit) }} {{ _cur_sym }}.
+              </p>
+            {% endif %}
+            <p class="muted" style="margin-top:14px;">
+              Ces chiffres sont des estimations basées sur la durée des vidéos traitées et l'usage de Claude Vision —
+              ils servent à comprendre la rentabilité de votre compte, pas à établir une facture.
+            </p>
           </div>
+
+          <div class="card">
+            <h2>Vue d'ensemble</h2>
+            <div class="period-tabs">
+              <button class="period-btn active" data-period="all_time" onclick="showPeriod('all_time', this)">Total</button>
+              <button class="period-btn" data-period="today" onclick="showPeriod('today', this)">Aujourd'hui</button>
+              <button class="period-btn" data-period="week" onclick="showPeriod('week', this)">7 derniers jours</button>
+              <button class="period-btn" data-period="month" onclick="showPeriod('month', this)">30 derniers jours</button>
+            </div>
+
+            {% for key, label in [('all_time','Total'), ('today',"Aujourd'hui"), ('week','7 derniers jours'), ('month','30 derniers jours')] %}
+            <div class="period-panel {% if loop.first %}active{% endif %}" data-period="{{ key }}">
+              {% set s = summary[key] %}
+              <div class="stat-grid">
+                <div class="stat">
+                  <div class="lbl">Générations</div>
+                  <div class="val">{{ s.total }}</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Réussies</div>
+                  <div class="val success">{{ s.successes }}</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Échouées</div>
+                  <div class="val error">{{ s.failures }}</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Minutes générées</div>
+                  <div class="val">{{ (s.total_seconds / 60) | round(1) }}</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Coût estimé</div>
+                  <div class="val">${{ "%.2f"|format(s.total_cost) }}</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Vidéos sources</div>
+                  <div class="val">{{ s.total_source_videos }}</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Vidéos générées</div>
+                  <div class="val">{{ s.total_output_videos }}</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl">Requêtes Claude</div>
+                  <div class="val">{{ s.total_claude_requests }}</div>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+
+            <p class="muted" style="margin-top:18px;">
+              Les coûts affichés sont des estimations approximatives basées sur la durée des vidéos traitées
+              et l'utilisation de l'API Claude Vision — elles ne reflètent pas une facturation réelle.
+            </p>
+          </div>
+
+          {% if usage_by_mode %}
+          <div class="card">
+            <h2>Par mode</h2>
+            <div class="stat-grid">
+              {% for m in usage_by_mode %}
+              <div class="stat">
+                <div class="lbl">
+                  {% if m.mode == 'simple' %}🎬 Simple
+                  {% elif m.mode == 'batch' %}📦 Batch
+                  {% elif m.mode == 'variation' %}🎲 Variation
+                  {% else %}{{ m.mode }}
+                  {% endif %}
+                </div>
+                <div class="val">{{ m.total }}</div>
+                <div class="muted" style="margin-top:6px;">
+                  {{ m.successes }} réussies · {{ m.failures }} échouées · ${{ "%.2f"|format(m.total_cost) }}
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
         </div>
-        {% endfor %}
-      </div>
+      </main>
     </div>
-    {% endif %}
   </div>
 
   <script>
