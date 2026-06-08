@@ -107,6 +107,48 @@
     .v-opt:has(input:checked) { background: var(--accent); color: #fff; border-color: var(--accent); }
     .v-opt input { accent-color: var(--accent); }
     #vProgressCard { display: none; width: 100%; max-width: 660px; }
+
+    /* ── Variation mode: count input + slider ── */
+    .v-count-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .v-count-num { width: 76px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px;
+      background: var(--bg); color: var(--text); font-size: 0.92rem; font-weight: 700; text-align: center; }
+    .v-count-row input[type="range"] { flex: 1; min-width: 140px; accent-color: var(--accent); }
+    .v-quick-btn { padding: 6px 13px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg);
+      color: var(--muted); font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all .15s; }
+    .v-quick-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Variation mode: config-mode toggle ── */
+    .v-modeswitch { display: flex; gap: 8px; margin-bottom: 16px; }
+    .v-modeswitch label { flex: 1; text-align: center; padding: 10px 14px; border: 1px solid var(--border);
+      border-radius: 10px; background: var(--bg); color: var(--muted); font-size: 0.86rem; font-weight: 700;
+      cursor: pointer; transition: all .15s; }
+    .v-modeswitch label:has(input:checked) { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .v-modeswitch input { display: none; }
+
+    /* ── Variation mode: advanced sliders ── */
+    #vAdvancedPanel { display: none; }
+    .v-group-title { font-size: 0.78rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+      color: var(--accent); margin: 18px 0 10px; }
+    .v-group-title:first-child { margin-top: 0; }
+    .v-slider-row { display: grid; grid-template-columns: 130px 1fr 46px; align-items: center; gap: 12px; margin-bottom: 10px; }
+    .v-slider-row label { font-size: 0.83rem; color: var(--text); font-weight: 600; }
+    .v-slider-row input[type="range"] { accent-color: var(--accent); width: 100%; }
+    .v-slider-val { font-size: 0.8rem; color: var(--muted); font-weight: 700; text-align: right; }
+    .v-adv-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+    .v-ghost-btn { padding: 9px 16px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg);
+      color: var(--text); font-size: 0.84rem; font-weight: 700; cursor: pointer; transition: all .15s; }
+    .v-ghost-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Variation mode: presets ── */
+    .v-preset-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+    .v-preset-row input[type="text"], .v-preset-row select { padding: 8px 12px; border: 1px solid var(--border);
+      border-radius: 9px; background: var(--bg); color: var(--text); font-size: 0.84rem; min-width: 160px; }
+
+    /* ── Variation mode: estimation panel ── */
+    .v-est-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+    .v-est-item { padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+    .v-est-label { font-size: 0.74rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+    .v-est-value { font-size: 1.12rem; color: var(--text); font-weight: 800; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -256,16 +298,24 @@
 
     <div style="margin-bottom:18px;">
       <div style="font-size:0.84rem;font-weight:600;margin-bottom:8px;color:var(--text)">Nombre de variations</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <label class="v-opt"><input type="radio" name="vCount" value="10" checked> 10</label>
-        <label class="v-opt"><input type="radio" name="vCount" value="25"> 25</label>
-        <label class="v-opt"><input type="radio" name="vCount" value="50"> 50</label>
-        <label class="v-opt"><input type="radio" name="vCount" value="100"> 100</label>
+      <div class="v-count-row">
+        <input type="number" id="vCountNum" class="v-count-num" min="1" max="100" value="10">
+        <input type="range" id="vCountSlider" min="1" max="100" value="10">
+        <button type="button" class="v-quick-btn" data-vcount="10">10</button>
+        <button type="button" class="v-quick-btn" data-vcount="25">25</button>
+        <button type="button" class="v-quick-btn" data-vcount="50">50</button>
+        <button type="button" class="v-quick-btn" data-vcount="100">100</button>
       </div>
       <div id="vCountWarning" style="display:none;color:var(--error);font-size:0.8rem;margin-top:8px;">Maximum 100 variations allowed.</div>
     </div>
 
-    <div>
+    <div class="v-modeswitch">
+      <label><input type="radio" name="vConfigMode" value="preset" checked> 🪄 Mode Préréglages <span style="font-weight:500;opacity:.8">(débutant)</span></label>
+      <label><input type="radio" name="vConfigMode" value="advanced"> 🛠️ Mode Avancé <span style="font-weight:500;opacity:.8">(16 réglages)</span></label>
+    </div>
+
+    <!-- Preset mode panel -->
+    <div id="vPresetPanel">
       <div style="font-size:0.84rem;font-weight:600;margin-bottom:8px;color:var(--text)">Intensité des variations</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <label class="v-opt"><input type="radio" name="vStrength" value="light" checked> 🪶 Légère</label>
@@ -275,6 +325,66 @@
       <div style="font-size:0.78rem;color:var(--muted);margin-top:8px;">
         Légère = changements discrets (recommandé). Plus l'intensité augmente, plus les vidéos générées diffèrent visuellement de la source.
       </div>
+    </div>
+
+    <!-- Advanced mode panel -->
+    <div id="vAdvancedPanel">
+      <div style="font-size:0.78rem;color:var(--muted);margin-bottom:6px;">
+        0 = désactivé · 50 = recommandé · 100 = variation maximale (les vidéos restent toujours visuellement propres, jamais corrompues).
+      </div>
+
+      <div class="v-group-title">🎨 Visuel</div>
+      <div class="v-slider-row"><label for="vAdv_brightness">Luminosité</label><input type="range" id="vAdv_brightness" min="0" max="100" value="50" data-vadv="brightness"><span class="v-slider-val" id="vAdv_brightness_val">50</span></div>
+      <div class="v-slider-row"><label for="vAdv_contrast">Contraste</label><input type="range" id="vAdv_contrast" min="0" max="100" value="50" data-vadv="contrast"><span class="v-slider-val" id="vAdv_contrast_val">50</span></div>
+      <div class="v-slider-row"><label for="vAdv_saturation">Saturation</label><input type="range" id="vAdv_saturation" min="0" max="100" value="50" data-vadv="saturation"><span class="v-slider-val" id="vAdv_saturation_val">50</span></div>
+      <div class="v-slider-row"><label for="vAdv_gamma">Gamma</label><input type="range" id="vAdv_gamma" min="0" max="100" value="50" data-vadv="gamma"><span class="v-slider-val" id="vAdv_gamma_val">50</span></div>
+      <div class="v-slider-row"><label for="vAdv_noise">Bruit / Grain</label><input type="range" id="vAdv_noise" min="0" max="100" value="50" data-vadv="noise"><span class="v-slider-val" id="vAdv_noise_val">50</span></div>
+      <div class="v-slider-row"><label for="vAdv_sharpness">Netteté</label><input type="range" id="vAdv_sharpness" min="0" max="100" value="50" data-vadv="sharpness"><span class="v-slider-val" id="vAdv_sharpness_val">50</span></div>
+      <div class="v-slider-row"><label for="vAdv_blur">Flou</label><input type="range" id="vAdv_blur" min="0" max="100" value="50" data-vadv="blur"><span class="v-slider-val" id="vAdv_blur_val">50</span></div>
+      <div class="v-slider-row"><label for="vAdv_zoom">Zoom</label><input type="range" id="vAdv_zoom" min="0" max="100" value="50" data-vadv="zoom"><span class="v-slider-val" id="vAdv_zoom_val">50</span></div>
+      <div class="v-slider-row"><label for="vAdv_crop">Recadrage</label><input type="range" id="vAdv_crop" min="0" max="100" value="50" data-vadv="crop"><span class="v-slider-val" id="vAdv_crop_val">50</span></div>
+      <div class="v-slider-row"><label for="vAdv_rotation">Rotation</label><input type="range" id="vAdv_rotation" min="0" max="100" value="50" data-vadv="rotation"><span class="v-slider-val" id="vAdv_rotation_val">50</span></div>
+
+      <div class="v-group-title">🎬 Mouvement</div>
+      <div class="v-slider-row"><label for="vAdv_speed">Vitesse vidéo</label><input type="range" id="vAdv_speed" min="0" max="100" value="50" data-vadv="speed"><span class="v-slider-val" id="vAdv_speed_val">50</span></div>
+
+      <div class="v-group-title">🔊 Audio</div>
+      <div class="v-slider-row"><label for="vAdv_volume">Volume audio</label><input type="range" id="vAdv_volume" min="0" max="100" value="50" data-vadv="volume"><span class="v-slider-val" id="vAdv_volume_val">50</span></div>
+      <div class="v-slider-row"><label for="vAdv_pitch">Tonalité audio</label><input type="range" id="vAdv_pitch" min="0" max="100" value="50" data-vadv="pitch"><span class="v-slider-val" id="vAdv_pitch_val">50</span></div>
+
+      <div class="v-group-title">⚙️ Encodage</div>
+      <div class="v-slider-row"><label for="vAdv_fps">Variation FPS</label><input type="range" id="vAdv_fps" min="0" max="100" value="50" data-vadv="fps"><span class="v-slider-val" id="vAdv_fps_val">50</span></div>
+      <div class="v-slider-row"><label for="vAdv_bitrate">Variation bitrate</label><input type="range" id="vAdv_bitrate" min="0" max="100" value="50" data-vadv="bitrate"><span class="v-slider-val" id="vAdv_bitrate_val">50</span></div>
+
+      <div class="v-group-title">🏷️ Métadonnées</div>
+      <div class="v-slider-row"><label for="vAdv_metadata">Aléatoire métadonnées</label><input type="range" id="vAdv_metadata" min="0" max="100" value="50" data-vadv="metadata"><span class="v-slider-val" id="vAdv_metadata_val">50</span></div>
+
+      <div class="v-adv-actions">
+        <button type="button" class="v-ghost-btn" id="vRandomizeBtn">🎲 Randomiser la configuration</button>
+        <button type="button" class="v-ghost-btn" id="vResetAdvBtn">↺ Réinitialiser (50)</button>
+      </div>
+
+      <div class="v-preset-row">
+        <input type="text" id="vPresetName" placeholder="Nom du préréglage (ex: Kevin V1)" maxlength="80">
+        <button type="button" class="v-ghost-btn" id="vSavePresetBtn">💾 Sauvegarder le préréglage</button>
+      </div>
+      <div class="v-preset-row">
+        <select id="vPresetSelect"><option value="">— Charger un préréglage —</option></select>
+        <button type="button" class="v-ghost-btn" id="vLoadPresetBtn">📂 Charger</button>
+        <button type="button" class="v-ghost-btn" id="vDeletePresetBtn">🗑️ Supprimer</button>
+      </div>
+      <div id="vPresetMsg" style="font-size:0.78rem;color:var(--muted);margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <!-- Estimated output -->
+  <div class="card">
+    <h2><span class="num">3</span> Estimation</h2>
+    <div class="v-est-grid">
+      <div class="v-est-item"><div class="v-est-label">Variations</div><div class="v-est-value" id="vEstCount">10</div></div>
+      <div class="v-est-item"><div class="v-est-label">Durée source</div><div class="v-est-value" id="vEstDuration">—</div></div>
+      <div class="v-est-item"><div class="v-est-label">Temps estimé</div><div class="v-est-value" id="vEstTime">—</div></div>
+      <div class="v-est-item"><div class="v-est-label">Coût estimé</div><div class="v-est-value" id="vEstCost">—</div></div>
     </div>
   </div>
 
@@ -752,12 +862,32 @@ const vInput = document.getElementById("vInput");
 const vZone  = document.getElementById("vZone");
 const vName  = document.getElementById("vName");
 
+let vSourceDuration = null;
+
+function probeVariationDuration(file) {
+  vSourceDuration = null;
+  updateVariationEstimate();
+  try {
+    const url = URL.createObjectURL(file);
+    const probe = document.createElement("video");
+    probe.preload = "metadata";
+    probe.src = url;
+    probe.onloadedmetadata = () => {
+      if (isFinite(probe.duration) && probe.duration > 0) vSourceDuration = probe.duration;
+      URL.revokeObjectURL(url);
+      updateVariationEstimate();
+    };
+    probe.onerror = () => { URL.revokeObjectURL(url); };
+  } catch(e) { /* best-effort estimate only — never blocks the actual flow */ }
+}
+
 function handleVariationFile(file) {
   if (!file || !isVideoFile(file)) return;
   vFile = file;
   const dt = new DataTransfer(); dt.items.add(file); vInput.files = dt.files;
   vName.textContent = "✓ " + file.name;
   vJobId = null; // a new source means a fresh server-side job on next run
+  probeVariationDuration(file);
   checkVariationReady();
 }
 vInput.addEventListener("change", () => handleVariationFile(vInput.files[0]));
@@ -771,21 +901,212 @@ vZone.addEventListener("drop", e => {
 // Enforce the 100-variation hard cap purely client-side too (the
 // server re-validates independently in /variation_stage and
 // /variation_run — this is just instant feedback / UX).
-document.querySelectorAll('input[name="vCount"]').forEach(r => {
-  r.addEventListener("change", () => {
-    const warn = document.getElementById("vCountWarning");
-    warn.style.display = (parseInt(r.value, 10) > MAX_VARIATIONS_CLIENT) ? "block" : "none";
-    checkVariationReady();
-  });
+//
+// Count is now a numeric input synced bidirectionally with a range
+// slider (min 1, max 100, default 10), plus 10/25/50/100 quick-shortcut
+// buttons that set both. Replaces the old fixed-radio selector.
+const vCountNum    = document.getElementById("vCountNum");
+const vCountSlider = document.getElementById("vCountSlider");
+
+function setVariationCount(n) {
+  n = Math.max(1, Math.min(100, parseInt(n, 10) || 1));
+  vCountNum.value    = n;
+  vCountSlider.value = n;
+  const warn = document.getElementById("vCountWarning");
+  warn.style.display = (n > MAX_VARIATIONS_CLIENT) ? "block" : "none";
+  updateVariationEstimate();
+  checkVariationReady();
+}
+vCountNum.addEventListener("input",  () => setVariationCount(vCountNum.value));
+vCountSlider.addEventListener("input", () => setVariationCount(vCountSlider.value));
+document.querySelectorAll(".v-quick-btn[data-vcount]").forEach(btn => {
+  btn.addEventListener("click", () => setVariationCount(btn.dataset.vcount));
 });
 
 function getVariationCount() {
-  const sel = document.querySelector('input[name="vCount"]:checked');
-  return sel ? parseInt(sel.value, 10) : 10;
+  return Math.max(1, Math.min(100, parseInt(vCountNum.value, 10) || 10));
 }
 function getVariationStrength() {
   const sel = document.querySelector('input[name="vStrength"]:checked');
   return sel ? sel.value : "light";
+}
+function getVariationConfigMode() {
+  const sel = document.querySelector('input[name="vConfigMode"]:checked');
+  return sel ? sel.value : "preset";
+}
+document.querySelectorAll('input[name="vStrength"]').forEach(r => {
+  r.addEventListener("change", updateVariationEstimate);
+});
+
+// ── Preset Mode / Advanced Mode toggle ──
+const vPresetPanel   = document.getElementById("vPresetPanel");
+const vAdvancedPanel = document.getElementById("vAdvancedPanel");
+document.querySelectorAll('input[name="vConfigMode"]').forEach(r => {
+  r.addEventListener("change", () => {
+    const adv = getVariationConfigMode() === "advanced";
+    vPresetPanel.style.display   = adv ? "none"  : "block";
+    vAdvancedPanel.style.display = adv ? "block" : "none";
+    updateVariationEstimate();
+  });
+});
+
+// ── Advanced Mode: 16 individual sliders ──
+const ADVANCED_SLIDER_KEYS_CLIENT = [
+  "brightness", "contrast", "saturation", "gamma", "noise", "sharpness",
+  "blur", "zoom", "crop", "rotation", "speed", "volume", "pitch",
+  "fps", "bitrate", "metadata",
+];
+
+function getAdvancedConfig() {
+  const cfg = {};
+  ADVANCED_SLIDER_KEYS_CLIENT.forEach(key => {
+    const el = document.getElementById("vAdv_" + key);
+    cfg[key] = el ? Math.max(0, Math.min(100, parseInt(el.value, 10) || 0)) : ADVANCED_SLIDER_DEFAULT_CLIENT;
+  });
+  return cfg;
+}
+function setAdvancedConfig(cfg) {
+  ADVANCED_SLIDER_KEYS_CLIENT.forEach(key => {
+    const el  = document.getElementById("vAdv_" + key);
+    const val = document.getElementById("vAdv_" + key + "_val");
+    if (!el) return;
+    const raw = (cfg && cfg[key] != null) ? cfg[key] : ADVANCED_SLIDER_DEFAULT_CLIENT;
+    const v = Math.max(0, Math.min(100, parseInt(raw, 10) || ADVANCED_SLIDER_DEFAULT_CLIENT));
+    el.value = v;
+    if (val) val.textContent = v;
+  });
+  updateVariationEstimate();
+}
+const ADVANCED_SLIDER_DEFAULT_CLIENT = 50;
+ADVANCED_SLIDER_KEYS_CLIENT.forEach(key => {
+  const el  = document.getElementById("vAdv_" + key);
+  const val = document.getElementById("vAdv_" + key + "_val");
+  if (!el) return;
+  el.addEventListener("input", () => {
+    if (val) val.textContent = el.value;
+    updateVariationEstimate();
+  });
+});
+
+document.getElementById("vRandomizeBtn").addEventListener("click", () => {
+  const cfg = {};
+  ADVANCED_SLIDER_KEYS_CLIENT.forEach(key => { cfg[key] = Math.floor(Math.random() * 101); });
+  setAdvancedConfig(cfg);
+  const msg = document.getElementById("vPresetMsg");
+  msg.textContent = "🎲 Configuration aléatoire générée — vous pouvez la sauvegarder en préréglage.";
+  msg.style.color = "var(--muted)";
+});
+document.getElementById("vResetAdvBtn").addEventListener("click", () => {
+  const cfg = {};
+  ADVANCED_SLIDER_KEYS_CLIENT.forEach(key => { cfg[key] = ADVANCED_SLIDER_DEFAULT_CLIENT; });
+  setAdvancedConfig(cfg);
+});
+
+// ── Save / Load / Delete presets (per-user, server-stored) ──
+async function refreshVariationPresets() {
+  const sel = document.getElementById("vPresetSelect");
+  try {
+    const r = await fetch("/variation_presets");
+    const d = await r.json();
+    const presets = (d && d.presets) || [];
+    sel.innerHTML = '<option value="">— Charger un préréglage —</option>' +
+      presets.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
+    sel.dataset.presets = JSON.stringify(presets);
+  } catch(e) { /* presets are optional UX sugar — silent on failure */ }
+}
+refreshVariationPresets();
+
+document.getElementById("vSavePresetBtn").addEventListener("click", async () => {
+  const nameEl = document.getElementById("vPresetName");
+  const msg    = document.getElementById("vPresetMsg");
+  const name   = (nameEl.value || "").trim();
+  if (!name) { msg.textContent = "Donnez un nom au préréglage."; msg.style.color = "var(--error)"; return; }
+  msg.textContent = "Sauvegarde…"; msg.style.color = "var(--muted)";
+  try {
+    const fd = new FormData();
+    fd.append("name", name);
+    fd.append("config_json", JSON.stringify(getAdvancedConfig()));
+    const r = await fetch("/variation_preset_save", { method: "POST", body: fd });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+    msg.textContent = `✅ Préréglage "${name}" sauvegardé.`; msg.style.color = "var(--success)";
+    nameEl.value = "";
+    refreshVariationPresets();
+  } catch(e) {
+    msg.textContent = "❌ " + e.message; msg.style.color = "var(--error)";
+  }
+});
+
+document.getElementById("vLoadPresetBtn").addEventListener("click", () => {
+  const sel = document.getElementById("vPresetSelect");
+  const msg = document.getElementById("vPresetMsg");
+  const presets = JSON.parse(sel.dataset.presets || "[]");
+  const picked = presets.find(p => String(p.id) === sel.value);
+  if (!picked) { msg.textContent = "Sélectionnez un préréglage à charger."; msg.style.color = "var(--error)"; return; }
+  try {
+    setAdvancedConfig(JSON.parse(picked.config_json));
+    msg.textContent = `📂 Préréglage "${picked.name}" chargé.`; msg.style.color = "var(--success)";
+  } catch(e) {
+    msg.textContent = "❌ Préréglage invalide."; msg.style.color = "var(--error)";
+  }
+});
+
+document.getElementById("vDeletePresetBtn").addEventListener("click", async () => {
+  const sel = document.getElementById("vPresetSelect");
+  const msg = document.getElementById("vPresetMsg");
+  if (!sel.value) { msg.textContent = "Sélectionnez un préréglage à supprimer."; msg.style.color = "var(--error)"; return; }
+  try {
+    const fd = new FormData();
+    fd.append("id", sel.value);
+    const r = await fetch("/variation_preset_delete", { method: "POST", body: fd });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+    msg.textContent = "🗑️ Préréglage supprimé."; msg.style.color = "var(--success)";
+    refreshVariationPresets();
+  } catch(e) {
+    msg.textContent = "❌ " + e.message; msg.style.color = "var(--error)";
+  }
+});
+
+// ── Estimated Output panel (client-side estimate only — never sent
+// to the server, never affects actual generation or billing) ──
+const EST_COST_PER_SECOND_PER_VARIANT_CLIENT = 0.002; // mirrors EST_VARIATION_COST_PER_SECOND_PER_VARIANT
+
+function estimateVariationLoadFactor() {
+  if (getVariationConfigMode() === "advanced") {
+    const cfg = getAdvancedConfig();
+    const avg = ADVANCED_SLIDER_KEYS_CLIENT.reduce((s, k) => s + cfg[k], 0) / ADVANCED_SLIDER_KEYS_CLIENT.length;
+    return 0.35 + (avg / 100) * 0.55; // ~0.35x .. 0.90x source duration per variant
+  }
+  const strength = getVariationStrength();
+  return strength === "strong" ? 0.7 : strength === "medium" ? 0.55 : 0.4;
+}
+function formatVariationDuration(totalSeconds) {
+  if (!isFinite(totalSeconds) || totalSeconds <= 0) return "—";
+  const s = Math.round(totalSeconds);
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60), r = s % 60;
+  if (m < 60) return `${m} min ${r}s`;
+  const h = Math.floor(m / 60), rm = m % 60;
+  return `${h} h ${rm} min`;
+}
+function updateVariationEstimate() {
+  const countEl = document.getElementById("vEstCount");
+  if (!countEl) return; // panel not yet in DOM during early init
+  const count = getVariationCount();
+  countEl.textContent = count;
+  document.getElementById("vEstDuration").textContent =
+    vSourceDuration ? formatVariationDuration(vSourceDuration) : "—";
+
+  if (!vSourceDuration) {
+    document.getElementById("vEstTime").textContent = "—";
+    document.getElementById("vEstCost").textContent = "—";
+    return;
+  }
+  const perVariant = vSourceDuration * estimateVariationLoadFactor();
+  document.getElementById("vEstTime").textContent = formatVariationDuration(perVariant * count);
+  document.getElementById("vEstCost").textContent =
+    "$" + (EST_COST_PER_SECOND_PER_VARIANT_CLIENT * vSourceDuration * count).toFixed(2);
 }
 
 function checkVariationReady() {
@@ -804,8 +1125,10 @@ function checkVariationReady() {
 //      and clean up server-side staging/output (/variation_cleanup).
 async function runVariation() {
   if (!vFile || vRunning) return;
-  const count    = getVariationCount();
-  const strength = getVariationStrength();
+  const count      = getVariationCount();
+  const strength   = getVariationStrength();
+  const configMode = getVariationConfigMode();
+  const advancedConfig = (configMode === "advanced") ? getAdvancedConfig() : null;
 
   if (count > MAX_VARIATIONS_CLIENT) {
     alert("Maximum 100 variations allowed.");
@@ -853,6 +1176,10 @@ async function runVariation() {
         fd.append("index", i);
         fd.append("count", count);
         fd.append("strength", strength);
+        fd.append("config_mode", configMode);
+        if (configMode === "advanced" && advancedConfig) {
+          fd.append("advanced_config", JSON.stringify(advancedConfig));
+        }
         const r = await fetch("/variation_run", { method: "POST", body: fd });
         const d = await r.json();
         if (!r.ok || d.error) throw new Error(d.error || r.statusText);
@@ -948,6 +1275,9 @@ async function downloadVariationZip() {
     btn.textContent = origText;
   }
 }
+
+// Initial sync: numeric input ↔ slider ↔ warning ↔ estimation panel.
+setVariationCount(10);
 </script>
 </body>
 </html>
