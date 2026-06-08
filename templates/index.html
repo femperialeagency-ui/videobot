@@ -327,6 +327,17 @@ filter: none; transition: transform .2s ease; }
 word-break: break-all; font-weight: 600; padding: 3px 9px; border-radius: 999px;
 background: var(--success-bg); border: 1px solid var(--success-bd); display: inline-block; }
 .drop-zone .fn:empty { display: none; }
+
+/* ── V3 compact upload card — validated maquette structure (filebox 42px + meta + horizontal layout, ~108px height) ── */
+.drop-zone.upcard { display: flex; align-items: center; gap: 12px; text-align: left; padding: 13px 14px; height: 108px; }
+.drop-zone.upcard .filebox { position: relative; z-index: 1; width: 42px; height: 42px; min-width: 42px; border-radius: 8px;
+background: var(--surface-2); border: 1px solid var(--border-strong); display: flex; align-items: center; justify-content: center;
+color: var(--accent); flex-shrink: 0; transition: transform .2s ease; }
+.drop-zone.upcard:hover .filebox { transform: scale(1.04); }
+.drop-zone.upcard .meta { position: relative; z-index: 1; min-width: 0; flex: 1; }
+.drop-zone.upcard .lbl { margin: 0 0 2px; }
+.drop-zone.upcard .sub { margin: 0; }
+.drop-zone.upcard .fn { margin: 4px 0 0; }
 .status-bar { font-size: 0.78rem; padding: 8px 12px; border-radius: 7px; margin-bottom: 12px; display: none; }
 .batch-combo-preview:not(:empty) { font-size: 0.8rem; color: var(--text); margin-top: 10px;
 padding: 9px 12px; border-radius: 8px; font-weight: 500;
@@ -342,9 +353,10 @@ transition: border-color .2s, background .2s; }
 border: 1px solid var(--border); }
 .pbar-fill { height: 100%; background: var(--accent);
 border-radius: 999px; transition: width .4s; width: 0%; box-shadow: none; }
-.primary-btn { width: 100%; max-width: 700px; padding: 12px;
+.primary-btn { width: 100%; max-width: 700px; height: 46px; padding: 0 16px;
+display: flex; align-items: center; justify-content: center; gap: 8px;
 background: var(--accent);
-border: 1px solid var(--border-strong); border-radius: var(--radius); color: #fff;
+border: 1px solid var(--border-strong); border-radius: 7px; color: #fff;
 font-size: 0.88rem; font-weight: 700; letter-spacing: .01em; cursor: pointer;
 box-shadow: none;
 transition: opacity .15s ease; margin-bottom: 16px; }
@@ -823,19 +835,23 @@ class="kpi-label">Vidéos générées</div>
 </div>
 
 <div class="drop-row">
-<div class="drop-zone" id="zoneA">
+<div class="drop-zone upcard" id="zoneA">
 <input type="file" name="video_a" id="inputA" accept="video/*" required />
-<div class="icon"><span class="ico-svg lg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="5" width="9" height="8" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M11.5 8 L15.5 6 V12 L11.5 10 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span></div>
+<span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="5" width="9" height="8" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M11.5 8 L15.5 6 V12 L11.5 10 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
+<div class="meta">
 <div class="lbl">Vidéo A</div>
 <div class="sub">Tes visuels</div>
 <div class="fn" id="nameA"></div>
 </div>
-<div class="drop-zone" id="zoneB">
+</div>
+<div class="drop-zone upcard" id="zoneB">
 <input type="file" name="video_b" id="inputB" accept="video/*" required />
-<div class="icon"><span class="ico-svg lg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 13 V4.5 L13.5 3 V11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="5.5" cy="13" r="1.7" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="11.5" r="1.7" stroke="currentColor" stroke-width="1.5"/></svg></span></div>
+<span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 13 V4.5 L13.5 3 V11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="5.5" cy="13" r="1.7" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="11.5" r="1.7" stroke="currentColor" stroke-width="1.5"/></svg></span>
+<div class="meta">
 <div class="lbl">Vidéo B</div>
 <div class="sub">Audio + texte source</div>
 <div class="fn" id="nameB"></div>
+</div>
 </div>
 </div>
 </div>
@@ -850,7 +866,7 @@ class="kpi-label">Vidéos générées</div>
 <input type="hidden" id="linesJson" />
 </div>
 
-<button id="submitBtn" class="primary-btn" onclick="submitForm()" disabled><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 2 L4.5 10.5 H8.3 L7.4 16 L13.5 7 H9.5 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="currentColor" fill-opacity=".18"/></svg></span> Générer la Vidéo C</button>
+<button id="submitBtn" class="primary-btn" onclick="submitForm()" disabled><svg class="ico-svg sm" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 2 L4.5 10.5 H8.3 L7.4 16 L13.5 7 H9.5 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="currentColor" fill-opacity=".18"/></svg> Générer la Vidéo C</button>
 
 <div class="card" id="progressCard">
 <h2><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Traitement en cours…</h2>
@@ -891,19 +907,23 @@ BATCH MODE
 </div>
 
 <div class="drop-row">
-<div class="drop-zone" id="bZoneA">
+<div class="drop-zone upcard" id="bZoneA">
 <input type="file" id="bInputA" accept="video/*" multiple />
-<div class="icon"><span class="ico-svg lg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="5" width="9" height="8" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M11.5 8 L15.5 6 V12 L11.5 10 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span></div>
+<span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="5" width="9" height="8" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M11.5 8 L15.5 6 V12 L11.5 10 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
+<div class="meta">
 <div class="lbl">Vidéos sources (A)</div>
 <div class="sub">1 à 10 fichiers</div>
 <div class="fn" id="bNameA"></div>
 </div>
-<div class="drop-zone" id="bZoneB">
+</div>
+<div class="drop-zone upcard" id="bZoneB">
 <input type="file" id="bInputB" accept="video/*" multiple />
-<div class="icon"><span class="ico-svg lg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 13 V4.5 L13.5 3 V11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="5.5" cy="13" r="1.7" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="11.5" r="1.7" stroke="currentColor" stroke-width="1.5"/></svg></span></div>
+<span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 13 V4.5 L13.5 3 V11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="5.5" cy="13" r="1.7" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="11.5" r="1.7" stroke="currentColor" stroke-width="1.5"/></svg></span>
+<div class="meta">
 <div class="lbl">Vidéos cibles (B)</div>
 <div class="sub">1 à 10 fichiers</div>
 <div class="fn" id="bNameB"></div>
+</div>
 </div>
 </div>
 <div id="bComboPreview" class="batch-combo-preview"></div>
@@ -932,7 +952,7 @@ BATCH MODE
 </div>
 {% endif %}
 
-<button id="bLaunchBtn" class="primary-btn" onclick="runBatch()" disabled><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 2 L4.5 10.5 H8.3 L7.4 16 L13.5 7 H9.5 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="currentColor" fill-opacity=".18"/></svg></span> Lancer le Batch</button>
+<button id="bLaunchBtn" class="primary-btn" onclick="runBatch()" disabled><svg class="ico-svg sm" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 2 L4.5 10.5 H8.3 L7.4 16 L13.5 7 H9.5 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="currentColor" fill-opacity=".18"/></svg> Lancer le Batch</button>
 
 <!-- Progress + per-video results -->
 <div class="card" id="bProgressCard">
@@ -957,12 +977,14 @@ download as ZIP. No Claude Vision, no captions.
 <!-- Upload -->
 <div class="card">
 <h2><span class="num">1</span> Source Video</h2>
-<div class="drop-zone" id="vZone" style="max-width:320px;margin:0 auto;">
+<div class="drop-zone upcard" id="vZone" style="max-width:420px;margin:0 auto;">
 <input type="file" id="vInput" accept="video/*" />
-<div class="icon"><span class="ico-svg lg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span></div>
+<span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span>
+<div class="meta">
 <div class="lbl">Vidéo source</div>
 <div class="sub">1 seul fichier</div>
 <div class="fn" id="vName"></div>
+</div>
 </div>
 </div>
 
@@ -1070,7 +1092,7 @@ Score d'unicité et score de sécurité : indicateurs estimés côté navigateur
 </div>
 </div>
 
-<button id="vLaunchBtn" class="primary-btn" onclick="runVariation()" disabled><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span> Générer les variations</button>
+<button id="vLaunchBtn" class="primary-btn" onclick="runVariation()" disabled><svg class="ico-svg sm" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg> Générer les variations</button>
 
 <!-- Progress + per-item results -->
 <div class="card" id="vProgressCard">
