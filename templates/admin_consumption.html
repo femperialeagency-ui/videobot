@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VideoBot — Consommation (admin)</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f0f13; --surface: #1a1a24; --border: #2e2e42;
+      --accent: #7c5cfc; --accent2: #a78bfa; --text: #e8e8f0;
+      --muted: #8888aa; --error: #f87171; --ok: #4ade80; --warn: #fbbf24; --radius: 12px;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh;
+      padding: 32px 24px 64px; }
+    .wrap { max-width: 1100px; margin: 0 auto; }
+    .topbar { display: flex; justify-content: space-between; align-items: baseline;
+      flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
+    h1 { font-size: 1.6rem; font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .topbar-links { display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
+    .topbar a { color: var(--accent2); text-decoration: none; font-size: 0.85rem; }
+    .topbar a:hover { text-decoration: underline; }
+    .card { background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px; margin-bottom: 24px; }
+    .card h2 { font-size: 1rem; font-weight: 600; color: var(--accent2); margin-bottom: 16px; }
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; }
+    .stat { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+    .stat .lbl { font-size: 0.74rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 6px; }
+    .stat .val { font-size: 1.35rem; font-weight: 700; }
+    .stat .val.success { color: var(--ok); }
+    .stat .val.error { color: var(--error); }
+    .period-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .period-btn { padding: 7px 16px; border: 1px solid var(--border); border-radius: 8px;
+      background: var(--bg); color: var(--muted); cursor: pointer; font-size: 0.82rem;
+      font-weight: 600; transition: all .15s; }
+    .period-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .period-btn:hover:not(.active) { border-color: var(--accent); color: var(--accent2); }
+    .period-panel { display: none; }
+    .period-panel.active { display: block; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 0.74rem; text-transform: uppercase; letter-spacing: .03em; }
+    th a { color: var(--muted); text-decoration: none; }
+    th a:hover { color: var(--accent2); }
+    th a.active-sort { color: var(--accent2); }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; margin: 1px 3px 1px 0; white-space: nowrap; }
+    .badge.admin { background: rgba(124,92,252,.18); color: var(--accent2); }
+    .badge.member { background: rgba(136,136,170,.18); color: var(--muted); }
+    .badge.plan { background: rgba(124,92,252,.14); color: var(--accent2); }
+    .badge.warn-generations { background: rgba(251,191,36,.16); color: var(--warn); }
+    .badge.warn-cost { background: rgba(248,113,113,.16); color: var(--error); }
+    .badge.warn-claude { background: rgba(167,139,250,.18); color: var(--accent2); }
+    .muted { color: var(--muted); font-size: 0.82rem; }
+    .chart-wrap { overflow-x: auto; }
+    .chart-caption { font-size: 0.74rem; color: var(--muted); text-align: center; margin-top: 6px; }
+    @media (max-width: 720px) {
+      .stat-grid { grid-template-columns: repeat(2, 1fr); }
+      table, thead, tbody, th, td, tr { display: block; }
+      thead { display: none; }
+      tr { border-bottom: 1px solid var(--border); padding: 10px 0; }
+      td { border: none; padding: 4px 0; }
+      td.num { text-align: left; }
+      td::before { content: attr(data-label) ": "; color: var(--muted); font-size: 0.72rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <h1>Consommation — vue admin</h1>
+      <div class="topbar-links">
+        <a href="{{ url_for('consumption') }}">Ma consommation</a>
+        <a href="{{ url_for('admin_users') }}">Gestion équipe</a>
+        <a href="{{ url_for('index') }}">← Retour au bot</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Statistiques globales ({{ total_users }} compte{{ "s" if total_users != 1 else "" }})</h2>
+      <div class="period-tabs">
+        <button class="period-btn active" data-period="all_time" onclick="showPeriod('all_time', this)">Tout</button>
+        <button class="period-btn" data-period="today" onclick="showPeriod('today', this)">Aujourd'hui</button>
+        <button class="period-btn" data-period="last_7d" onclick="showPeriod('last_7d', this)">7 derniers jours</button>
+        <button class="period-btn" data-period="last_30d" onclick="showPeriod('last_30d', this)">30 derniers jours</button>
+      </div>
+
+      {% for key, label in [('all_time','Tout'), ('today',"Aujourd'hui"), ('last_7d','7 derniers jours'), ('last_30d','30 derniers jours')] %}
+      <div class="period-panel {% if loop.first %}active{% endif %}" data-period="{{ key }}">
+        {% set s = global_summary[key] %}
+        <div class="stat-grid">
+          <div class="stat">
+            <div class="lbl">Générations</div>
+            <div class="val">{{ s.total }}</div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Réussies</div>
+            <div class="val success">{{ s.successes }}</div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Échouées</div>
+            <div class="val error">{{ s.failures }}</div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Minutes générées</div>
+            <div class="val">{{ (s.total_seconds / 60) | round(1) }}</div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Coût estimé</div>
+            <div class="val">${{ "%.2f"|format(s.total_cost) }}</div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Vidéos sources</div>
+            <div class="val">{{ s.total_source_videos }}</div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Vidéos générées</div>
+            <div class="val">{{ s.total_output_videos }}</div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Requêtes Claude</div>
+            <div class="val">{{ s.total_claude_requests }}</div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="card">
+      <h2>Activité quotidienne (14 derniers jours)</h2>
+      <div class="chart-wrap">
+        <svg viewBox="0 0 700 180" width="100%" height="180" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Générations par jour">
+          {% set max_total = (daily | map(attribute='total') | max) %}
+          {% set chart_max = max_total if max_total and max_total > 0 else 1 %}
+          {% set bar_w = 700 / (daily|length) %}
+          {% for d in daily %}
+            {% set h_total = (d.total / chart_max) * 140 %}
+            {% set h_success = (d.successes / chart_max) * 140 %}
+            {% set x = loop.index0 * bar_w %}
+            <rect x="{{ x + bar_w*0.18 }}" y="{{ 150 - h_total }}" width="{{ bar_w*0.64 }}" height="{{ h_total }}"
+                  fill="rgba(124,92,252,.32)" rx="2"></rect>
+            <rect x="{{ x + bar_w*0.18 }}" y="{{ 150 - h_success }}" width="{{ bar_w*0.64 }}" height="{{ h_success }}"
+                  fill="#7c5cfc" rx="2"></rect>
+            <text x="{{ x + bar_w/2 }}" y="168" text-anchor="middle" font-size="9" fill="#8888aa">{{ d.day[5:] }}</text>
+            <title>{{ d.day }} — {{ d.total }} générations ({{ d.successes }} réussies)</title>
+          {% endfor %}
+        </svg>
+      </div>
+      <p class="chart-caption">Barre claire = total des générations · barre violette = générations réussies</p>
+    </div>
+
+    <div class="card">
+      <h2>Consommation par utilisateur</h2>
+      {% if not user_table %}
+        <p class="muted">Aucune donnée de consommation pour le moment.</p>
+      {% else %}
+      <table>
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Rôle</th>
+            <th>Plan</th>
+            <th><a href="?sort=videos" class="{{ 'active-sort' if sort_by == 'videos' else '' }}">Vidéos ↕</a></th>
+            <th>Sources</th>
+            <th>Sorties</th>
+            <th>Requêtes Claude</th>
+            <th>Minutes</th>
+            <th><a href="?sort=cost" class="{{ 'active-sort' if sort_by == 'cost' else '' }}">Coût ↕</a></th>
+            <th><a href="?sort=last_activity" class="{{ 'active-sort' if sort_by == 'last_activity' else '' }}">Dernière activité ↕</a></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in user_table %}
+          <tr>
+            <td data-label="Email">
+              {{ u.email }}
+              {% if u.videos_generated > heavy_generations_threshold %}
+                <span class="badge warn-generations" title="Plus de {{ heavy_generations_threshold }} générations">⚠ volume élevé</span>
+              {% endif %}
+              {% if u.total_cost > cost_threshold %}
+                <span class="badge warn-cost" title="Coût estimé au-delà de ${{ cost_threshold }}">⚠ coût élevé</span>
+              {% endif %}
+              {% if u.claude_requests > heavy_claude_requests_threshold %}
+                <span class="badge warn-claude" title="Plus de {{ heavy_claude_requests_threshold }} requêtes Claude">⚠ usage Claude élevé</span>
+              {% endif %}
+            </td>
+            <td data-label="Rôle"><span class="badge {{ 'admin' if u.role == 'admin' else 'member' }}">{{ 'Admin' if u.role == 'admin' else 'Membre' }}</span></td>
+            <td data-label="Plan"><span class="badge plan">{{ (u.plan_name or 'starter')|capitalize }}</span></td>
+            <td class="num" data-label="Vidéos">{{ u.videos_generated }} <span class="muted">({{ u.successes }}✓ / {{ u.failures }}✗)</span></td>
+            <td class="num" data-label="Sources">{{ u.source_videos }}</td>
+            <td class="num" data-label="Sorties">{{ u.output_videos }}</td>
+            <td class="num" data-label="Requêtes Claude">{{ u.claude_requests }}</td>
+            <td class="num" data-label="Minutes">{{ (u.total_seconds / 60) | round(1) }}</td>
+            <td class="num" data-label="Coût">${{ "%.2f"|format(u.total_cost) }}</td>
+            <td data-label="Dernière activité">{{ u.last_activity or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+      <p class="muted" style="margin-top:14px;">
+        Les coûts sont des estimations approximatives (durée vidéo + usage Claude Vision), pas une facturation réelle.
+        Cliquez sur les en-têtes soulignés pour trier.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    function showPeriod(period, btn) {
+      document.querySelectorAll('.period-btn').forEach(function(b){ b.classList.remove('active'); });
+      document.querySelectorAll('.period-panel').forEach(function(p){ p.classList.remove('active'); });
+      btn.classList.add('active');
+      document.querySelector('.period-panel[data-period="' + period + '"]').classList.add('active');
+    }
+  </script>
+</body>
+</html>

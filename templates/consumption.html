@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VideoBot — Ma consommation</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f0f13; --surface: #1a1a24; --border: #2e2e42;
+      --accent: #7c5cfc; --accent2: #a78bfa; --text: #e8e8f0;
+      --muted: #8888aa; --success: #34d399; --error: #f87171; --ok: #4ade80; --radius: 12px;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh;
+      padding: 32px 24px 64px; }
+    .wrap { max-width: 880px; margin: 0 auto; }
+    .topbar { display: flex; justify-content: space-between; align-items: baseline;
+      flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
+    h1 { font-size: 1.6rem; font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .topbar a { color: var(--accent2); text-decoration: none; font-size: 0.85rem; }
+    .topbar a:hover { text-decoration: underline; }
+    .card { background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px; margin-bottom: 24px; }
+    .card h2 { font-size: 1rem; font-weight: 600; color: var(--accent2); margin-bottom: 16px; }
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; }
+    .stat { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+    .stat .lbl { font-size: 0.74rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 6px; }
+    .stat .val { font-size: 1.35rem; font-weight: 700; }
+    .stat .val.success { color: var(--ok); }
+    .stat .val.error { color: var(--error); }
+    .period-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .period-btn { padding: 7px 16px; border: 1px solid var(--border); border-radius: 8px;
+      background: var(--bg); color: var(--muted); cursor: pointer; font-size: 0.82rem;
+      font-weight: 600; transition: all .15s; }
+    .period-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .period-btn:hover:not(.active) { border-color: var(--accent); color: var(--accent2); }
+    .period-panel { display: none; }
+    .period-panel.active { display: block; }
+    .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.74rem; font-weight: 600; }
+    .badge.plan { background: rgba(124,92,252,.18); color: var(--accent2); }
+    .muted { color: var(--muted); font-size: 0.82rem; }
+    .credit-bar-track { background: var(--bg); border: 1px solid var(--border); border-radius: 999px;
+      height: 10px; overflow: hidden; margin-top: 8px; }
+    .credit-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 999px; transition: width .4s; }
+    @media (max-width: 640px) {
+      .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <h1>Ma consommation</h1>
+      <a href="{{ url_for('index') }}">← Retour au bot</a>
+    </div>
+
+    <div class="card">
+      <h2>Mon abonnement</h2>
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="lbl">Plan</div>
+          <div class="val"><span class="badge plan">{{ current_user.plan_name|capitalize }}</span></div>
+        </div>
+        <div class="stat">
+          <div class="lbl">Crédits utilisés</div>
+          <div class="val">{{ current_user.credits_used }}</div>
+        </div>
+        <div class="stat">
+          <div class="lbl">Crédits restants</div>
+          <div class="val">{{ current_user.credits_remaining }}</div>
+        </div>
+        <div class="stat">
+          <div class="lbl">Limite mensuelle</div>
+          <div class="val">{{ current_user.monthly_generation_limit }}</div>
+        </div>
+      </div>
+      {% set _limit = current_user.monthly_generation_limit or 0 %}
+      {% if _limit > 0 %}
+      {% set _pct = ((current_user.credits_used / _limit) * 100) | round(1) %}
+      <div class="credit-bar-track">
+        <div class="credit-bar-fill" style="width: {{ [_pct, 100] | min }}%;"></div>
+      </div>
+      <p class="muted" style="margin-top:6px;">{{ _pct }}% de votre limite mensuelle utilisée</p>
+      {% endif %}
+      <p class="muted" style="margin-top:12px;">
+        Le système de crédits est une fondation pour de futurs plans tarifaires — vos générations ne sont pas
+        actuellement limitées.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Vue d'ensemble</h2>
+      <div class="period-tabs">
+        <button class="period-btn active" data-period="all_time" onclick="showPeriod('all_time', this)">Total</button>
+        <button class="period-btn" data-period="today" onclick="showPeriod('today', this)">Aujourd'hui</button>
+        <button class="period-btn" data-period="week" onclick="showPeriod('week', this)">7 derniers jours</button>
+        <button class="period-btn" data-period="month" onclick="showPeriod('month', this)">30 derniers jours</button>
+      </div>
+
+      {% for key, label in [('all_time','Total'), ('today',"Aujourd'hui"), ('week','7 derniers jours'), ('month','30 derniers jours')] %}
+      <div class="period-panel {% if loop.first %}active{% endif %}" data-period="{{ key }}">
+        {% set s = summary[key] %}
+        <div class="stat-grid">
+          <div class="stat">
+            <div class="lbl">Générations</div>
+            <div class="val">{{ s.total }}</div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Réussies</div>
+            <div class="val success">{{ s.successes }}</div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Échouées</div>
+            <div class="val error">{{ s.failures }}</div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Minutes générées</div>
+            <div class="val">{{ (s.total_seconds / 60) | round(1) }}</div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Coût estimé</div>
+            <div class="val">${{ "%.2f"|format(s.total_cost) }}</div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Vidéos sources</div>
+            <div class="val">{{ s.total_source_videos }}</div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Vidéos générées</div>
+            <div class="val">{{ s.total_output_videos }}</div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Requêtes Claude</div>
+            <div class="val">{{ s.total_claude_requests }}</div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+
+      <p class="muted" style="margin-top:16px;">
+        Les coûts affichés sont des estimations approximatives basées sur la durée des vidéos traitées
+        et l'utilisation de l'API Claude Vision — elles ne reflètent pas une facturation réelle.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    function showPeriod(period, btn) {
+      document.querySelectorAll('.period-btn').forEach(function(b){ b.classList.remove('active'); });
+      document.querySelectorAll('.period-panel').forEach(function(p){ p.classList.remove('active'); });
+      btn.classList.add('active');
+      document.querySelector('.period-panel[data-period="' + period + '"]').classList.add('active');
+    }
+  </script>
+</body>
+</html>
