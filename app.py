@@ -3,6 +3,7 @@ import gc
 import time
 import uuid
 import json
+import random
 import shutil
 import base64
 import zipfile
@@ -230,6 +231,91 @@ PROFITABILITY_MARGIN_ORANGE_THRESHOLD = 30.0   # margin_percent >= this (and < g
 # margin_percent below the orange threshold, or a negative profit, → "bad" (red)
 
 
+# ══════════════════════════════════════════════════════════════════
+# VARIATION MODE — fully isolated, additive feature.
+#
+# Generates N technically-distinct-but-visually-similar copies of ONE
+# uploaded video using FFmpeg only (no Claude Vision, no AI, no text
+# detection/rendering of any kind). Everything below is NEW: new
+# constants, new directory, new helper functions, new routes. Nothing
+# in this section is read or called by /process, /analyze, /batch_*,
+# caption rendering, or any existing pipeline — and nothing existing
+# is read or called by it either (it never touches render_text_overlay,
+# analyze_with_claude_vision*, FONT_*, or any caption/typography code).
+# ══════════════════════════════════════════════════════════════════
+
+VARIATION_DIR = Path("/tmp/videobot_variations")
+VARIATION_DIR.mkdir(parents=True, exist_ok=True)
+
+MAX_VARIATIONS = 100  # hard server-side cap — mirrors the UI's 10/25/50/100 options
+
+# Randomization ranges per strength preset. Every "±X%" / "±X°" / "AxBx"
+# value below is sampled uniformly within its range for each individual
+# variation, using a per-(job, index) seeded RNG so runs are reproducible
+# and debuggable. Ranges are intentionally conservative — the goal is
+# "looks the same, is technically different", never visibly-degraded
+# output (per spec's forbidden-transformations list).
+VARIATION_STRENGTH_PRESETS = {
+    "light": {
+        "brightness_pct":  0.02,   # ±2%
+        "contrast_pct":    0.03,   # ±3%
+        "saturation_pct":  0.03,   # ±3%
+        "zoom_range":      (1.00, 1.03),
+        "crop_pct":        0.01,   # ±1%
+        "rotation_deg":    0.0,    # not used at light strength
+        "speed_range":     (0.99, 1.01),
+        "volume_pct":      0.02,   # ±2%
+        "pitch_pct":       0.005,  # ±0.5%
+        "bitrate_pct":     0.05,   # ±5%
+        "fps_delta":       2,      # ±2
+    },
+    "medium": {
+        "brightness_pct":  0.05,
+        "contrast_pct":    0.08,
+        "saturation_pct":  0.08,
+        "zoom_range":      (1.00, 1.05),
+        "crop_pct":        0.02,
+        "rotation_deg":    0.5,
+        "speed_range":     (0.99, 1.02),
+        "volume_pct":      0.03,
+        "pitch_pct":       0.01,
+        "bitrate_pct":     0.10,
+        "fps_delta":       5,
+    },
+    "strong": {
+        "brightness_pct":  0.10,
+        "contrast_pct":    0.15,
+        "saturation_pct":  0.15,
+        "zoom_range":      (1.00, 1.08),
+        "crop_pct":        0.04,
+        "rotation_deg":    1.0,
+        "speed_range":     (0.98, 1.03),
+        "volume_pct":      0.05,
+        "pitch_pct":       0.02,
+        "bitrate_pct":     0.20,
+        "fps_delta":       10,
+    },
+}
+VARIATION_DEFAULT_STRENGTH = "light"  # used whenever the request omits/sends an invalid value
+
+# Realistic device metadata profiles, randomly assigned per variation.
+# Deliberately limited to real, currently-common devices — no fictional
+# "future" hardware, no GPS fields (per spec's forbidden list).
+VARIATION_METADATA_PROFILES = [
+    {"label": "iPhone 14 Pro",     "encoder": "HEVC",       "software": "iOS 17.4",    "comment": "Recorded on iPhone 14 Pro"},
+    {"label": "iPhone 15 Pro",     "encoder": "HEVC",       "software": "iOS 17.5",    "comment": "Recorded on iPhone 15 Pro"},
+    {"label": "iPhone 16 Pro",     "encoder": "HEVC",       "software": "iOS 18.1",    "comment": "Recorded on iPhone 16 Pro"},
+    {"label": "Samsung Galaxy S23","encoder": "Lavc60.3",   "software": "Android 14",  "comment": "Galaxy S23 camera"},
+    {"label": "Samsung Galaxy S24","encoder": "Lavc60.16",  "software": "Android 14",  "comment": "Galaxy S24 camera"},
+    {"label": "Google Pixel 8",    "encoder": "Lavc60.3.100","software": "Android 15", "comment": "Pixel 8 camera"},
+]
+
+# Same FFmpeg-only cost model the rest of the app already uses for
+# pure-processing work (no Claude Vision is ever called by this mode,
+# so claude_requests stays 0 and estimated_claude_vision_cost stays 0).
+EST_VARIATION_COST_PER_SECOND_PER_VARIANT = EST_PROCESSING_COST_PER_SECOND
+
+
 def _init_usage_db():
     """Idempotent schema creation for usage_logs — identical
     CREATE TABLE IF NOT EXISTS / same connection pattern as
@@ -285,6 +371,24 @@ def _migrate_user_plan_columns():
             conn.execute("ALTER TABLE users ADD COLUMN monthly_price REAL NOT NULL DEFAULT 0")
         if "currency" not in existing:
             conn.execute("ALTER TABLE users ADD COLUMN currency TEXT NOT NULL DEFAULT 'EUR'")
+        conn.commit()
+
+
+def _migrate_usage_logs_variation_columns():
+    """Idempotent ADD COLUMN migration for Variation Mode's two extra
+    history fields. Both are NULLABLE with no DEFAULT, so every existing
+    row (Simple/Batch — any mode other than 'variation') simply gets NULL
+    and is completely unaffected: no backfill, no behavior change, no
+    impact on any existing query (including SELECT * and the aggregate
+    queries in _usage_aggregate, which never reference these columns).
+    Same PRAGMA-check-first pattern as _migrate_user_plan_columns, so
+    re-running on every redeploy is a safe no-op."""
+    with _users_db() as conn:
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(usage_logs)").fetchall()}
+        if "variation_strength" not in existing:
+            conn.execute("ALTER TABLE usage_logs ADD COLUMN variation_strength TEXT")
+        if "source_filename" not in existing:
+            conn.execute("ALTER TABLE usage_logs ADD COLUMN source_filename TEXT")
         conn.commit()
 
 
@@ -425,6 +529,41 @@ def get_global_usage_summary():
     for key, period in (("today", "today"), ("last_7d", "7d"), ("last_30d", "30d")):
         out[key] = _usage_aggregate("timestamp >= ?", (_usage_period_cutoff(period),))
     return out
+
+
+def get_usage_by_mode(scope="user", user_id=None):
+    """
+    All-time per-mode breakdown ('simple' / 'batch' / 'variation' / any
+    future mode value found in the table) — purely additive read-only
+    aggregation reusing the exact same _usage_aggregate() shape every
+    other summary on both dashboards is built from, just grouped by
+    `mode` instead of by time window.
+
+    scope="user"   → only that user's rows  (powers /consumption)
+    scope="global" → every user's rows      (powers /admin/consumption)
+
+    Returns an ordered list of {"mode": ..., **aggregate} dicts, modes
+    sorted by total descending so the busiest mode appears first. Modes
+    with zero rows for this scope are simply absent — nothing to show.
+    """
+    if scope == "user":
+        where_sql, base_params = "user_id = ?", (user_id,)
+    else:
+        where_sql, base_params = "1=1", ()
+
+    with _users_db() as conn:
+        modes = [r["mode"] for r in conn.execute(
+            f"SELECT DISTINCT mode FROM usage_logs WHERE {where_sql} AND mode IS NOT NULL",
+            base_params,
+        ).fetchall()]
+
+    rows = []
+    for mode in modes:
+        agg = _usage_aggregate(f"{where_sql} AND mode = ?", (*base_params, mode))
+        agg["mode"] = mode
+        rows.append(agg)
+    rows.sort(key=lambda r: r["total"], reverse=True)
+    return rows
 
 
 def list_user_usage_table(sort_by="last_activity"):
@@ -618,6 +757,7 @@ def get_platform_profitability_summary(enriched_user_rows):
 
 _init_usage_db()
 _migrate_user_plan_columns()
+_migrate_usage_logs_variation_columns()
 
 UPLOAD_DIR = Path("/tmp/videobot_jobs")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -658,6 +798,239 @@ def _cleanup_stale_batches(max_age_hours: float = 3.0):
                 pass
     except Exception:
         pass
+
+
+# ── Variation Mode helpers (FFmpeg-only — no Vision, no captions) ───
+# Self-contained block: nothing here calls, imports from, or mutates
+# any caption/Vision/typography code, and nothing in those pipelines
+# calls back into this block. Isolation is structural, not just by
+# convention — nothing else in the app references VARIATION_DIR or
+# any function below.
+
+def _cleanup_stale_variation_jobs(max_age_hours: float = 3.0):
+    """Identical safety-net pattern to _cleanup_stale_batches, scoped to
+    VARIATION_DIR. Runs only when a brand-new variation job is staged."""
+    cutoff = time.time() - max_age_hours * 3600
+    try:
+        for d in VARIATION_DIR.iterdir():
+            try:
+                if d.is_dir() and d.stat().st_mtime < cutoff:
+                    shutil.rmtree(d, ignore_errors=True)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _pick_variation_params(strength: str, rng: "random.Random") -> dict:
+    """
+    Samples ONE concrete set of randomized values within the chosen
+    strength preset's ranges (light/medium/strong — see
+    VARIATION_STRENGTH_PRESETS). `rng` is a Random instance seeded by
+    the caller with (job_id, index) so each variation's parameters are
+    deterministic and reproducible across retries/debugging, yet
+    different from every other variation in the run.
+
+    Falls back to the 'light' preset for any unknown/missing strength —
+    never raises, never returns an empty dict.
+    """
+    preset = VARIATION_STRENGTH_PRESETS.get(
+        (strength or "").strip().lower(), VARIATION_STRENGTH_PRESETS[VARIATION_DEFAULT_STRENGTH]
+    )
+
+    def _pm(spread):  # ± spread, e.g. _pm(0.05) → a value in [-0.05, +0.05]
+        return rng.uniform(-spread, spread)
+
+    zlo, zhi = preset["zoom_range"]
+    slo, shi = preset["speed_range"]
+
+    return {
+        "brightness":  _pm(preset["brightness_pct"]),                # additive, e.g. -0.02..+0.02
+        "contrast":    1.0 + _pm(preset["contrast_pct"]),            # multiplicative around 1.0
+        "saturation":  1.0 + _pm(preset["saturation_pct"]),
+        "zoom":        rng.uniform(zlo, zhi),
+        "crop_pct":    rng.uniform(0.0, preset["crop_pct"]),         # crop is one-directional (shrink)
+        "rotation_deg": _pm(preset["rotation_deg"]) if preset["rotation_deg"] else 0.0,
+        "speed":       rng.uniform(slo, shi),
+        "volume":      1.0 + _pm(preset["volume_pct"]),
+        "pitch":       1.0 + _pm(preset["pitch_pct"]),
+        "bitrate_mult": 1.0 + _pm(preset["bitrate_pct"]),
+        "fps_delta":   rng.randint(-preset["fps_delta"], preset["fps_delta"]) if preset["fps_delta"] else 0,
+        # Light extras — only ever applied subtly, never enough to be
+        # visible (kept out of the strength ranges deliberately so they
+        # can't compound into visible artifacts at "strong").
+        "noise_strength": rng.uniform(1, 4),
+        "sharpen_amount": rng.uniform(0.0, 0.3),
+    }
+
+
+def _pick_metadata_profile(rng: "random.Random") -> dict:
+    """Randomly selects one realistic device metadata profile. Never
+    raises — VARIATION_METADATA_PROFILES is a static non-empty list."""
+    return rng.choice(VARIATION_METADATA_PROFILES)
+
+
+def _build_variation_filter_graph(params: dict, src_w: int, src_h: int):
+    """
+    Builds the -vf / -af FFmpeg filter strings for ONE variation from an
+    already-sampled params dict (see _pick_variation_params). Pure string
+    construction — runs nothing, touches no files. Returns (vf, af, out_fps).
+
+    Filter choices map 1:1 onto the spec's "allowed transformations" list
+    (brightness/contrast/saturation/gamma/noise/sharpen/blur/zoom/crop/
+    rotation/fps/audio gain/pitch — all via standard libavfilter filters
+    that ship with any normal FFmpeg build, same as the overlay/aac/x264
+    filters the rest of the app already depends on).
+    """
+    src_w = max(2, int(src_w or 1280))
+    src_h = max(2, int(src_h or 720))
+
+    # ── Video filter chain ──
+    vf_parts = []
+
+    # Zoom + crop-back-to-source-size: scale up slightly then crop to the
+    # original dimensions. This is what changes "what's visible at the
+    # edges" by a tiny amount without ever changing the aspect ratio or
+    # adding borders (both explicitly forbidden).
+    zoom = max(1.0, float(params.get("zoom", 1.0)))
+    if zoom > 1.0005:
+        zw, zh = int(src_w * zoom) | 1, int(src_h * zoom) | 1
+        vf_parts.append(f"scale={zw}:{zh}")
+        vf_parts.append(f"crop={src_w}:{src_h}")
+
+    # Independent fractional crop (subtle re-frame), applied after any
+    # zoom — also lands back at the original size via the final scale.
+    crop_pct = max(0.0, min(0.08, float(params.get("crop_pct", 0.0))))
+    if crop_pct > 0.0005:
+        vf_parts.append(f"crop=iw*{1 - crop_pct:.4f}:ih*{1 - crop_pct:.4f}")
+
+    rot = float(params.get("rotation_deg", 0.0))
+    if abs(rot) > 0.01:
+        # rotate fills corners with the edge pixel (no black borders),
+        # then we scale back to source size to guarantee identical AR/dims.
+        vf_parts.append(f"rotate={rot:.3f}*PI/180:fillcolor=black@0:ow=rotw(iw):oh=roth(ih)")
+
+    # Color: brightness (additive, eq's range is roughly -1..1),
+    # contrast & saturation (multiplicative around 1.0), gamma nudged
+    # in lockstep with brightness for a natural look.
+    brightness = max(-0.15, min(0.15, float(params.get("brightness", 0.0))))
+    contrast   = max(0.5,  min(1.5,  float(params.get("contrast", 1.0))))
+    saturation = max(0.5,  min(1.5,  float(params.get("saturation", 1.0))))
+    gamma      = max(0.85, min(1.15, 1.0 + brightness * 0.3))
+    vf_parts.append(f"eq=brightness={brightness:.4f}:contrast={contrast:.4f}:saturation={saturation:.4f}:gamma={gamma:.4f}")
+
+    # Subtle grain/noise — technical fingerprint, imperceptible at low strength.
+    noise = max(0.0, min(10.0, float(params.get("noise_strength", 0.0))))
+    if noise > 0.05:
+        vf_parts.append(f"noise=alls={noise:.2f}:allf=t+u")
+
+    # Gentle sharpen (never blur enough to visibly soften — spec forbids
+    # visible degradation; unsharp with a small amount reads as a faint
+    # re-encode fingerprint, not a visual change).
+    sharpen = max(0.0, min(0.5, float(params.get("sharpen_amount", 0.0))))
+    if sharpen > 0.02:
+        vf_parts.append(f"unsharp=5:5:{sharpen:.3f}:5:5:0.0")
+
+    # Speed change (video side) — setpts inversely scales presentation
+    # timestamps; audio side is handled in the audio chain with atempo
+    # so picture and sound stay in sync.
+    speed = max(0.9, min(1.1, float(params.get("speed", 1.0))))
+    if abs(speed - 1.0) > 0.0005:
+        vf_parts.append(f"setpts=PTS/{speed:.5f}")
+
+    # Always finish by pinning back to the exact source resolution, so
+    # zoom/crop/rotate can never change output dimensions or aspect
+    # ratio (both explicitly forbidden — "distort aspect ratio",
+    # "create black borders").
+    vf_parts.append(f"scale={src_w}:{src_h}")
+
+    # Frame-rate nudge, applied last in the chain.
+    out_fps = None
+    fps_delta = int(params.get("fps_delta", 0))
+    if fps_delta:
+        out_fps = max(15, 24 + fps_delta)
+        vf_parts.append(f"fps={out_fps}")
+
+    vf = ",".join(vf_parts)
+
+    # ── Audio filter chain ──
+    af_parts = []
+
+    # Pitch-only shift via the standard asetrate+aresample+atempo trick:
+    # asetrate changes both pitch AND speed, so atempo by the inverse
+    # factor restores the original tempo, leaving only the pitch shifted.
+    # No 'rubberband' filter dependency (not guaranteed to be compiled
+    # into every FFmpeg build) — this combo ships with any standard build.
+    pitch = max(0.95, min(1.05, float(params.get("pitch", 1.0))))
+    if abs(pitch - 1.0) > 0.0005:
+        base_rate = 44100
+        af_parts.append(f"asetrate={int(base_rate * pitch)}")
+        af_parts.append(f"aresample={base_rate}")
+        af_parts.append(f"atempo={1.0 / pitch:.5f}")
+
+    # Tempo change to stay in sync with the video-side speed change.
+    # atempo only accepts 0.5–2.0 — our speed range is always within
+    # that, so a single atempo call is always sufficient.
+    if abs(speed - 1.0) > 0.0005:
+        af_parts.append(f"atempo={speed:.5f}")
+
+    volume = max(0.85, min(1.15, float(params.get("volume", 1.0))))
+    if abs(volume - 1.0) > 0.0005:
+        af_parts.append(f"volume={volume:.4f}")
+
+    af = ",".join(af_parts) if af_parts else None
+
+    return vf, af, out_fps
+
+
+def _build_variation_ffmpeg_cmd(path_in: str, path_out: str, params: dict,
+                                profile: dict, src_w: int, src_h: int,
+                                src_bitrate_kbps: int = 2500) -> list:
+    """
+    Assembles the full FFmpeg command for ONE variation: video+audio
+    filter graphs (from _build_variation_filter_graph), a randomized
+    target bitrate, randomized creation-time/encoder/software/comment
+    metadata from the chosen device profile, output pinned to the exact
+    source resolution/aspect-ratio. Mirrors the
+    subprocess-list-of-args + '-y' + '-loglevel error' style /process
+    and /batch_render already use, so it runs through the exact same
+    timeout-bounded subprocess.run(...) pattern.
+    """
+    vf, af, _out_fps = _build_variation_filter_graph(params, src_w, src_h)
+
+    bitrate_mult = max(0.7, min(1.4, float(params.get("bitrate_mult", 1.0))))
+    target_kbps  = max(400, int(src_bitrate_kbps * bitrate_mult))
+
+    # Slightly jittered creation_time within the last ~30 days, so a
+    # batch of variants doesn't all carry the exact same timestamp.
+    jitter_seconds = random.randint(0, 30 * 86400)
+    creation_time  = time.strftime("%Y-%m-%dT%H:%M:%S.000000Z", time.gmtime(time.time() - jitter_seconds))
+
+    cmd = ["ffmpeg", "-y", "-i", str(path_in)]
+
+    if vf:
+        cmd += ["-vf", vf]
+    if af:
+        cmd += ["-af", af]
+
+    cmd += [
+        "-c:v", "libx264", "-preset", "veryfast",
+        "-b:v", f"{target_kbps}k", "-maxrate", f"{int(target_kbps * 1.2)}k", "-bufsize", f"{target_kbps * 2}k",
+        "-c:a", "aac", "-b:a", "128k",
+        "-metadata", f"creation_time={creation_time}",
+        "-metadata", f"encoder={profile.get('encoder', '')}",
+    ]
+    if profile.get("software"):
+        cmd += ["-metadata", f"com.apple.quicktime.software={profile['software']}"]
+    cmd += [
+        "-metadata", f"title={profile.get('label', '')}",
+        "-metadata", f"comment={profile.get('comment', '')}",
+        "-movflags", "+faststart",
+        "-loglevel", "error",
+        str(path_out),
+    ]
+    return cmd
+
 
 FONT_BOLD = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
 FONT_REG  = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
@@ -1892,6 +2265,7 @@ def consumption():
         currency_symbols=CURRENCY_SYMBOLS,
         profitability=profitability,
         profitability_state=profitability_state,
+        usage_by_mode=get_usage_by_mode(scope="user", user_id=user["id"]),
     )
 
 
@@ -1955,6 +2329,7 @@ def admin_consumption():
         currency_symbols=CURRENCY_SYMBOLS,
         margin_green_threshold=PROFITABILITY_MARGIN_GREEN_THRESHOLD,
         margin_orange_threshold=PROFITABILITY_MARGIN_ORANGE_THRESHOLD,
+        usage_by_mode=get_usage_by_mode(scope="global"),
     )
 
 
@@ -2662,6 +3037,267 @@ def batch_cleanup():
         bdir = BATCH_DIR / batch_id
         if bdir.exists():
             shutil.rmtree(bdir, ignore_errors=True)
+        gc.collect()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+# VARIATION MODE — routes
+#
+# Five new, independent routes. None of them is referenced by, calls,
+# or is called from /process, /analyze, /batch_*, or any caption/Vision
+# code — the only things they share with the rest of the app are
+# generic, side-effect-free utilities that already existed for every
+# mode (request.current_user via the global before_request gate,
+# get_video_dims, _get_video_duration_seconds, log_usage_event,
+# gc.collect). Each call to /variation_run produces exactly ONE output
+# file and returns — the client loops over it sequentially with
+# `await`, exactly like /batch_render — so at most one FFmpeg encode
+# is ever in flight for this feature, by construction.
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/variation_stage", methods=["POST"])
+def variation_stage():
+    """
+    Upload the ONE source video for a new variation job. Creates
+    VARIATION_DIR/<job_id>/{in,out}/, saves the source as in/source.mp4,
+    and returns job_id + probed duration/dimensions so the client can
+    show a live preview and validate the variation count client-side
+    too (server-side validation happens again in /variation_run).
+    """
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "Fichier manquant"}), 400
+
+        try:
+            requested_count = int(request.form.get("count", "0"))
+        except Exception:
+            requested_count = 0
+        if requested_count > MAX_VARIATIONS:
+            return jsonify({"error": "Maximum 100 variations allowed."}), 400
+
+        _cleanup_stale_variation_jobs()
+        job_id = uuid.uuid4().hex
+        jdir = VARIATION_DIR / job_id
+        (jdir / "in").mkdir(parents=True, exist_ok=True)
+        (jdir / "out").mkdir(parents=True, exist_ok=True)
+
+        source_filename = (request.files["file"].filename or "source.mp4").strip()
+        path_in = str(jdir / "in" / "source.mp4")
+        request.files["file"].save(path_in)
+
+        duration = _get_video_duration_seconds(path_in)
+        width, height = get_video_dims(path_in)
+
+        # Persist small bits of job context the subsequent sequential
+        # /variation_run calls need (source path is already on disk;
+        # this tiny JSON just avoids re-probing on every single call).
+        meta = {
+            "source_filename": source_filename[:200],
+            "duration": duration,
+            "width": width,
+            "height": height,
+            "created_at": time.time(),
+        }
+        with open(jdir / "meta.json", "w", encoding="utf-8") as f:
+            json.dump(meta, f)
+
+        return jsonify({
+            "job_id": job_id,
+            "duration": duration,
+            "width": width,
+            "height": height,
+            "source_filename": meta["source_filename"],
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/variation_run", methods=["POST"])
+def variation_run():
+    """
+    Generate exactly ONE variant (params: job_id, index, strength,
+    count — count/strength are repeated on every call so the very last
+    call can log the summary usage event without needing extra state).
+    Designed to be called sequentially, once per index, and awaited by
+    the client before the next call — never in parallel.
+
+    Per requirement #7: an FFmpeg failure for this ONE variant is
+    reported back as a per-item error (so the client can mark that row
+    failed and continue) and never crashes the route or the app — it
+    is handled exactly like a single failed combo in /batch_render.
+    """
+    try:
+        job_id = (request.form.get("job_id") or "").strip()
+        if not job_id or ".." in job_id or "/" in job_id:
+            return jsonify({"error": "job_id invalide"}), 400
+
+        try:
+            index = int(request.form.get("index", "-1"))
+        except Exception:
+            index = -1
+        try:
+            count = int(request.form.get("count", "0"))
+        except Exception:
+            count = 0
+        if index < 0 or count <= 0 or count > MAX_VARIATIONS or index >= count:
+            return jsonify({"error": "Paramètres de variation invalides (max 100)."}), 400
+
+        strength = (request.form.get("strength") or VARIATION_DEFAULT_STRENGTH).strip().lower()
+        if strength not in VARIATION_STRENGTH_PRESETS:
+            strength = VARIATION_DEFAULT_STRENGTH
+
+        jdir = VARIATION_DIR / job_id
+        path_in = jdir / "in" / "source.mp4"
+        if not path_in.exists():
+            return jsonify({"error": "Vidéo source introuvable (étape de staging manquante)"}), 404
+
+        try:
+            with open(jdir / "meta.json", "r", encoding="utf-8") as f:
+                meta = json.load(f)
+        except Exception:
+            meta = {}
+        width  = int(meta.get("width")  or 0) or get_video_dims(str(path_in))[0]
+        height = int(meta.get("height") or 0) or get_video_dims(str(path_in))[1]
+
+        filename  = f"video_{index + 1:03d}.mp4"
+        path_out  = jdir / "out" / filename
+
+        # Deterministic-per-(job, index) RNG — same params if this single
+        # index is ever retried, different from every other index.
+        rng     = random.Random(f"{job_id}:{index}")
+        params  = _pick_variation_params(strength, rng)
+        profile = _pick_metadata_profile(rng)
+        cmd     = _build_variation_ffmpeg_cmd(str(path_in), str(path_out), params, profile, width, height)
+
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        except subprocess.TimeoutExpired:
+            return jsonify({"error": "Timeout (>3 min)", "index": index, "filename": filename}), 200
+        finally:
+            gc.collect()
+
+        ok = (proc.returncode == 0 and path_out.exists())
+
+        # ── Last call of the run: record exactly ONE usage_logs row for
+        # the whole job (per spec — "one row per attempt", and a
+        # variation run is one logical attempt that produces N outputs).
+        # Counts successes by scanning out/ — never trusts client state. ──
+        if index == count - 1:
+            try:
+                produced = sorted((jdir / "out").glob("video_*.mp4"))
+                success_count = len(produced)
+                src_seconds = meta.get("duration")
+                log_usage_event(
+                    request.current_user, "variation",
+                    source_seconds=src_seconds, output_seconds=src_seconds,
+                    source_count=1, output_count=success_count,
+                    success=(success_count > 0),
+                    claude_requests=0,
+                )
+                # Stamp the strength/source-filename onto that just-written
+                # row (the two additive nullable columns — see
+                # _migrate_usage_logs_variation_columns), AND correct
+                # estimated_cost to the spec formula
+                # (EST_PROCESSING_COST_PER_SECOND * source_seconds * count).
+                # log_usage_event's shared cost formula multiplies by
+                # source_seconds exactly once (correct for Simple/Batch,
+                # which each produce one output per source) — Variation
+                # Mode produces `count` outputs from one source, so its
+                # true cost is `count`× that. Rather than touch the shared,
+                # every-mode function (forbidden — would risk Simple/Batch
+                # regressions), this follow-up UPDATE of the row
+                # log_usage_event just inserted overwrites only the two
+                # cost columns with the spec-correct total. Never raises.
+                with _users_db() as conn:
+                    src_for_cost = float(src_seconds or 0.0)
+                    correct_cost = round(EST_VARIATION_COST_PER_SECOND_PER_VARIANT * src_for_cost * count, 6)
+                    conn.execute(
+                        """
+                        UPDATE usage_logs
+                        SET variation_strength = ?, source_filename = ?,
+                            estimated_cost = ?, estimated_processing_cost = ?
+                        WHERE id = (SELECT MAX(id) FROM usage_logs WHERE user_id = ? AND mode = 'variation')
+                        """,
+                        (strength, meta.get("source_filename"),
+                         correct_cost, correct_cost,
+                         request.current_user["id"]),
+                    )
+                    conn.commit()
+            except Exception as e:
+                print(f"[variation] WARNING: failed to log usage for job={job_id}: {e}")
+
+        if not ok:
+            err = (proc.stderr or "ffmpeg a échoué")[-500:]
+            try:
+                path_out.unlink(missing_ok=True)
+            except Exception:
+                pass
+            return jsonify({"error": err, "index": index, "filename": filename}), 200
+
+        return jsonify({"index": index, "filename": filename, "ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e), "index": request.form.get("index")}), 200
+
+
+@app.route("/variation_zip", methods=["POST"])
+def variation_zip():
+    """
+    Zips every successfully-generated variant for a job. Per requirement
+    #8, this only ever looks at files that actually exist in out/ —
+    failed variants were never written (or were removed) by
+    /variation_run, so the ZIP can only ever contain successes.
+    """
+    try:
+        data = request.get_json(force=True) or {}
+        job_id = (data.get("job_id") or "").strip()
+        if not job_id or ".." in job_id or "/" in job_id:
+            return jsonify({"error": "job_id invalide"}), 400
+
+        out_dir = VARIATION_DIR / job_id / "out"
+        files = sorted(out_dir.glob("video_*.mp4")) if out_dir.exists() else []
+        if not files:
+            return jsonify({"error": "Aucun fichier valide trouvé"}), 400
+
+        zip_path = f"/tmp/variations_{uuid.uuid4().hex}.zip"
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as zf:
+            for p in files:
+                zf.write(str(p), p.name)
+
+        return send_file(
+            zip_path,
+            as_attachment=True,
+            download_name="variations.zip",
+            mimetype="application/zip"
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/variation_file/<job_id>/<filename>")
+def variation_file(job_id, filename):
+    """Download a single generated variant by filename."""
+    if ".." in job_id or "/" in job_id or ".." in filename or "/" in filename:
+        return jsonify({"error": "Invalid"}), 400
+    path = VARIATION_DIR / job_id / "out" / filename
+    if path.exists():
+        return send_file(str(path), as_attachment=True, download_name=filename, mimetype="video/mp4")
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.route("/variation_cleanup", methods=["POST"])
+def variation_cleanup():
+    """Delete all staged input/output for a finished variation job, mirrors batch_cleanup."""
+    try:
+        data = request.get_json(force=True) or {}
+        job_id = (data.get("job_id") or "").strip()
+        if not job_id or ".." in job_id or "/" in job_id:
+            return jsonify({"error": "job_id invalide"}), 400
+        jdir = VARIATION_DIR / job_id
+        if jdir.exists():
+            shutil.rmtree(jdir, ignore_errors=True)
         gc.collect()
         return jsonify({"ok": True})
     except Exception as e:
