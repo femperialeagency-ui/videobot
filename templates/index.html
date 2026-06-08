@@ -3,20 +3,40 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VideoBot</title>
+  <title>ViralScale</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
       --bg: #05060A; --surface: #0D1018; --surface-2: rgba(255,255,255,.025);
       --border: rgba(255,255,255,.08); --border-strong: rgba(255,255,255,.14);
-      --accent: #7C5CFF; --accent2: #2F6BFF; --text: #F0F1F7;
-      --muted: #8B92A8; --success: #20D98A; --warn: #FFB547; --error: #f87171;
+      --accent: #7C5CFF; --accent2: #2F6BFF; --accent3: #FF4DDF; --text: #F0F1F7;
+      --muted: #8B92A8;
+      /* ── Unified status-color system: same meaning = same color, everywhere ── */
+      --success: #20D98A; --success-bg: rgba(32,217,138,.12); --success-bd: rgba(32,217,138,.28);
+      --warn: #FFB547;    --warn-bg: rgba(255,181,71,.12);    --warn-bd: rgba(255,181,71,.28);
+      --error: #f87171;   --error-bg: rgba(248,113,113,.12);  --error-bd: rgba(248,113,113,.28);
+      --info: #7C9CFF;    --info-bg: rgba(124,156,255,.12);   --info-bd: rgba(124,156,255,.28);
       --radius: 14px;
       --glass: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.015));
       --shadow-card: 0 10px 36px rgba(0,0,0,.40);
       --shadow-glow: 0 0 0 1px rgba(124,92,255,.14), 0 16px 46px rgba(124,92,255,.12);
       --sidebar-w: 248px;
+      /* ── Spacing scale: every gap/padding/margin draws from this set only ── */
+      --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+      --sp-5: 24px; --sp-6: 32px; --sp-7: 48px;
+      /* ── Motion primitives: restrained, premium, consistent everywhere ── */
+      --ease: cubic-bezier(.2,.7,.3,1);
+      --dur-fast: .15s; --dur-base: .22s; --dur-slow: .4s;
+      --lift-sm: translateY(-2px); --lift-md: translateY(-3px);
     }
+    /* ── Custom SVG icon system (replaces emoji across the app) ──
+       Single source of truth: every icon is a 18×18 stroke-based glyph in
+       currentColor, so it inherits whatever color its container sets —
+       exactly like Linear/Vercel/Stripe icon sets. */
+    .ico-svg { width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; stroke-width: 1.8;
+      fill: none; stroke-linecap: round; stroke-linejoin: round; vertical-align: -4px; }
+    .ico-svg.sm { width: 15px; height: 15px; }
+    .ico-svg.lg { width: 22px; height: 22px; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background:
         radial-gradient(1100px 560px at 14% -10%, rgba(124,92,255,.16), transparent 60%),
@@ -27,51 +47,108 @@
     /* ── App shell: fixed sidebar + main column ── */
     .app-shell { display: flex; min-height: 100vh; width: 100%; }
     .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar-w);
-      display: flex; flex-direction: column; padding: 22px 16px;
+      display: flex; flex-direction: column; padding: 15px 11px;
       background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.01)), rgba(13,16,24,.75);
       border-right: 1px solid var(--border); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
       z-index: 20; }
-    .sidebar-logo { display: flex; align-items: center; gap: 10px; padding: 6px 10px 22px; font-size: 1.18rem;
-      font-weight: 800; letter-spacing: -.01em;
-      background: linear-gradient(135deg, #fff, var(--accent2));
+    .sidebar-logo { display: flex; align-items: center; padding: 4px 8px 18px; }
+    .vs-logo { display: inline-flex; align-items: center; gap: 9px; }
+    .vs-mark { width: 26px; height: 26px; flex-shrink: 0; filter: drop-shadow(0 3px 12px rgba(124,92,255,.4)); }
+    .vs-word { font-size: 1.1rem; font-weight: 800; letter-spacing: -.02em; color: #fff; }
+    .vs-word em { font-style: normal;
+      background: linear-gradient(115deg, var(--accent2), var(--accent), var(--accent3));
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .sidebar-nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
-    .nav-item { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 10px;
-      color: var(--muted); font-size: 0.86rem; font-weight: 600; text-decoration: none;
-      border: 1px solid transparent; cursor: pointer; transition: all .18s ease; background: transparent; width: 100%; text-align: left; }
-    .nav-item .ico { font-size: 1.02rem; line-height: 1; width: 20px; text-align: center; flex-shrink: 0; }
-    .nav-item:hover:not(.active):not(.soon) { background: rgba(255,255,255,.04); color: var(--text);
+    .vs-word.lg { font-size: 1.34rem; }
+    .sidebar-nav { display: flex; flex-direction: column; gap: var(--sp-1); flex: 1; overflow-y: auto;
+      scrollbar-width: thin; padding-right: 2px; }
+    .sidebar-nav::-webkit-scrollbar { width: 4px; }
+    .sidebar-nav::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+
+    /* ── Primary CTA: the sidebar's loudest, most "alive" element ── */
+    .sidebar-cta { display: flex; align-items: center; justify-content: center; gap: var(--sp-2);
+      width: 100%; padding: 11px var(--sp-3); margin-bottom: var(--sp-4); border: 1px solid rgba(255,255,255,.16);
+      border-radius: 11px; cursor: pointer; font-size: 0.86rem; font-weight: 800; color: #fff; text-align: center;
+      background: linear-gradient(120deg, var(--accent2), var(--accent), var(--accent3));
+      box-shadow: 0 10px 28px rgba(124,92,255,.30); transition: transform var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease); }
+    .sidebar-cta:hover { transform: var(--lift-sm); box-shadow: 0 14px 36px rgba(124,92,255,.4); }
+    .sidebar-cta:active { transform: translateY(0); }
+
+    .nav-item { position: relative; display: flex; align-items: center; gap: var(--sp-3); padding: 9px var(--sp-3);
+      border-radius: 9px; color: var(--muted); font-size: 0.85rem; font-weight: 600; text-decoration: none;
+      border: 1px solid transparent; cursor: pointer; transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease); background: transparent; width: 100%; text-align: left; }
+    .nav-item .ico { display: inline-flex; color: inherit; opacity: .85; transition: opacity var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+    .nav-item:hover:not(.active):not(.soon) { background: rgba(255,255,255,.045); color: var(--text);
       border-color: var(--border); transform: translateX(2px); }
-    .nav-item.active { color: #fff; background: linear-gradient(135deg, rgba(124,92,255,.28), rgba(47,107,255,.16));
-      border-color: rgba(124,92,255,.4); box-shadow: 0 6px 20px rgba(124,92,255,.18); }
-    .nav-item.soon { opacity: .5; cursor: default; }
+    .nav-item:hover:not(.active):not(.soon) .ico { opacity: 1; }
+    /* Stronger active state: left accent rail + filled glow + brighter icon — the "this is where I am" signal */
+    .nav-item.active { color: #fff; background: linear-gradient(135deg, rgba(124,92,255,.30), rgba(47,107,255,.16));
+      border-color: rgba(124,92,255,.4); box-shadow: inset 0 0 0 1px rgba(124,92,255,.12), 0 8px 26px rgba(124,92,255,.22); }
+    .nav-item.active .ico { opacity: 1; color: #fff; filter: drop-shadow(0 0 6px rgba(124,92,255,.6)); }
+    .nav-item.active::before { content: ""; position: absolute; left: -11px; top: 50%; transform: translateY(-50%);
+      width: 3px; height: 20px; border-radius: 0 4px 4px 0;
+      background: linear-gradient(180deg, var(--accent2), var(--accent), var(--accent3));
+      box-shadow: 0 0 12px rgba(124,92,255,.7), 2px 0 16px rgba(124,92,255,.35); }
+    .nav-item.soon { opacity: .42; cursor: default; }
     .nav-item.soon:hover { transform: none; background: transparent; }
+    .nav-badge { margin-left: auto; font-size: 0.64rem; font-weight: 800; letter-spacing: .03em;
+      padding: 2px 8px; border-radius: 999px; flex-shrink: 0; }
+    .nav-badge.soon { text-transform: uppercase; background: rgba(255,255,255,.06); color: var(--muted); }
+    .nav-badge.count { background: var(--info-bg); color: var(--info); border: 1px solid var(--info-bd); }
     .soon-badge { margin-left: auto; font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
       padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,.06); color: var(--muted); }
+
+    /* ── Nav groups: a real visual hierarchy instead of plain uppercase labels ── */
+    .nav-group { margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--border); }
+    .nav-group:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+    .nav-group-label { display: flex; align-items: center; gap: 6px; font-size: 0.65rem; font-weight: 800;
+      text-transform: uppercase; letter-spacing: .09em; color: var(--muted); opacity: .6; padding: 0 var(--sp-3) 6px; }
     .nav-section-label { font-size: 0.66rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em;
-      color: var(--muted); opacity: .65; padding: 16px 12px 6px; }
-    .sidebar-profile { display: flex; align-items: center; gap: 11px; padding: 12px; border-radius: 12px;
-      background: rgba(255,255,255,.03); border: 1px solid var(--border); margin-top: 10px; }
+      color: var(--muted); opacity: .65; padding: 13px 10px 5px; }
+
+    /* ── Usage / plan meter: "presence" the old sidebar lacked entirely ── */
+    .sidebar-usage { padding: var(--sp-3); border-radius: 12px; background: rgba(255,255,255,.03);
+      border: 1px solid var(--border); margin-bottom: var(--sp-3); }
+    .sidebar-usage-row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 7px; }
+    .sidebar-usage-label { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+    .sidebar-usage-value { font-size: 0.78rem; font-weight: 800; color: var(--text); }
+    .sidebar-usage-value em { font-style: normal; color: var(--accent3); }
+    .sidebar-usage-value .of { font-weight: 700; color: var(--muted); }
+    .sidebar-usage-row .plan-tag { font-size: 0.66rem; font-weight: 800; letter-spacing: .03em; color: #cdc3ff;
+      background: linear-gradient(135deg, rgba(124,92,255,.22), rgba(255,77,223,.10)); border: 1px solid var(--border-strong);
+      padding: 2px 9px; border-radius: 999px; }
+    .sidebar-usage-track { height: 6px; border-radius: 999px; background: rgba(255,255,255,.07);
+      overflow: hidden; border: 1px solid var(--border); }
+    .sidebar-usage-fill { height: 100%; border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent2), var(--accent), var(--accent3));
+      box-shadow: 0 0 10px rgba(124,92,255,.5); transition: width var(--dur-slow) var(--ease); }
+    .sidebar-usage-foot { margin-top: 7px; font-size: 0.7rem; color: var(--muted); display: flex; justify-content: space-between; }
+    .sidebar-usage-foot .plan-tag { font-weight: 800; color: #cdc3ff; }
+
+    .sidebar-profile { display: flex; align-items: center; gap: var(--sp-3); padding: 10px; border-radius: 11px;
+      background: rgba(255,255,255,.03); border: 1px solid var(--border); margin-top: var(--sp-2);
+      transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease); }
+    .sidebar-profile:hover { border-color: var(--border-strong); background: rgba(255,255,255,.045); }
     .sidebar-avatar { width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: .92rem; color: #fff;
-      background: linear-gradient(135deg, var(--accent), var(--accent2)); box-shadow: 0 4px 14px rgba(124,92,255,.35); }
+      background: linear-gradient(120deg, var(--accent2), var(--accent), var(--accent3)); box-shadow: 0 4px 14px rgba(124,92,255,.35); }
     .sidebar-profile-info { min-width: 0; flex: 1; }
     .sidebar-profile-email { font-size: 0.78rem; font-weight: 700; color: var(--text);
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .sidebar-profile-role { font-size: 0.72rem; color: var(--muted); margin-top: 1px; }
-    .sidebar-logout { display: block; text-align: center; margin-top: 10px; padding: 8px; border-radius: 9px;
-      font-size: 0.76rem; font-weight: 700; color: var(--muted); text-decoration: none;
-      border: 1px solid var(--border); transition: all .15s; }
-    .sidebar-logout:hover { color: var(--error); border-color: var(--error); }
+    .sidebar-logout { display: flex; align-items: center; justify-content: center; gap: 6px; text-align: center; margin-top: var(--sp-2); padding: 8px;
+      border-radius: 9px; font-size: 0.76rem; font-weight: 700; color: var(--muted); text-decoration: none;
+      border: 1px solid var(--border); transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease); }
+    .sidebar-logout:hover { color: var(--error); border-color: var(--error-bd); background: var(--error-bg); }
 
     .app-main { flex: 1; margin-left: var(--sidebar-w); display: flex; flex-direction: column; min-height: 100vh; }
 
     /* ── Top header ── */
     .app-header { position: sticky; top: 0; z-index: 15; display: flex; align-items: center; justify-content: space-between;
-      gap: 16px; padding: 16px 32px; border-bottom: 1px solid var(--border);
+      gap: 16px; padding: 11px 22px; border-bottom: 1px solid var(--border);
       background: rgba(5,6,10,.55); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
     .app-header h1 { font-size: 1.18rem; font-weight: 800; letter-spacing: -.01em;
-      background: linear-gradient(135deg, #fff, var(--accent2));
+      background: linear-gradient(115deg, #fff 18%, var(--accent2) 58%, var(--accent3));
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
     .app-header .subtitle { color: var(--muted); font-size: 0.78rem; margin-top: 2px; }
     .header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -87,7 +164,7 @@
       border: 1px solid var(--border); background: rgba(255,255,255,.03); font-size: 0.76rem; color: var(--muted); font-weight: 600; }
     .credit-pill .credit-track { width: 64px; height: 6px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; }
     .credit-pill .credit-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
-    .app-content { flex: 1; padding: 28px 32px 64px; display: flex; flex-direction: column; align-items: center; }
+    .app-content { flex: 1; padding: 18px 24px 42px; display: flex; flex-direction: column; align-items: center; }
 
     /* ── Tab switcher (now embedded as sidebar nav items, kept for JS compatibility) ── */
     .tab-switcher { display: contents; }
@@ -99,29 +176,170 @@
     .tab-content { display: none; flex-direction: column; align-items: center; width: 100%; }
     .tab-content.active { display: flex; }
 
+    /* ══════════════════════════════════════════════════════════
+       DASHBOARD OVERVIEW — KPI row, quick actions, activity feed,
+       platform overview. Lives at the top of Mode Simple (the
+       landing tab) so the first screen a user sees reads as a real
+       SaaS home base, not two empty drop-zones.
+       ══════════════════════════════════════════════════════════ */
+    .dash-wrap { width: 100%; max-width: 1180px; display: flex; flex-direction: column; gap: var(--sp-5); margin-bottom: var(--sp-5); }
+    .dash-greeting { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: var(--sp-3); }
+    .dash-greeting h2 { font-size: 1.32rem; font-weight: 800; letter-spacing: -.015em; }
+    .dash-greeting .sub { color: var(--muted); font-size: 0.84rem; margin-top: 3px; }
+
+    /* KPI row */
+    .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--sp-4); }
+    .kpi-card { position: relative; overflow: hidden; padding: var(--sp-4); border-radius: var(--radius);
+      background: var(--glass), var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-card);
+      transition: transform var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease); }
+    .kpi-card:hover { transform: var(--lift-sm); border-color: rgba(124,92,255,.28); box-shadow: var(--shadow-card), var(--shadow-glow); }
+    .kpi-card::after { content:""; position:absolute; inset:0; opacity:.5; pointer-events:none;
+      background: radial-gradient(220px 120px at 110% -20%, rgba(124,92,255,.16), transparent 60%); }
+    .kpi-icon { width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center;
+      margin-bottom: var(--sp-3); border: 1px solid var(--border-strong); }
+    .kpi-icon.violet  { background: linear-gradient(135deg, rgba(124,92,255,.22), rgba(124,92,255,.06)); color: #cdc3ff; }
+    .kpi-icon.blue    { background: linear-gradient(135deg, rgba(47,107,255,.22), rgba(47,107,255,.06)); color: #aac0ff; }
+    .kpi-icon.pink    { background: linear-gradient(135deg, rgba(255,77,223,.22), rgba(255,77,223,.06)); color: #ffb3ee; }
+    .kpi-icon.success { background: var(--success-bg); color: var(--success); border-color: var(--success-bd); }
+    .kpi-icon.warn    { background: var(--warn-bg); color: var(--warn); border-color: var(--warn-bd); }
+    .kpi-label { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); position: relative; }
+    .kpi-value { font-size: 1.56rem; font-weight: 800; letter-spacing: -.02em; margin-top: 5px; position: relative;
+      background: linear-gradient(115deg, #fff 18%, var(--accent2) 62%, var(--accent3));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .kpi-foot { margin-top: 7px; font-size: 0.74rem; color: var(--muted); position: relative; display: flex; align-items: center; gap: 5px; }
+    .kpi-foot.up   { color: var(--success); }
+    .kpi-foot.down { color: var(--error); }
+
+    /* Two-column dashboard body: main / right rail — kills dead space below the fold */
+    .dash-grid { display: grid; grid-template-columns: 1.45fr 1fr; gap: var(--sp-5); align-items: start; }
+    @media (max-width: 980px) { .dash-grid { grid-template-columns: 1fr; } }
+    .dash-col { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
+
+    .panel { background: var(--glass), var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: var(--sp-4); box-shadow: var(--shadow-card); }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-3); }
+    .panel-title { font-size: 0.92rem; font-weight: 800; color: #cdc3ff; display: flex; align-items: center; gap: 8px; }
+    .panel-link { font-size: 0.76rem; font-weight: 700; color: var(--muted); text-decoration: none; transition: color var(--dur-fast) var(--ease); }
+    .panel-link:hover { color: var(--text); }
+
+    /* Quick actions */
+    .qa-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-3); }
+    .qa-card { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4); border-radius: 12px;
+      border: 1px solid var(--border); background: rgba(255,255,255,.025); cursor: pointer; text-align: left;
+      color: var(--text); font-family: inherit; transition: transform var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease), background var(--dur-base) var(--ease); }
+    .qa-card:hover { transform: var(--lift-sm); border-color: rgba(124,92,255,.32);
+      background: linear-gradient(150deg, rgba(124,92,255,.10), rgba(255,255,255,.02)); }
+    .qa-icon { width: 32px; height: 32px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, rgba(124,92,255,.24), rgba(47,107,255,.12)); color: #cdc3ff; border: 1px solid var(--border-strong); }
+    .qa-name { font-size: 0.86rem; font-weight: 800; }
+    .qa-desc { font-size: 0.74rem; color: var(--muted); line-height: 1.35; }
+
+    /* Activity feed */
+    .feed { display: flex; flex-direction: column; }
+    .feed-row { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-1);
+      border-bottom: 1px solid var(--border); transition: background var(--dur-fast) var(--ease); }
+    .feed-row:last-child { border-bottom: none; }
+    .feed-row:hover { background: rgba(255,255,255,.025); border-radius: 9px; }
+    .feed-icon { width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+      border: 1px solid var(--border-strong); }
+    .feed-icon.success { background: var(--success-bg); color: var(--success); border-color: var(--success-bd); }
+    .feed-icon.error   { background: var(--error-bg); color: var(--error); border-color: var(--error-bd); }
+    .feed-body { min-width: 0; flex: 1; }
+    .feed-title { font-size: 0.83rem; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .feed-meta { font-size: 0.73rem; color: var(--muted); margin-top: 2px; }
+    .feed-status { flex-shrink: 0; font-size: 0.7rem; font-weight: 800; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+    .feed-status.success { background: var(--success-bg); color: var(--success); border: 1px solid var(--success-bd); }
+    .feed-status.error   { background: var(--error-bg); color: var(--error); border: 1px solid var(--error-bd); }
+
+    /* Mode breakdown bars (platform overview) */
+    .mode-bars { display: flex; flex-direction: column; gap: var(--sp-3); }
+    .mode-bar-row { display: flex; flex-direction: column; gap: 5px; }
+    .mode-bar-top { display: flex; align-items: center; justify-content: space-between; font-size: 0.8rem; }
+    .mode-bar-name { font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 7px; }
+    .mode-bar-stat { color: var(--muted); font-size: 0.74rem; }
+    .mode-bar-track { height: 7px; border-radius: 999px; background: rgba(255,255,255,.06); overflow: hidden; border: 1px solid var(--border); }
+    .mode-bar-fill { height: 100%; border-radius: 999px; box-shadow: 0 0 10px rgba(124,92,255,.4); }
+    .mode-bar-fill.simple    { background: linear-gradient(90deg, var(--accent2), #5a8bff); }
+    .mode-bar-fill.batch     { background: linear-gradient(90deg, var(--accent), #a98bff); }
+    .mode-bar-fill.variation { background: linear-gradient(90deg, var(--accent3), #ff8fe8); }
+
+    /* Premium empty state */
+    .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; gap: var(--sp-2); padding: var(--sp-6) var(--sp-4); color: var(--muted); }
+    .empty-state .ico-svg { width: 30px; height: 30px; opacity: .5; }
+    .empty-state .t { font-size: 0.86rem; font-weight: 700; color: var(--text); }
+    .empty-state .d { font-size: 0.78rem; max-width: 280px; line-height: 1.5; }
+
+    /* ── Pipeline visual: "A + B → C" — Mode Simple's signature element ── */
+    .pipeline { display: flex; align-items: center; justify-content: center; gap: var(--sp-3);
+      padding: var(--sp-4) var(--sp-3); margin-bottom: var(--sp-1); flex-wrap: wrap; }
+    .pipeline-node { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .pipeline-chip { width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--border-strong); font-weight: 800; font-size: 1.05rem; color: #fff; position: relative; }
+    .pipeline-chip.a { background: linear-gradient(135deg, rgba(47,107,255,.30), rgba(47,107,255,.08)); }
+    .pipeline-chip.b { background: linear-gradient(135deg, rgba(124,92,255,.30), rgba(124,92,255,.08)); }
+    .pipeline-chip.c { background: linear-gradient(135deg, rgba(255,77,223,.32), rgba(255,77,223,.10));
+      box-shadow: 0 8px 26px rgba(255,77,223,.22); }
+    .pipeline-lbl { font-size: 0.7rem; font-weight: 700; color: var(--muted); }
+    .pipeline-arrow { color: var(--muted); opacity: .6; }
+    .pipeline-plus { font-size: 1.1rem; font-weight: 800; color: var(--muted); }
+
+    /* ── Batch matrix visual: "many × many" — Mode Batch's signature element ── */
+    .matrix-wrap { display: flex; align-items: center; justify-content: center; gap: var(--sp-5); flex-wrap: wrap;
+      padding: var(--sp-4) var(--sp-3); }
+    .matrix-grid { display: grid; grid-template-columns: repeat(3, 26px); grid-template-rows: repeat(3, 26px); gap: 5px; }
+    .matrix-cell { border-radius: 6px; background: linear-gradient(135deg, rgba(124,92,255,.22), rgba(255,77,223,.14));
+      border: 1px solid var(--border-strong); }
+    .matrix-readout { display: flex; flex-direction: column; gap: 4px; }
+    .matrix-readout .formula { font-size: 1.2rem; font-weight: 800; letter-spacing: -.01em; }
+    .matrix-readout .formula em { font-style: normal;
+      background: linear-gradient(115deg, var(--accent2), var(--accent), var(--accent3));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .matrix-readout .note { font-size: 0.78rem; color: var(--muted); }
+    .batch-stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--sp-3); margin-top: var(--sp-3); }
+    .batch-stat { padding: 11px 14px; border-radius: 11px; border: 1px solid var(--border); background: rgba(255,255,255,.025); }
+    .batch-stat .l { font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+    .batch-stat .v { font-size: 1.05rem; font-weight: 800; margin-top: 3px; color: var(--text); }
+
     /* ── Shared card / UI — premium glass ── */
     .card { background: var(--glass), var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 26px; width: 100%; max-width: 700px; margin-bottom: 18px;
+      border-radius: var(--radius); padding: 18px; width: 100%; max-width: 700px; margin-bottom: 13px;
       box-shadow: var(--shadow-card); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
       transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
     .card:hover { transform: translateY(-2px); border-color: rgba(124,92,255,.28); box-shadow: var(--shadow-card), var(--shadow-glow); }
     .card h2 { font-size: 0.95rem; font-weight: 700; color: #cdc3ff;
       margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
-    .num { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; border-radius: 50%;
+    .num { background: linear-gradient(120deg, var(--accent2), var(--accent), var(--accent3)); color: #fff; border-radius: 50%;
       width: 20px; height: 20px; font-size: 0.72rem; box-shadow: 0 3px 10px rgba(124,92,255,.4);
       display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .drop-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    .drop-zone { border: 1.5px dashed var(--border-strong); border-radius: var(--radius);
-      padding: 26px 14px; text-align: center; cursor: pointer; background: rgba(255,255,255,.015);
-      transition: border-color .2s, background .2s, transform .2s; position: relative; }
-    .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent);
-      background: rgba(124,92,255,.08); transform: translateY(-1px); }
-    .drop-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-    .drop-zone .icon { font-size: 1.9rem; margin-bottom: 6px; filter: drop-shadow(0 4px 14px rgba(124,92,255,.35)); }
-    .drop-zone .lbl { font-weight: 700; font-size: 0.9rem; }
-    .drop-zone .sub { font-size: 0.76rem; color: var(--muted); margin-top: 3px; }
-    .drop-zone .fn  { margin-top: 7px; font-size: 0.76rem; color: var(--success); word-break: break-all; font-weight: 600; }
+    .drop-zone { border: 1.5px dashed var(--border-strong); border-radius: calc(var(--radius) + 2px);
+      padding: 22px 14px; text-align: center; cursor: pointer;
+      background: linear-gradient(165deg, rgba(255,255,255,.035), rgba(255,255,255,.008));
+      backdrop-filter: blur(6px);
+      transition: border-color .22s ease, background .22s ease, transform .22s ease, box-shadow .22s ease;
+      position: relative; overflow: hidden; }
+    .drop-zone::before { content: ""; position: absolute; inset: 0; opacity: 0; border-radius: inherit;
+      background: linear-gradient(135deg, rgba(47,107,255,.16), rgba(124,92,255,.12), rgba(255,77,223,.14));
+      transition: opacity .22s ease; pointer-events: none; }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); border-style: solid;
+      transform: translateY(-2px); box-shadow: 0 14px 38px rgba(124,92,255,.22); }
+    .drop-zone:hover::before, .drop-zone.drag-over::before { opacity: 1; }
+    .drop-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; z-index: 2; }
+    .drop-zone .icon { position: relative; z-index: 1; font-size: 2rem; margin-bottom: 7px;
+      filter: drop-shadow(0 4px 16px rgba(124,92,255,.4)); transition: transform .22s ease; }
+    .drop-zone:hover .icon { transform: translateY(-2px) scale(1.06); }
+    .drop-zone .lbl { position: relative; z-index: 1; font-weight: 700; font-size: 0.92rem; letter-spacing: -.01em; }
+    .drop-zone .sub { position: relative; z-index: 1; font-size: 0.76rem; color: var(--muted); margin-top: 3px; }
+    .drop-zone .fn  { position: relative; z-index: 1; margin-top: 8px; font-size: 0.76rem; color: var(--success);
+      word-break: break-all; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+      background: rgba(32,217,138,.1); border: 1px solid rgba(32,217,138,.22); display: inline-block; }
+    .drop-zone .fn:empty { display: none; }
     .status-bar { font-size: 0.82rem; padding: 9px 13px; border-radius: 9px; margin-bottom: 14px; display: none; }
+    .batch-combo-preview:not(:empty) { font-size: 0.84rem; color: var(--text); margin-top: 12px;
+      padding: 10px 14px; border-radius: 10px; font-weight: 600;
+      background: linear-gradient(120deg, rgba(47,107,255,.1), rgba(124,92,255,.08), rgba(255,77,223,.08));
+      border: 1px solid var(--border-strong); }
     .line-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
     .line-num { font-size: 0.72rem; color: var(--muted); width: 18px; flex-shrink: 0; }
     .line-row input[type="text"] { flex: 1; background: rgba(255,255,255,.03); border: 1px solid var(--border);
@@ -133,7 +351,7 @@
     .pbar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
       border-radius: 999px; transition: width .4s; width: 0%; box-shadow: 0 0 14px rgba(124,92,255,.55); }
     .primary-btn { width: 100%; max-width: 700px; padding: 16px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      background: linear-gradient(120deg, var(--accent2), var(--accent), var(--accent3));
       border: 1px solid rgba(255,255,255,.14); border-radius: var(--radius); color: #fff;
       font-size: 1rem; font-weight: 800; letter-spacing: .01em; cursor: pointer;
       box-shadow: 0 12px 34px rgba(124,92,255,.32);
@@ -169,7 +387,7 @@
     .dl-link:hover { opacity: .8; }
     #bProgressCard { display: none; width: 100%; max-width: 700px; }
     .zip-btn { margin-top: 16px; padding: 12px 24px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff;
+      background: linear-gradient(120deg, var(--accent2), var(--accent), var(--accent3)); color: #fff;
       border: 1px solid rgba(255,255,255,.14); border-radius: 11px; font-size: 0.92rem; font-weight: 800; cursor: pointer;
       display: none; align-items: center; gap: 8px; box-shadow: 0 10px 28px rgba(124,92,255,.3);
       transition: transform .18s ease, box-shadow .18s ease; }
@@ -181,7 +399,7 @@
       border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.025);
       color: var(--muted); font-size: 0.86rem; font-weight: 600; cursor: pointer; transition: all .15s; }
     .v-opt:hover { border-color: var(--border-strong); color: var(--text); }
-    .v-opt:has(input:checked) { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff;
+    .v-opt:has(input:checked) { background: linear-gradient(120deg, var(--accent2), var(--accent), var(--accent3)); color: #fff;
       border-color: transparent; box-shadow: 0 8px 22px rgba(124,92,255,.32); }
     .v-opt input { accent-color: var(--accent); }
     #vProgressCard { display: none; width: 100%; max-width: 700px; }
@@ -203,22 +421,45 @@
       border-radius: 11px; background: rgba(255,255,255,.025); color: var(--muted); font-size: 0.86rem; font-weight: 700;
       cursor: pointer; transition: all .15s; }
     .v-modeswitch label:hover { border-color: var(--border-strong); color: var(--text); }
-    .v-modeswitch label:has(input:checked) { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff;
+    .v-modeswitch label:has(input:checked) { background: linear-gradient(120deg, var(--accent2), var(--accent), var(--accent3)); color: #fff;
       border-color: transparent; box-shadow: 0 8px 24px rgba(124,92,255,.32); }
     .v-modeswitch input { display: none; }
 
-    /* ── Variation mode: advanced sliders ── */
+    /* ── Section sub-labels (Variation Controls / Advanced Controls) ── */
+    .v-section-label { font-size: 0.74rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--accent3); opacity: .85; margin: 4px 0 10px; display: flex; align-items: center; gap: 6px; }
+
+    /* ── Variation mode: advanced sliders (TikFusion-style) ── */
     #vAdvancedPanel { display: none; }
     .v-group-title { font-size: 0.78rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
       background: linear-gradient(135deg, var(--accent2), var(--accent));
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
-      margin: 20px 0 11px; }
+      margin: 20px 0 11px; display: flex; align-items: center; gap: 8px; }
     .v-group-title:first-child { margin-top: 0; }
-    .v-slider-row { display: grid; grid-template-columns: 130px 1fr 46px; align-items: center; gap: 12px; margin-bottom: 11px; }
-    .v-slider-row label { font-size: 0.83rem; color: var(--text); font-weight: 600; }
-    .v-slider-row input[type="range"] { accent-color: var(--accent); width: 100%; height: 6px; }
-    .v-slider-val { font-size: 0.8rem; color: var(--muted); font-weight: 800; text-align: right;
-      background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 7px; padding: 3px 0; }
+    .v-dot { display: inline-block; width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0;
+      box-shadow: 0 0 8px currentColor; -webkit-text-fill-color: initial; }
+    .v-slider-row { display: grid; grid-template-columns: 130px 1fr 46px; align-items: center; gap: 12px; margin-bottom: 11px;
+      padding: 7px 10px; border-radius: 10px; transition: background .15s; }
+    .v-slider-row:hover { background: rgba(255,255,255,.025); }
+    .v-slider-row label { font-size: 0.83rem; color: var(--text); font-weight: 600; cursor: help; }
+    .v-slider-row input[type="range"] {
+      -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent2), var(--accent) 50%, var(--accent3));
+      outline: none; cursor: pointer; }
+    .v-slider-row input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none; width: 17px; height: 17px; border-radius: 50%;
+      background: #fff; border: 3px solid var(--accent); cursor: pointer;
+      box-shadow: 0 0 0 4px rgba(124,92,255,.18), 0 2px 8px rgba(0,0,0,.35); transition: transform .15s, box-shadow .15s; }
+    .v-slider-row input[type="range"]::-webkit-slider-thumb:hover,
+    .v-slider-row input[type="range"]::-webkit-slider-thumb:active {
+      transform: scale(1.18); box-shadow: 0 0 0 6px rgba(255,77,223,.16), 0 2px 10px rgba(0,0,0,.4); }
+    .v-slider-row input[type="range"]::-moz-range-thumb {
+      width: 17px; height: 17px; border-radius: 50%; background: #fff; border: 3px solid var(--accent);
+      cursor: pointer; box-shadow: 0 0 0 4px rgba(124,92,255,.18), 0 2px 8px rgba(0,0,0,.35); }
+    .v-slider-row input[type="range"]::-moz-range-track { background: transparent; }
+    .v-slider-val { font-size: 0.8rem; color: #fff; font-weight: 800; text-align: center;
+      background: linear-gradient(135deg, rgba(124,92,255,.22), rgba(255,77,223,.14));
+      border: 1px solid var(--border-strong); border-radius: 7px; padding: 3px 0; }
     .v-adv-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
     .v-ghost-btn { padding: 10px 17px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.03);
       color: var(--text); font-size: 0.84rem; font-weight: 700; cursor: pointer; transition: all .15s; }
@@ -240,7 +481,7 @@
     .v-est-item:hover { transform: translateY(-2px); border-color: rgba(124,92,255,.3); }
     .v-est-label { font-size: 0.72rem; color: var(--muted); font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
     .v-est-value { font-size: 1.2rem; color: var(--text); font-weight: 800; margin-top: 5px;
-      background: linear-gradient(135deg, #fff, var(--accent2));
+      background: linear-gradient(115deg, #fff 18%, var(--accent2) 58%, var(--accent3));
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
   </style>
 </head>
@@ -248,36 +489,128 @@
 
 <div class="app-shell">
   <aside class="sidebar">
-    <div class="sidebar-logo">🎬 VideoBot</div>
+    <div class="sidebar-logo">
+      <span class="vs-logo">
+        <svg class="vs-mark" viewBox="0 0 36 36" aria-hidden="true">
+          <defs><linearGradient id="vsGradSide" x1="0" y1="1" x2="1" y2="0">
+            <stop offset="0%" stop-color="#2F6BFF"/><stop offset="50%" stop-color="#7C5CFF"/><stop offset="100%" stop-color="#FF4DDF"/>
+          </linearGradient></defs>
+          <path d="M3 6 L13 27 L16.5 20 L9 6 Z" fill="#fff"/>
+          <path d="M22.5 6 L16.5 20 L18.5 24.5 L30 6 Z" fill="#fff" opacity=".5"/>
+          <path d="M14.5 19.5 L29 5 L29 13 L18.5 23.5 Z" fill="url(#vsGradSide)"/>
+        </svg>
+        <span class="vs-word">Viral<em>Scale</em></span>
+      </span>
+    </div>
+
+    {% if current_user %}
+    <button type="button" class="sidebar-cta" onclick="switchTab('simple')">
+      <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 3.5 V14.5 M3.5 9 H14.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+      Nouvelle génération
+    </button>
+    {% endif %}
 
     <nav class="sidebar-nav">
-      {% if current_user %}
-      <a class="nav-item" href="{{ url_for('consumption') }}"><span class="ico">📊</span> Dashboard</a>
-      {% else %}
-      <a class="nav-item soon"><span class="ico">📊</span> Dashboard</a>
-      {% endif %}
-
-      <div class="nav-section-label">Génération</div>
-      <button class="tab-btn nav-item active" onclick="switchTab('simple')"><span class="ico">🎬</span> Mode Simple</button>
-      <button class="tab-btn nav-item" onclick="switchTab('batch')"><span class="ico">📦</span> Mode Batch</button>
-      <button class="tab-btn nav-item" onclick="switchTab('variation')"><span class="ico">🎲</span> Mode Variation</button>
-
-      <div class="nav-section-label">Compte</div>
-      {% if current_user %}
-        {% if current_user.role == 'admin' %}
-          <a class="nav-item" href="{{ url_for('admin_consumption') }}"><span class="ico">📈</span> Analytics</a>
+      <div class="nav-group">
+        {% if current_user %}
+        <a class="nav-item" href="{{ url_for('consumption') }}">
+          <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="2.5" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="2.5" y="10" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="10" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/></svg></span>
+          Dashboard
+        </a>
         {% else %}
-          <a class="nav-item" href="{{ url_for('consumption') }}"><span class="ico">📈</span> Analytics</a>
+        <a class="nav-item soon">
+          <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="2.5" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="2.5" y="10" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="10" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/></svg></span>
+          Dashboard
+        </a>
         {% endif %}
-      {% endif %}
-      <a class="nav-item soon"><span class="ico">🕓</span> Historique <span class="soon-badge">Bientôt</span></a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Création</div>
+        <button class="tab-btn nav-item active" onclick="switchTab('simple')">
+          <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="6" width="13" height="9.5" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 6 L4.2 2.5 L7 2.5 L5.6 6 Z M7.4 6 L9 2.7 L11.8 2.7 L10.4 6 Z M11.9 6 L13.4 2.7 L15.2 2.7 L14.5 6 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
+          Mode Simple
+        </button>
+        <button class="tab-btn nav-item" onclick="switchTab('batch')">
+          <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
+          Mode Batch
+        </button>
+        <button class="tab-btn nav-item" onclick="switchTab('variation')">
+          <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span>
+          Variation Studio
+        </button>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Analytics</div>
+        {% if current_user %}
+          {% if current_user.role == 'admin' %}
+          <a class="nav-item" href="{{ url_for('admin_consumption') }}">
+            <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 15.5 V8.5 M8 15.5 V4 M13 15.5 V11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M2.5 15.5 H15.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+            Consommation
+          </a>
+          {% else %}
+          <a class="nav-item" href="{{ url_for('consumption') }}">
+            <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 15.5 V8.5 M8 15.5 V4 M13 15.5 V11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M2.5 15.5 H15.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+            Consommation
+          </a>
+          {% endif %}
+        {% endif %}
+        <a class="nav-item soon">
+          <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          Historique <span class="nav-badge soon">Bientôt</span>
+        </a>
+      </div>
+
       {% if current_user and current_user.role == 'admin' %}
-      <a class="nav-item" href="{{ url_for('admin_users') }}"><span class="ico">👥</span> Équipe</a>
+      <div class="nav-group">
+        <div class="nav-group-label">Administration</div>
+        <a class="nav-item" href="{{ url_for('admin_users') }}">
+          <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="6.7" cy="6" r="2.4" stroke="currentColor" stroke-width="1.6"/><path d="M2.6 15 c0-2.5 1.9-4 4.1-4 s4.1 1.5 4.1 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12.6" cy="6.6" r="1.9" stroke="currentColor" stroke-width="1.5" opacity=".75"/><path d="M11.4 9.3 c1.9-.15 3.5 1.15 3.9 3.35" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".75"/></svg></span>
+          Gestion équipe
+        </a>
+      </div>
       {% endif %}
-      <a class="nav-item soon"><span class="ico">⚙️</span> Paramètres <span class="soon-badge">Bientôt</span></a>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Paramètres</div>
+        <a class="nav-item soon">
+          <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 2.6 V4.3 M9 13.7 V15.4 M15.4 9 H13.7 M4.3 9 H2.6 M13.5 4.5 L12.3 5.7 M5.7 12.3 L4.5 13.5 M13.5 13.5 L12.3 12.3 M5.7 5.7 L4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+          Paramètres <span class="nav-badge soon">Bientôt</span>
+        </a>
+      </div>
     </nav>
 
     {% if current_user %}
+    {% set _plan_limit = current_user.monthly_generation_limit %}
+    {% set _credits_left = current_user.credits_remaining %}
+    {% if _plan_limit and _plan_limit > 0 and _credits_left is not none %}
+      {% set _used = _plan_limit - _credits_left if _plan_limit - _credits_left > 0 else 0 %}
+      {% set _pct = ((_used / _plan_limit) * 100) | round(0, 'floor') %}
+      {% set _pct = 100 if _pct > 100 else _pct %}
+    {% else %}
+      {% set _pct = none %}
+    {% endif %}
+    <div class="sidebar-usage">
+      <div class="sidebar-usage-row">
+        <span class="sidebar-usage-label">Forfait actuel</span>
+        <span class="plan-tag">{{ current_user.plan_name|capitalize if current_user.plan_name else 'Standard' }}</span>
+      </div>
+      {% if _pct is not none %}
+      <div class="sidebar-usage-row">
+        <span class="sidebar-usage-label">Crédits restants</span>
+        <span class="sidebar-usage-value">{{ _credits_left }} <span class="of">/ {{ _plan_limit }}</span></span>
+      </div>
+      <div class="sidebar-usage-track"><div class="sidebar-usage-fill" style="width:{{ _pct }}%"></div></div>
+      <div class="sidebar-usage-foot">{{ _pct }}% du quota mensuel utilisé</div>
+      {% else %}
+      <div class="sidebar-usage-row">
+        <span class="sidebar-usage-label">Crédits restants</span>
+        <span class="sidebar-usage-value">{{ _credits_left if _credits_left is not none else '—' }}</span>
+      </div>
+      {% endif %}
+    </div>
+
     <div class="sidebar-profile">
       <div class="sidebar-avatar">{{ current_user.email[0]|upper }}</div>
       <div class="sidebar-profile-info">
@@ -285,15 +618,18 @@
         <div class="sidebar-profile-role">{{ 'Administrateur' if current_user.role == 'admin' else 'Membre' }}{% if current_user.plan_name %} · {{ current_user.plan_name|capitalize }}{% endif %}</div>
       </div>
     </div>
-    <a class="sidebar-logout" href="{{ url_for('logout') }}">Se déconnecter</a>
+    <a class="sidebar-logout" href="{{ url_for('logout') }}">
+      <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.2 2.6 H4 a1.4 1.4 0 0 0-1.4 1.4 v10 a1.4 1.4 0 0 0 1.4 1.4 h3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 9 H15.4 M12.4 6 L15.4 9 L12.4 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      Se déconnecter
+    </a>
     {% endif %}
   </aside>
 
   <div class="app-main">
     <header class="app-header">
       <div>
-        <h1>🎬 VideoBot</h1>
-        <div class="subtitle">Upload Vidéo A + Vidéo B → texte détecté et réécrit → Vidéo C propre</div>
+        <h1>Studio de génération</h1>
+        <div class="subtitle">Vidéo A + Vidéo B → texte détecté et réécrit → Vidéo C prête à publier</div>
       </div>
       {% if current_user %}
       <div class="header-right">
@@ -318,20 +654,195 @@
 ══════════════════════════════════════════ -->
 <div id="simpleTab" class="tab-content active">
 
+{% if current_user %}
+<!-- ══════════════════════════════════════════
+     DASHBOARD OVERVIEW — built entirely from
+     dashboard_summary / dashboard_usage_by_mode /
+     dashboard_recent_activity, which the "/" route
+     now passes from the existing get_user_usage_summary,
+     get_usage_by_mode and get_recent_activity helpers
+     (same helpers /consumption already relies on — no
+     new aggregation, pricing or generation logic).
+══════════════════════════════════════════ -->
+<div class="dash-wrap">
+  <div class="dash-greeting">
+    <div>
+      <h2>Bon retour, {{ current_user.email.split('@')[0] }}</h2>
+      <div class="sub">Aperçu de ton activité de génération — données de ton compte en temps réel.</div>
+    </div>
+  </div>
+
+  {% if dashboard_summary and dashboard_summary.all_time and dashboard_summary.all_time.total %}
+  {% set _at = dashboard_summary.all_time %}
+  {% set _success_rate = ((_at.successes / _at.total) * 100) | round(0) if _at.total else 0 %}
+  {% set _variation_row = (dashboard_usage_by_mode | selectattr('mode', 'equalto', 'variation') | list | first) %}
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <span class="kpi-icon violet"><span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="6" width="13" height="9.5" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 6 L4.2 2.5 L7 2.5 L5.6 6 Z M7.4 6 L9 2.7 L11.8 2.7 L10.4 6 Z M11.9 6 L13.4 2.7 L15.2 2.7 L14.5 6 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span></span>
+      <div class="kpi-label">Vidéos générées</div>
+      <div class="kpi-value">{{ _at.total_output_videos }}</div>
+      <div class="kpi-foot">{{ _at.total }} générations au total</div>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-icon pink"><span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span></span>
+      <div class="kpi-label">Variations générées</div>
+      <div class="kpi-value">{{ _variation_row.total_output_videos if _variation_row else 0 }}</div>
+      <div class="kpi-foot">via Variation Studio</div>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-icon blue"><span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 5.8 V12.2 M11.1 7.2 c0-1-1-1.7-2.1-1.7 s-2.1 .55-2.1 1.5 c0 .95.95 1.3 2.1 1.5 c1.15.2 2.1.6 2.1 1.55 c0 .95-1.05 1.55-2.1 1.55 s-2.1-.65-2.1-1.7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span></span>
+      <div class="kpi-label">Crédits restants</div>
+      <div class="kpi-value">{{ current_user.credits_remaining if current_user.credits_remaining is not none else '—' }}</div>
+      <div class="kpi-foot">{{ current_user.plan_name|capitalize if current_user.plan_name else 'Forfait standard' }}</div>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-icon warn"><span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="5" width="13" height="9.5" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 8 H15.5" stroke="currentColor" stroke-width="1.6"/><circle cx="12.2" cy="11.2" r="1" fill="currentColor"/></svg></span></span>
+      <div class="kpi-label">Coût estimé</div>
+      <div class="kpi-value">${{ '%.2f'|format(_at.total_cost) }}</div>
+      <div class="kpi-foot">Cumul sur l'historique complet</div>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-icon success"><span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M6 9.2 L8.2 11.4 L12.3 6.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></span>
+      <div class="kpi-label">Taux de réussite</div>
+      <div class="kpi-value">{{ _success_rate | int }}%</div>
+      <div class="kpi-foot {{ 'up' if _success_rate >= 90 else '' }}">{{ _at.successes }} réussites · {{ _at.failures }} échecs</div>
+    </div>
+  </div>
+  {% else %}
+  <div class="panel">
+    <div class="empty-state">
+      <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="6" width="13" height="9.5" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 6 L4.2 2.5 L7 2.5 L5.6 6 Z M7.4 6 L9 2.7 L11.8 2.7 L10.4 6 Z M11.9 6 L13.4 2.7 L15.2 2.7 L14.5 6 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
+      <div class="t">Pas encore de génération</div>
+      <div class="d">Lance ta première génération pour voir apparaître ici tes statistiques en temps réel — vidéos produites, coût estimé, taux de réussite.</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="dash-grid">
+    <div class="dash-col">
+      <div class="panel">
+        <div class="panel-head"><span class="panel-title">Actions rapides</span></div>
+        <div class="qa-row">
+          <button type="button" class="qa-card" onclick="switchTab('simple')">
+            <span class="qa-icon"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="6" width="13" height="9.5" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 6 L4.2 2.5 L7 2.5 L5.6 6 Z M7.4 6 L9 2.7 L11.8 2.7 L10.4 6 Z M11.9 6 L13.4 2.7 L15.2 2.7 L14.5 6 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
+            <span class="qa-name">Mode Simple</span>
+            <span class="qa-desc">Vidéo A + Vidéo B → Vidéo C, texte détecté et réécrit automatiquement.</span>
+          </button>
+          <button type="button" class="qa-card" onclick="switchTab('batch')">
+            <span class="qa-icon"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
+            <span class="qa-name">Mode Batch</span>
+            <span class="qa-desc">Combine plusieurs sources et cibles — toutes les combinaisons en une passe.</span>
+          </button>
+          <button type="button" class="qa-card" onclick="switchTab('variation')">
+            <span class="qa-icon"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span>
+            <span class="qa-name">Variation Studio</span>
+            <span class="qa-desc">Génère des dizaines de variantes uniques d'une seule vidéo source.</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-title">Activité récente</span>
+          {% if current_user.role == 'admin' %}
+          <a class="panel-link" href="{{ url_for('admin_consumption') }}">Voir tout →</a>
+          {% else %}
+          <a class="panel-link" href="{{ url_for('consumption') }}">Voir tout →</a>
+          {% endif %}
+        </div>
+        {% if dashboard_recent_activity and dashboard_recent_activity|length > 0 %}
+        <div class="feed">
+          {% for item in dashboard_recent_activity %}
+          <div class="feed-row">
+            <span class="feed-icon {{ 'success' if item.generation_success else 'error' }}">
+              {% if item.generation_success %}
+              <svg viewBox="0 0 18 18" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 9.2 L7.6 11.8 L13 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              {% else %}
+              <svg viewBox="0 0 18 18" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 5.5 L12.5 12.5 M12.5 5.5 L5.5 12.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              {% endif %}
+            </span>
+            <div class="feed-body">
+              <div class="feed-title">{{ item.mode | capitalize }} · {{ item.source_filename or 'Génération' }}</div>
+              <div class="feed-meta">{{ item.output_video_count }} vidéo(s) générée(s) · ${{ '%.2f'|format(item.estimated_cost) }} · {{ item.timestamp }}</div>
+            </div>
+            <span class="feed-status {{ 'success' if item.generation_success else 'error' }}">{{ 'Réussi' if item.generation_success else 'Échec' }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <div class="t">Aucune activité pour le moment</div>
+          <div class="d">Tes générations récentes — mode utilisé, vidéos produites, statut — apparaîtront ici dès ton premier traitement.</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="dash-col">
+      <div class="panel">
+        <div class="panel-head"><span class="panel-title">Répartition par mode</span></div>
+        {% if dashboard_usage_by_mode and dashboard_usage_by_mode|length > 0 %}
+        {% set _max_total = (dashboard_usage_by_mode | map(attribute='total') | list | max) %}
+        <div class="mode-bars">
+          {% for row in dashboard_usage_by_mode %}
+          <div class="mode-bar-row">
+            <div class="mode-bar-top">
+              <span class="mode-bar-name">{{ row.mode | capitalize }}</span>
+              <span class="mode-bar-stat">{{ row.total }} générations · {{ row.total_output_videos }} vidéos</span>
+            </div>
+            <div class="mode-bar-track"><div class="mode-bar-fill {{ row.mode }}" style="width:{{ ((row.total / _max_total) * 100) | round(0) if _max_total else 0 }}%"></div></div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="t">Pas encore de données</div>
+          <div class="d">La répartition par mode de génération (Simple / Batch / Variation) apparaîtra ici une fois ton historique alimenté.</div>
+        </div>
+        {% endif %}
+      </div>
+
+      {% if dashboard_summary and dashboard_summary.month and dashboard_summary.month.total %}
+      {% set _m = dashboard_summary.month %}
+      <div class="panel">
+        <div class="panel-head"><span class="panel-title">Ce mois-ci</span></div>
+        <div class="batch-stat-row">
+          <div class="batch-stat"><div class="l">Générations</div><div class="v">{{ _m.total }}</div></div>
+          <div class="batch-stat"><div class="l">Vidéos produites</div><div class="v">{{ _m.total_output_videos }}</div></div>
+          <div class="batch-stat"><div class="l">Coût estimé</div><div class="v">${{ '%.2f'|format(_m.total_cost) }}</div></div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
   <!-- Upload -->
   <div class="card">
     <h2><span class="num">1</span> Upload des vidéos</h2>
+    <div style="font-size:0.8rem;color:var(--muted);margin:-6px 0 14px;">Glisse-dépose ou clique pour sélectionner — formats vidéo courants supportés.</div>
+
+    <div class="pipeline">
+      <div class="pipeline-node"><span class="pipeline-chip a">A</span><span class="pipeline-lbl">Vidéo A · visuels</span></div>
+      <span class="pipeline-plus">+</span>
+      <div class="pipeline-node"><span class="pipeline-chip b">B</span><span class="pipeline-lbl">Vidéo B · audio &amp; texte</span></div>
+      <span class="pipeline-arrow"><svg viewBox="0 0 18 18" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 9 H14 M10 5 L14 9 L10 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <div class="pipeline-node"><span class="pipeline-chip c">C</span><span class="pipeline-lbl">Résultat prêt à publier</span></div>
+    </div>
+
     <div class="drop-row">
       <div class="drop-zone" id="zoneA">
         <input type="file" name="video_a" id="inputA" accept="video/*" required />
-        <div class="icon">🎥</div>
+        <div class="icon"><span class="ico-svg lg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="5" width="9" height="8" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M11.5 8 L15.5 6 V12 L11.5 10 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span></div>
         <div class="lbl">Vidéo A</div>
         <div class="sub">Tes visuels</div>
         <div class="fn" id="nameA"></div>
       </div>
       <div class="drop-zone" id="zoneB">
         <input type="file" name="video_b" id="inputB" accept="video/*" required />
-        <div class="icon">🎵</div>
+        <div class="icon"><span class="ico-svg lg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 13 V4.5 L13.5 3 V11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="5.5" cy="13" r="1.7" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="11.5" r="1.7" stroke="currentColor" stroke-width="1.5"/></svg></span></div>
         <div class="lbl">Vidéo B</div>
         <div class="sub">Audio + texte source</div>
         <div class="fn" id="nameB"></div>
@@ -342,24 +853,25 @@
   <!-- Detected lines -->
   <div class="card">
     <h2><span class="num">2</span> Texte détecté <span id="lineCount" style="color:var(--muted);font-weight:400;font-size:0.8rem;margin-left:4px"></span></h2>
+    <div style="font-size:0.8rem;color:var(--muted);margin:-6px 0 14px;">Édite les lignes détectées avant de lancer la génération — la vidéo C reprendra ces textes réécrits.</div>
     <div class="status-bar" id="detectStatus"></div>
     <div id="linesContainer"></div>
     <div id="noLines">Uploade la Vidéo B pour détecter le texte automatiquement.</div>
     <input type="hidden" id="linesJson" />
   </div>
 
-  <button id="submitBtn" class="primary-btn" onclick="submitForm()" disabled>⚡ Générer la Vidéo C</button>
+  <button id="submitBtn" class="primary-btn" onclick="submitForm()" disabled><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 2 L4.5 10.5 H8.3 L7.4 16 L13.5 7 H9.5 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="currentColor" fill-opacity=".18"/></svg></span> Générer la Vidéo C</button>
 
   <div class="card" id="progressCard">
-    <h2>⏳ Traitement en cours…</h2>
+    <h2><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Traitement en cours…</h2>
     <div class="pbar"><div class="pbar-fill" id="pFill"></div></div>
     <div id="pStatus" style="font-size:.85rem;color:var(--muted)">Upload et rendu…</div>
   </div>
 
   <div class="card" id="resultCard">
-    <h2>✅ Vidéo C prête !</h2>
+    <h2><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M6 9.2 L8.2 11.4 L12.3 6.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Vidéo C prête !</h2>
     <p style="color:var(--muted);font-size:.88rem">Clique pour télécharger.</p>
-    <a id="downloadBtn" href="#">⬇️ Télécharger video_C.mp4</a>
+    <a id="downloadBtn" href="#"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 3 V11 M6 8.5 L9 11.5 L12 8.5 M4 14.5 H14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Télécharger video_C.mp4</a>
   </div>
 
   <div id="errorBox"></div>
@@ -374,35 +886,73 @@
 
   <!-- Upload -->
   <div class="card">
-    <h2><span class="num">1</span> Upload des vidéos</h2>
+    <h2><span class="num">1</span> Sources &amp; cibles</h2>
+    <div style="font-size:0.8rem;color:var(--muted);margin:-6px 0 14px;">Chaque vidéo source A sera combinée avec chaque vidéo cible B pour générer toutes les combinaisons en une seule passe.</div>
+
+    <div class="matrix-wrap">
+      <div class="matrix-grid">
+        <div class="matrix-cell"></div><div class="matrix-cell"></div><div class="matrix-cell"></div>
+        <div class="matrix-cell"></div><div class="matrix-cell"></div><div class="matrix-cell"></div>
+        <div class="matrix-cell"></div><div class="matrix-cell"></div><div class="matrix-cell"></div>
+      </div>
+      <div class="matrix-readout">
+        <div class="formula"><em>N</em> sources × <em>M</em> cibles = <em>N×M</em> résultats</div>
+        <div class="note">Mode Batch traite toutes les combinaisons A × B en une seule passe — pensé pour produire un volume, pas une vidéo isolée.</div>
+      </div>
+    </div>
+
     <div class="drop-row">
       <div class="drop-zone" id="bZoneA">
         <input type="file" id="bInputA" accept="video/*" multiple />
-        <div class="icon">🎥</div>
-        <div class="lbl">Vidéos A (sources)</div>
+        <div class="icon"><span class="ico-svg lg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="5" width="9" height="8" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M11.5 8 L15.5 6 V12 L11.5 10 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span></div>
+        <div class="lbl">Vidéos sources (A)</div>
         <div class="sub">1 à 10 fichiers</div>
         <div class="fn" id="bNameA"></div>
       </div>
       <div class="drop-zone" id="bZoneB">
         <input type="file" id="bInputB" accept="video/*" multiple />
-        <div class="icon">🎵</div>
-        <div class="lbl">Vidéos B (cibles)</div>
+        <div class="icon"><span class="ico-svg lg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 13 V4.5 L13.5 3 V11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="5.5" cy="13" r="1.7" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="11.5" r="1.7" stroke="currentColor" stroke-width="1.5"/></svg></span></div>
+        <div class="lbl">Vidéos cibles (B)</div>
         <div class="sub">1 à 10 fichiers</div>
         <div class="fn" id="bNameB"></div>
       </div>
     </div>
-    <div id="bComboPreview" style="font-size:.85rem;color:var(--muted);margin-top:10px"></div>
+    <div id="bComboPreview" class="batch-combo-preview"></div>
   </div>
 
-  <button id="bLaunchBtn" class="primary-btn" onclick="runBatch()" disabled>⚡ Lancer le Batch</button>
+  {% if current_user %}
+  {% set _batch_row = (dashboard_usage_by_mode | selectattr('mode', 'equalto', 'batch') | list | first) %}
+  <div class="card">
+    <h2><span class="num">2</span> Tes statistiques Batch</h2>
+    <div style="font-size:0.8rem;color:var(--muted);margin:-6px 0 14px;">Issues de ton historique de générations réel — propres au mode Batch.</div>
+    {% if _batch_row and _batch_row.total %}
+    {% set _batch_rate = ((_batch_row.successes / _batch_row.total) * 100) | round(0) if _batch_row.total else 0 %}
+    <div class="batch-stat-row">
+      <div class="batch-stat"><div class="l">Lots lancés</div><div class="v">{{ _batch_row.total }}</div></div>
+      <div class="batch-stat"><div class="l">Vidéos produites</div><div class="v">{{ _batch_row.total_output_videos }}</div></div>
+      <div class="batch-stat"><div class="l">Taux de réussite</div><div class="v">{{ _batch_rate | int }}%</div></div>
+      <div class="batch-stat"><div class="l">Coût estimé</div><div class="v">${{ '%.2f'|format(_batch_row.total_cost) }}</div></div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
+      <div class="t">Pas encore de lot généré</div>
+      <div class="d">Lance ton premier batch pour voir apparaître ici tes statistiques propres au mode Batch — volume produit, taux de réussite, coût estimé.</div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <button id="bLaunchBtn" class="primary-btn" onclick="runBatch()" disabled><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 2 L4.5 10.5 H8.3 L7.4 16 L13.5 7 H9.5 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="currentColor" fill-opacity=".18"/></svg></span> Lancer le Batch</button>
 
   <!-- Progress + per-video results -->
   <div class="card" id="bProgressCard">
-    <h2 id="bProgressTitle">⏳ Traitement batch…</h2>
+    <h2 id="bProgressTitle"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Génération des combinaisons…</h2>
+    <div style="font-size:0.8rem;color:var(--muted);margin:-6px 0 14px;">Suivi en temps réel de la progression et du résultat de chaque combinaison générée.</div>
     <div class="pbar"><div class="pbar-fill" id="bGlobalFill"></div></div>
     <div id="bGlobalStatus" style="font-size:.85rem;color:var(--muted);margin-bottom:14px"></div>
     <div id="bResultsList"></div>
-    <button class="zip-btn" id="bZipBtn" onclick="downloadZip()">📦 Télécharger tout en ZIP</button>
+    <button class="zip-btn" id="bZipBtn" onclick="downloadZip()"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span> Télécharger tout en ZIP</button>
   </div>
 
 </div><!-- /batchTab -->
@@ -418,10 +968,10 @@
 
   <!-- Upload -->
   <div class="card">
-    <h2><span class="num">1</span> Vidéo source</h2>
+    <h2><span class="num">1</span> Source Video</h2>
     <div class="drop-zone" id="vZone" style="max-width:320px;margin:0 auto;">
       <input type="file" id="vInput" accept="video/*" />
-      <div class="icon">🎲</div>
+      <div class="icon"><span class="ico-svg lg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span></div>
       <div class="lbl">Vidéo source</div>
       <div class="sub">1 seul fichier</div>
       <div class="fn" id="vName"></div>
@@ -430,9 +980,9 @@
 
   <!-- Options -->
   <div class="card">
-    <h2><span class="num">2</span> Options</h2>
+    <h2><span class="num">2</span> Generation Settings</h2>
 
-    <div style="margin-bottom:18px;">
+    <div style="margin-bottom:16px;">
       <div style="font-size:0.84rem;font-weight:600;margin-bottom:8px;color:var(--text)">Nombre de variations</div>
       <div class="v-count-row">
         <input type="number" id="vCountNum" class="v-count-num" min="1" max="100" value="10">
@@ -445,18 +995,19 @@
       <div id="vCountWarning" style="display:none;color:var(--error);font-size:0.8rem;margin-top:8px;">Maximum 100 variations allowed.</div>
     </div>
 
+    <div class="v-section-label"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.5 5.5 H14.5 M3.5 9 H14.5 M3.5 12.5 H14.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="5.5" r="1.5" fill="currentColor"/><circle cx="11.5" cy="9" r="1.5" fill="currentColor"/><circle cx="6" cy="12.5" r="1.5" fill="currentColor"/></svg></span> Variation Controls</div>
     <div class="v-modeswitch">
-      <label><input type="radio" name="vConfigMode" value="preset" checked> 🪄 Mode Préréglages <span style="font-weight:500;opacity:.8">(débutant)</span></label>
-      <label><input type="radio" name="vConfigMode" value="advanced"> 🛠️ Mode Avancé <span style="font-weight:500;opacity:.8">(16 réglages)</span></label>
+      <label><input type="radio" name="vConfigMode" value="preset" checked> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 15 L11 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M14.5 2.6 L15 3.8 L16.2 4.3 L15 4.8 L14.5 6 L14 4.8 L12.8 4.3 L14 3.8 Z" fill="currentColor"/><path d="M11 2.6 L11.3 3.4 L12.1 3.7 L11.3 4 L11 4.8 L10.7 4 L9.9 3.7 L10.7 3.4 Z" fill="currentColor" opacity=".7"/></svg></span> Mode Préréglages <span style="font-weight:500;opacity:.8">(débutant)</span></label>
+      <label><input type="radio" name="vConfigMode" value="advanced"> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3.4 a3 3 0 0 0-4 3.7 L4 11.2 a1.5 1.5 0 0 0 2.1 2.1 l4.1-4.1 a3 3 0 0 0 3.7-4 l-2 2-1.4-.4-.4-1.4 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span> Mode Avancé <span style="font-weight:500;opacity:.8">(16 réglages)</span></label>
     </div>
 
     <!-- Preset mode panel -->
     <div id="vPresetPanel">
       <div style="font-size:0.84rem;font-weight:600;margin-bottom:8px;color:var(--text)">Intensité des variations</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <label class="v-opt"><input type="radio" name="vStrength" value="light" checked> 🪶 Légère</label>
-        <label class="v-opt"><input type="radio" name="vStrength" value="medium"> ⚖️ Moyenne</label>
-        <label class="v-opt"><input type="radio" name="vStrength" value="strong"> 🔥 Forte</label>
+        <label class="v-opt"><input type="radio" name="vStrength" value="light" checked> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="3" height="4" rx="1" fill="currentColor"/><rect x="7.5" y="7" width="3" height="8" rx="1" fill="currentColor" opacity=".22"/><rect x="12" y="3" width="3" height="12" rx="1" fill="currentColor" opacity=".22"/></svg></span> Légère</label>
+        <label class="v-opt"><input type="radio" name="vStrength" value="medium"> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="3" height="4" rx="1" fill="currentColor"/><rect x="7.5" y="7" width="3" height="8" rx="1" fill="currentColor"/><rect x="12" y="3" width="3" height="12" rx="1" fill="currentColor" opacity=".22"/></svg></span> Moyenne</label>
+        <label class="v-opt"><input type="radio" name="vStrength" value="strong"> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="3" height="4" rx="1" fill="currentColor"/><rect x="7.5" y="7" width="3" height="8" rx="1" fill="currentColor"/><rect x="12" y="3" width="3" height="12" rx="1" fill="currentColor"/></svg></span> Forte</label>
       </div>
       <div style="font-size:0.78rem;color:var(--muted);margin-top:8px;">
         Légère = changements discrets (recommandé). Plus l'intensité augmente, plus les vidéos générées diffèrent visuellement de la source.
@@ -465,49 +1016,50 @@
 
     <!-- Advanced mode panel -->
     <div id="vAdvancedPanel">
-      <div style="font-size:0.78rem;color:var(--muted);margin-bottom:6px;">
+      <div class="v-section-label"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3.4 a3 3 0 0 0-4 3.7 L4 11.2 a1.5 1.5 0 0 0 2.1 2.1 l4.1-4.1 a3 3 0 0 0 3.7-4 l-2 2-1.4-.4-.4-1.4 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span> Advanced Controls</div>
+      <div style="font-size:0.78rem;color:var(--muted);margin-bottom:10px;">
         0 = désactivé · 50 = recommandé · 100 = variation maximale (les vidéos restent toujours visuellement propres, jamais corrompues).
       </div>
 
-      <div class="v-group-title">🎨 Visuel</div>
-      <div class="v-slider-row"><label for="vAdv_brightness">Luminosité</label><input type="range" id="vAdv_brightness" min="0" max="100" value="50" data-vadv="brightness"><span class="v-slider-val" id="vAdv_brightness_val">50</span></div>
-      <div class="v-slider-row"><label for="vAdv_contrast">Contraste</label><input type="range" id="vAdv_contrast" min="0" max="100" value="50" data-vadv="contrast"><span class="v-slider-val" id="vAdv_contrast_val">50</span></div>
-      <div class="v-slider-row"><label for="vAdv_saturation">Saturation</label><input type="range" id="vAdv_saturation" min="0" max="100" value="50" data-vadv="saturation"><span class="v-slider-val" id="vAdv_saturation_val">50</span></div>
-      <div class="v-slider-row"><label for="vAdv_gamma">Gamma</label><input type="range" id="vAdv_gamma" min="0" max="100" value="50" data-vadv="gamma"><span class="v-slider-val" id="vAdv_gamma_val">50</span></div>
-      <div class="v-slider-row"><label for="vAdv_noise">Bruit / Grain</label><input type="range" id="vAdv_noise" min="0" max="100" value="50" data-vadv="noise"><span class="v-slider-val" id="vAdv_noise_val">50</span></div>
-      <div class="v-slider-row"><label for="vAdv_sharpness">Netteté</label><input type="range" id="vAdv_sharpness" min="0" max="100" value="50" data-vadv="sharpness"><span class="v-slider-val" id="vAdv_sharpness_val">50</span></div>
-      <div class="v-slider-row"><label for="vAdv_blur">Flou</label><input type="range" id="vAdv_blur" min="0" max="100" value="50" data-vadv="blur"><span class="v-slider-val" id="vAdv_blur_val">50</span></div>
-      <div class="v-slider-row"><label for="vAdv_zoom">Zoom</label><input type="range" id="vAdv_zoom" min="0" max="100" value="50" data-vadv="zoom"><span class="v-slider-val" id="vAdv_zoom_val">50</span></div>
-      <div class="v-slider-row"><label for="vAdv_crop">Recadrage</label><input type="range" id="vAdv_crop" min="0" max="100" value="50" data-vadv="crop"><span class="v-slider-val" id="vAdv_crop_val">50</span></div>
-      <div class="v-slider-row"><label for="vAdv_rotation">Rotation</label><input type="range" id="vAdv_rotation" min="0" max="100" value="50" data-vadv="rotation"><span class="v-slider-val" id="vAdv_rotation_val">50</span></div>
+      <div class="v-group-title"><span class="v-dot" style="background:var(--accent);color:var(--accent)"></span> Visuel</div>
+      <div class="v-slider-row" title="Ajuste légèrement la luminosité globale de chaque variation"><label for="vAdv_brightness">Luminosité</label><input type="range" id="vAdv_brightness" min="0" max="100" value="50" data-vadv="brightness" title="Ajuste légèrement la luminosité globale de chaque variation"><span class="v-slider-val" id="vAdv_brightness_val">50</span></div>
+      <div class="v-slider-row" title="Fait varier le contraste pour différencier visuellement chaque sortie"><label for="vAdv_contrast">Contraste</label><input type="range" id="vAdv_contrast" min="0" max="100" value="50" data-vadv="contrast" title="Fait varier le contraste pour différencier visuellement chaque sortie"><span class="v-slider-val" id="vAdv_contrast_val">50</span></div>
+      <div class="v-slider-row" title="Module l'intensité des couleurs entre les variations"><label for="vAdv_saturation">Saturation</label><input type="range" id="vAdv_saturation" min="0" max="100" value="50" data-vadv="saturation" title="Module l'intensité des couleurs entre les variations"><span class="v-slider-val" id="vAdv_saturation_val">50</span></div>
+      <div class="v-slider-row" title="Ajuste la courbe de luminosité (tons moyens) de l'image"><label for="vAdv_gamma">Gamma</label><input type="range" id="vAdv_gamma" min="0" max="100" value="50" data-vadv="gamma" title="Ajuste la courbe de luminosité (tons moyens) de l'image"><span class="v-slider-val" id="vAdv_gamma_val">50</span></div>
+      <div class="v-slider-row" title="Ajoute un grain subtil pour casser l'empreinte numérique de la source"><label for="vAdv_noise">Bruit / Grain</label><input type="range" id="vAdv_noise" min="0" max="100" value="50" data-vadv="noise" title="Ajoute un grain subtil pour casser l'empreinte numérique de la source"><span class="v-slider-val" id="vAdv_noise_val">50</span></div>
+      <div class="v-slider-row" title="Accentue ou adoucit la netteté de l'image"><label for="vAdv_sharpness">Netteté</label><input type="range" id="vAdv_sharpness" min="0" max="100" value="50" data-vadv="sharpness" title="Accentue ou adoucit la netteté de l'image"><span class="v-slider-val" id="vAdv_sharpness_val">50</span></div>
+      <div class="v-slider-row" title="Applique un flou léger et variable selon les sorties"><label for="vAdv_blur">Flou</label><input type="range" id="vAdv_blur" min="0" max="100" value="50" data-vadv="blur" title="Applique un flou léger et variable selon les sorties"><span class="v-slider-val" id="vAdv_blur_val">50</span></div>
+      <div class="v-slider-row" title="Fait varier le niveau de zoom appliqué au cadrage"><label for="vAdv_zoom">Zoom</label><input type="range" id="vAdv_zoom" min="0" max="100" value="50" data-vadv="zoom" title="Fait varier le niveau de zoom appliqué au cadrage"><span class="v-slider-val" id="vAdv_zoom_val">50</span></div>
+      <div class="v-slider-row" title="Modifie légèrement le cadrage pour différencier chaque sortie"><label for="vAdv_crop">Recadrage</label><input type="range" id="vAdv_crop" min="0" max="100" value="50" data-vadv="crop" title="Modifie légèrement le cadrage pour différencier chaque sortie"><span class="v-slider-val" id="vAdv_crop_val">50</span></div>
+      <div class="v-slider-row" title="Applique une micro-rotation aléatoire à l'image"><label for="vAdv_rotation">Rotation</label><input type="range" id="vAdv_rotation" min="0" max="100" value="50" data-vadv="rotation" title="Applique une micro-rotation aléatoire à l'image"><span class="v-slider-val" id="vAdv_rotation_val">50</span></div>
 
-      <div class="v-group-title">🎬 Mouvement</div>
-      <div class="v-slider-row"><label for="vAdv_speed">Vitesse vidéo</label><input type="range" id="vAdv_speed" min="0" max="100" value="50" data-vadv="speed"><span class="v-slider-val" id="vAdv_speed_val">50</span></div>
+      <div class="v-group-title"><span class="v-dot" style="background:var(--accent2);color:var(--accent2)"></span> Mouvement</div>
+      <div class="v-slider-row" title="Fait varier légèrement la vitesse de lecture de la vidéo"><label for="vAdv_speed">Vitesse vidéo</label><input type="range" id="vAdv_speed" min="0" max="100" value="50" data-vadv="speed" title="Fait varier légèrement la vitesse de lecture de la vidéo"><span class="v-slider-val" id="vAdv_speed_val">50</span></div>
 
-      <div class="v-group-title">🔊 Audio</div>
-      <div class="v-slider-row"><label for="vAdv_volume">Volume audio</label><input type="range" id="vAdv_volume" min="0" max="100" value="50" data-vadv="volume"><span class="v-slider-val" id="vAdv_volume_val">50</span></div>
-      <div class="v-slider-row"><label for="vAdv_pitch">Tonalité audio</label><input type="range" id="vAdv_pitch" min="0" max="100" value="50" data-vadv="pitch"><span class="v-slider-val" id="vAdv_pitch_val">50</span></div>
+      <div class="v-group-title"><span class="v-dot" style="background:var(--accent3);color:var(--accent3)"></span> Audio</div>
+      <div class="v-slider-row" title="Ajuste le niveau sonore global de chaque variation"><label for="vAdv_volume">Volume audio</label><input type="range" id="vAdv_volume" min="0" max="100" value="50" data-vadv="volume" title="Ajuste le niveau sonore global de chaque variation"><span class="v-slider-val" id="vAdv_volume_val">50</span></div>
+      <div class="v-slider-row" title="Fait varier subtilement la tonalité de la piste audio"><label for="vAdv_pitch">Tonalité audio</label><input type="range" id="vAdv_pitch" min="0" max="100" value="50" data-vadv="pitch" title="Fait varier subtilement la tonalité de la piste audio"><span class="v-slider-val" id="vAdv_pitch_val">50</span></div>
 
-      <div class="v-group-title">⚙️ Encodage</div>
-      <div class="v-slider-row"><label for="vAdv_fps">Variation FPS</label><input type="range" id="vAdv_fps" min="0" max="100" value="50" data-vadv="fps"><span class="v-slider-val" id="vAdv_fps_val">50</span></div>
-      <div class="v-slider-row"><label for="vAdv_bitrate">Variation bitrate</label><input type="range" id="vAdv_bitrate" min="0" max="100" value="50" data-vadv="bitrate"><span class="v-slider-val" id="vAdv_bitrate_val">50</span></div>
+      <div class="v-group-title"><span class="v-dot" style="background:var(--info);color:var(--info)"></span> Encodage</div>
+      <div class="v-slider-row" title="Modifie légèrement le nombre d'images par seconde à l'export"><label for="vAdv_fps">Variation FPS</label><input type="range" id="vAdv_fps" min="0" max="100" value="50" data-vadv="fps" title="Modifie légèrement le nombre d'images par seconde à l'export"><span class="v-slider-val" id="vAdv_fps_val">50</span></div>
+      <div class="v-slider-row" title="Fait varier le débit d'encodage pour différencier la signature du fichier"><label for="vAdv_bitrate">Variation bitrate</label><input type="range" id="vAdv_bitrate" min="0" max="100" value="50" data-vadv="bitrate" title="Fait varier le débit d'encodage pour différencier la signature du fichier"><span class="v-slider-val" id="vAdv_bitrate_val">50</span></div>
 
-      <div class="v-group-title">🏷️ Métadonnées</div>
-      <div class="v-slider-row"><label for="vAdv_metadata">Aléatoire métadonnées</label><input type="range" id="vAdv_metadata" min="0" max="100" value="50" data-vadv="metadata"><span class="v-slider-val" id="vAdv_metadata_val">50</span></div>
+      <div class="v-group-title"><span class="v-dot" style="background:var(--warn);color:var(--warn)"></span> Métadonnées</div>
+      <div class="v-slider-row" title="Randomise les métadonnées du fichier (date, appareil, identifiants)"><label for="vAdv_metadata">Aléatoire métadonnées</label><input type="range" id="vAdv_metadata" min="0" max="100" value="50" data-vadv="metadata" title="Randomise les métadonnées du fichier (date, appareil, identifiants)"><span class="v-slider-val" id="vAdv_metadata_val">50</span></div>
 
       <div class="v-adv-actions">
-        <button type="button" class="v-ghost-btn" id="vRandomizeBtn">🎲 Randomiser la configuration</button>
-        <button type="button" class="v-ghost-btn" id="vResetAdvBtn">↺ Réinitialiser (50)</button>
+        <button type="button" class="v-ghost-btn" id="vRandomizeBtn"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span> Randomiser la configuration</button>
+        <button type="button" class="v-ghost-btn" id="vResetAdvBtn"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.5 7 H10.5 a3.3 3.3 0 0 1 0 6.6 H7.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 4.5 L4.5 7 L7 9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Réinitialiser (50)</button>
       </div>
 
       <div class="v-preset-row">
         <input type="text" id="vPresetName" placeholder="Nom du préréglage (ex: Kevin V1)" maxlength="80">
-        <button type="button" class="v-ghost-btn" id="vSavePresetBtn">💾 Sauvegarder le préréglage</button>
+        <button type="button" class="v-ghost-btn" id="vSavePresetBtn"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.4 3 H12 L14.6 5.6 V14.2 a.6.6 0 0 1-.6.6 H3.4 a.6.6 0 0 1-.6-.6 V3.6 a.6.6 0 0 1 .6-.6 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><rect x="5.6" y="3" width="4.8" height="3.2" rx=".4" stroke="currentColor" stroke-width="1.2"/><rect x="5.6" y="10" width="6.8" height="4" rx=".4" stroke="currentColor" stroke-width="1.2"/></svg></span> Sauvegarder le préréglage</button>
       </div>
       <div class="v-preset-row">
         <select id="vPresetSelect"><option value="">— Charger un préréglage —</option></select>
-        <button type="button" class="v-ghost-btn" id="vLoadPresetBtn">📂 Charger</button>
-        <button type="button" class="v-ghost-btn" id="vDeletePresetBtn">🗑️ Supprimer</button>
+        <button type="button" class="v-ghost-btn" id="vLoadPresetBtn"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.6 5 a1 1 0 0 1 1-1 H6.8 l1.3 1.5 H14.4 a1 1 0 0 1 1 1 V13 a1 1 0 0 1-1 1 H3.6 a1 1 0 0 1-1-1 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span> Charger</button>
+        <button type="button" class="v-ghost-btn" id="vDeletePresetBtn"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.5 5.2 H14.5 M7.2 5.2 V3.7 a.7.7 0 0 1 .7-.7 h2.2 a.7.7 0 0 1 .7.7 V5.2 M6.2 5.2 L6.8 14 a1 1 0 0 0 1 .9 H10 a1 1 0 0 0 1-.9 L11.6 5.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Supprimer</button>
       </div>
       <div id="vPresetMsg" style="font-size:0.78rem;color:var(--muted);margin-top:8px;"></div>
     </div>
@@ -521,18 +1073,23 @@
       <div class="v-est-item"><div class="v-est-label">Durée source</div><div class="v-est-value" id="vEstDuration">—</div></div>
       <div class="v-est-item"><div class="v-est-label">Temps estimé</div><div class="v-est-value" id="vEstTime">—</div></div>
       <div class="v-est-item"><div class="v-est-label">Coût estimé</div><div class="v-est-value" id="vEstCost">—</div></div>
+      <div class="v-est-item"><div class="v-est-label">Score d'unicité</div><div class="v-est-value" id="vEstUniqueness">—</div></div>
+      <div class="v-est-item"><div class="v-est-label">Score de sécurité</div><div class="v-est-value" id="vEstSafety">—</div></div>
+    </div>
+    <div style="font-size:0.74rem;color:var(--muted);margin-top:10px;">
+      Score d'unicité et score de sécurité : indicateurs estimés côté navigateur à partir de vos réglages, donnés à titre indicatif.
     </div>
   </div>
 
-  <button id="vLaunchBtn" class="primary-btn" onclick="runVariation()" disabled>🎲 Générer les variations</button>
+  <button id="vLaunchBtn" class="primary-btn" onclick="runVariation()" disabled><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span> Générer les variations</button>
 
   <!-- Progress + per-item results -->
   <div class="card" id="vProgressCard">
-    <h2 id="vProgressTitle">⏳ Génération en cours…</h2>
+    <h2 id="vProgressTitle"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Génération en cours…</h2>
     <div class="pbar"><div class="pbar-fill" id="vGlobalFill"></div></div>
     <div id="vGlobalStatus" style="font-size:.85rem;color:var(--muted);margin-bottom:14px"></div>
     <div id="vResultsList"></div>
-    <button class="zip-btn" id="vZipBtn" onclick="downloadVariationZip()">📦 Télécharger tout en ZIP</button>
+    <button class="zip-btn" id="vZipBtn" onclick="downloadVariationZip()"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span> Télécharger tout en ZIP</button>
   </div>
 
 </div><!-- /variationTab -->
@@ -1240,12 +1797,44 @@ function updateVariationEstimate() {
   if (!vSourceDuration) {
     document.getElementById("vEstTime").textContent = "—";
     document.getElementById("vEstCost").textContent = "—";
-    return;
+  } else {
+    const perVariant = vSourceDuration * estimateVariationLoadFactor();
+    document.getElementById("vEstTime").textContent = formatVariationDuration(perVariant * count);
+    document.getElementById("vEstCost").textContent =
+      "$" + (EST_COST_PER_SECOND_PER_VARIANT_CLIENT * vSourceDuration * count).toFixed(2);
   }
-  const perVariant = vSourceDuration * estimateVariationLoadFactor();
-  document.getElementById("vEstTime").textContent = formatVariationDuration(perVariant * count);
-  document.getElementById("vEstCost").textContent =
-    "$" + (EST_COST_PER_SECOND_PER_VARIANT_CLIENT * vSourceDuration * count).toFixed(2);
+  updateVariationScores();
+}
+
+// ── Purely cosmetic, frontend-only indicators (uniqueness / safety) ──
+// Derived only from current slider/preset values already visible to the user;
+// not sent anywhere, not used by the generation pipeline.
+function updateVariationScores() {
+  const uEl = document.getElementById("vEstUniqueness");
+  const sEl = document.getElementById("vEstSafety");
+  if (!uEl || !sEl) return;
+
+  let avgIntensity;
+  const advancedMode = document.querySelector('input[name="vConfigMode"]:checked');
+  if (advancedMode && advancedMode.value === "advanced") {
+    const cfg = getAdvancedConfig();
+    const vals = ADVANCED_SLIDER_KEYS_CLIENT.map(k => cfg[k]);
+    avgIntensity = vals.reduce((a, b) => a + b, 0) / vals.length;
+  } else {
+    const strength = (document.querySelector('input[name="vStrength"]:checked') || {}).value || "light";
+    avgIntensity = strength === "strong" ? 75 : strength === "medium" ? 50 : 25;
+  }
+
+  // Plus l'intensité moyenne des réglages est élevée, plus les sorties diffèrent entre elles (unicité ↑)
+  const uniqueness = Math.round(Math.min(100, Math.max(5, avgIntensity * 0.95 + 8)));
+  // Les vidéos restent toujours visuellement propres ; le score de sécurité reste élevé
+  // et ne baisse que légèrement avec une intensité très forte.
+  const safety = Math.round(Math.min(100, Math.max(60, 100 - avgIntensity * 0.22)));
+
+  uEl.textContent = uniqueness + "%";
+  sEl.textContent = safety + "%";
+  uEl.style.color = uniqueness >= 60 ? "var(--success)" : "var(--text)";
+  sEl.style.color = safety >= 80 ? "var(--success)" : "var(--text)";
 }
 
 function checkVariationReady() {

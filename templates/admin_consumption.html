@@ -3,19 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VideoBot — Consommation (admin)</title>
+  <title>ViralScale — Consommation (admin)</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
       --bg: #05060A; --surface: #0D1018; --surface-2: rgba(255,255,255,.025);
       --border: rgba(255,255,255,.08); --border-strong: rgba(255,255,255,.14);
-      --accent: #7C5CFF; --accent2: #2F6BFF; --text: #F0F1F7;
+      --accent: #7C5CFF; --accent2: #2F6BFF; --accent3: #FF4DDF; --text: #F0F1F7;
       --muted: #8B92A8; --success: #20D98A; --warn: #FFB547; --error: #f87171; --ok: #20D98A;
       --radius: 14px;
       --glass: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.015));
       --shadow-card: 0 10px 36px rgba(0,0,0,.40);
       --shadow-glow: 0 0 0 1px rgba(124,92,255,.14), 0 16px 46px rgba(124,92,255,.12);
-      --sidebar-w: 248px;
+      --sidebar-w: 220px;
     }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background:
@@ -27,18 +27,31 @@
     /* ── App shell ── */
     .app-shell { display: flex; min-height: 100vh; width: 100%; }
     .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar-w);
-      display: flex; flex-direction: column; padding: 22px 16px;
+      display: flex; flex-direction: column; padding: 15px 11px;
       background: linear-gradient(180deg, rgba(124,92,255,.06), rgba(13,16,24,.2)), rgba(13,16,24,.75);
       border-right: 1px solid var(--border); backdrop-filter: blur(22px); z-index: 20; }
-    .sidebar-logo { font-size: 1.18rem; font-weight: 800; letter-spacing: -.01em; padding: 6px 10px 22px;
-      background: linear-gradient(135deg, #fff, var(--accent2));
+    .sidebar-logo { display: flex; align-items: center; padding: 4px 8px 18px; }
+    .vs-logo { display: inline-flex; align-items: center; gap: 9px; }
+    .vs-mark { width: 26px; height: 26px; flex-shrink: 0; filter: drop-shadow(0 3px 12px rgba(124,92,255,.4)); }
+    .vs-word { font-size: 1.1rem; font-weight: 800; letter-spacing: -.02em; color: #fff; }
+    .vs-word em { font-style: normal;
+      background: linear-gradient(115deg, var(--accent2), var(--accent), var(--accent3));
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .vs-word.lg { font-size: 1.34rem; }
     .sidebar-nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
-    .nav-item { display: flex; align-items: center; gap: 11px; padding: 10px 14px; border-radius: 11px;
+    .nav-item { display: flex; align-items: center; gap: 11px; padding: 8px 10px; border-radius: 9px;
       color: var(--muted); text-decoration: none; font-size: 0.88rem; font-weight: 600; border: none;
       background: transparent; cursor: pointer; width: 100%; text-align: left;
       transition: background .15s ease, color .15s ease, transform .15s ease; }
     .nav-item .ico { font-size: 1.02rem; width: 20px; text-align: center; flex-shrink: 0; }
+    .ico-svg { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .ico-svg svg { width: 17px; height: 17px; display: block; }
+    .ico-svg.sm svg { width: 14px; height: 14px; }
+    .ico-svg.lg svg { width: 22px; height: 22px; }
+    .nav-item .ico-svg { color: currentColor; opacity: .85; }
+    .nav-item.active .ico-svg, .nav-item:hover .ico-svg { opacity: 1; }
+    .stat .lbl .ico-svg { color: var(--muted); margin-right: 5px; vertical-align: -3px; }
+    .badge .ico-svg { vertical-align: -2px; margin-right: 2px; }
     .nav-item:hover { background: rgba(255,255,255,.04); color: var(--text); transform: translateX(2px); }
     .nav-item.active { background: linear-gradient(135deg, rgba(124,92,255,.22), rgba(47,107,255,.14));
       color: #fff; box-shadow: inset 0 0 0 1px rgba(124,92,255,.3); }
@@ -49,11 +62,11 @@
       text-transform: uppercase; color: var(--accent2); background: rgba(47,107,255,.14);
       border: 1px solid rgba(47,107,255,.28); border-radius: 999px; padding: 2px 7px; }
     .nav-section-label { font-size: 0.68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
-      color: var(--muted); opacity: .6; padding: 18px 14px 6px; }
-    .sidebar-profile { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-top: 8px;
+      color: var(--muted); opacity: .6; padding: 13px 10px 5px; }
+    .sidebar-profile { display: flex; align-items: center; gap: 10px; padding: 10px; margin-top: 8px;
       border-radius: 12px; background: rgba(255,255,255,.03); border: 1px solid var(--border); }
     .sidebar-avatar { width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
-      background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff;
+      background: linear-gradient(120deg, var(--accent2), var(--accent), var(--accent3)); color: #fff;
       display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.95rem;
       box-shadow: 0 6px 18px rgba(124,92,255,.35); }
     .sidebar-profile-info { min-width: 0; }
@@ -68,7 +81,7 @@
 
     .app-main { flex: 1; margin-left: var(--sidebar-w); display: flex; flex-direction: column; min-height: 100vh; }
     .app-header { position: sticky; top: 0; z-index: 15; display: flex; align-items: center; justify-content: space-between;
-      gap: 16px; padding: 18px 32px; background: rgba(13,16,24,.55); backdrop-filter: blur(18px);
+      gap: 16px; padding: 11px 22px; background: rgba(13,16,24,.55); backdrop-filter: blur(18px);
       border-bottom: 1px solid var(--border); }
     .app-header h1 { font-size: 1.18rem; font-weight: 800; letter-spacing: -.01em; }
     .app-header .subtitle { font-size: 0.8rem; color: var(--muted); margin-top: 3px; }
@@ -80,19 +93,19 @@
       background: rgba(255,255,255,.03); border: 1px solid var(--border); color: var(--muted); font-size: 1rem;
       cursor: default; transition: border-color .15s, color .15s; }
     .icon-btn:hover { border-color: var(--border-strong); color: var(--text); }
-    .app-content { flex: 1; padding: 28px 32px 64px; display: flex; flex-direction: column; align-items: center; }
+    .app-content { flex: 1; padding: 18px 24px 42px; display: flex; flex-direction: column; align-items: center; }
     .page-wrap { width: 100%; max-width: 1180px; display: flex; flex-direction: column; }
 
     /* ── Page-specific ── */
     .topbar { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
     .topbar h1 { font-size: 1.4rem; font-weight: 800; letter-spacing: -.01em;
-      background: linear-gradient(135deg, #fff, var(--accent2));
+      background: linear-gradient(115deg, #fff 18%, var(--accent2) 58%, var(--accent3));
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
     .topbar-links { display: flex; gap: 18px; align-items: baseline; flex-wrap: wrap; }
     .topbar a { color: var(--accent2); text-decoration: none; font-size: 0.85rem; font-weight: 600; }
     .topbar a:hover { text-decoration: underline; }
     .card { background: var(--glass), var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 26px; width: 100%; margin-bottom: 20px;
+      border-radius: var(--radius); padding: 18px; width: 100%; margin-bottom: 13px;
       box-shadow: var(--shadow-card); backdrop-filter: blur(16px);
       transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
     .card:hover { transform: translateY(-2px); border-color: rgba(124,92,255,.28);
@@ -111,7 +124,7 @@
     .period-btn { padding: 8px 17px; border: 1px solid var(--border); border-radius: 10px;
       background: rgba(255,255,255,.025); color: var(--muted); cursor: pointer; font-size: 0.82rem;
       font-weight: 700; transition: all .15s; }
-    .period-btn.active { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff;
+    .period-btn.active { background: linear-gradient(120deg, var(--accent2), var(--accent), var(--accent3)); color: #fff;
       border-color: transparent; box-shadow: 0 8px 24px rgba(124,92,255,.32); }
     .period-btn:hover:not(.active) { border-color: var(--border-strong); color: var(--text); }
     .period-panel { display: none; }
@@ -157,18 +170,30 @@
 <body>
   <div class="app-shell">
     <aside class="sidebar">
-      <div class="sidebar-logo">🎬 VideoBot</div>
+      <div class="sidebar-logo">
+        <span class="vs-logo">
+          <svg class="vs-mark" viewBox="0 0 36 36" aria-hidden="true">
+            <defs><linearGradient id="vsGradSide" x1="0" y1="1" x2="1" y2="0">
+              <stop offset="0%" stop-color="#2F6BFF"/><stop offset="50%" stop-color="#7C5CFF"/><stop offset="100%" stop-color="#FF4DDF"/>
+            </linearGradient></defs>
+            <path d="M3 6 L13 27 L16.5 20 L9 6 Z" fill="#fff"/>
+            <path d="M22.5 6 L16.5 20 L18.5 24.5 L30 6 Z" fill="#fff" opacity=".5"/>
+            <path d="M14.5 19.5 L29 5 L29 13 L18.5 23.5 Z" fill="url(#vsGradSide)"/>
+          </svg>
+          <span class="vs-word">Viral<em>Scale</em></span>
+        </span>
+      </div>
       <nav class="sidebar-nav">
-        <a class="nav-item" href="{{ url_for('consumption') }}"><span class="ico">📊</span> Dashboard</a>
+        <a class="nav-item" href="{{ url_for('consumption') }}"><span class="ico ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.4" y="2.4" width="6" height="6" rx="1.6" stroke="currentColor" stroke-width="1.5"/><rect x="9.6" y="2.4" width="6" height="6" rx="1.6" stroke="currentColor" stroke-width="1.5"/><rect x="2.4" y="9.6" width="6" height="6" rx="1.6" stroke="currentColor" stroke-width="1.5"/><rect x="9.6" y="9.6" width="6" height="6" rx="1.6" stroke="currentColor" stroke-width="1.5"/></svg></span> Dashboard</a>
         <div class="nav-section-label">Génération</div>
-        <a class="nav-item" href="{{ url_for('index') }}"><span class="ico">🎬</span> Mode Simple</a>
-        <a class="nav-item" href="{{ url_for('index') }}"><span class="ico">📦</span> Mode Batch</a>
-        <a class="nav-item" href="{{ url_for('index') }}"><span class="ico">🎲</span> Mode Variation</a>
+        <a class="nav-item" href="{{ url_for('index') }}"><span class="ico ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="5.2" width="13" height="10.3" rx="1.8" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 5.2 L4.3 2.4 H6.6 L5.4 5.2 Z M7.1 5.2 L8.9 2.4 H11.2 L10 5.2 Z M11.7 5.2 L13.5 2.4 H15.2 L14.3 5.2 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></span> Mode Simple</a>
+        <a class="nav-item" href="{{ url_for('index') }}"><span class="ico ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg></span> Mode Batch</a>
+        <a class="nav-item" href="{{ url_for('index') }}"><span class="ico ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.5"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span> Mode Variation</a>
         <div class="nav-section-label">Compte</div>
-        <a class="nav-item active" href="{{ url_for('admin_consumption') }}"><span class="ico">📈</span> Analytics</a>
-        <a class="nav-item soon"><span class="ico">🕓</span> Historique <span class="soon-badge">Bientôt</span></a>
-        <a class="nav-item" href="{{ url_for('admin_users') }}"><span class="ico">👥</span> Équipe</a>
-        <a class="nav-item soon"><span class="ico">⚙️</span> Paramètres <span class="soon-badge">Bientôt</span></a>
+        <a class="nav-item active" href="{{ url_for('admin_consumption') }}"><span class="ico ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 15.5 V3 M2.5 15.5 H15.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="4.6" y="10.2" width="2.3" height="5.3" rx=".6" fill="currentColor"/><rect x="8" y="7.4" width="2.3" height="8.1" rx=".6" fill="currentColor"/><rect x="11.4" y="4.6" width="2.3" height="10.9" rx=".6" fill="currentColor"/></svg></span> Analytics</a>
+        <a class="nav-item soon"><span class="ico ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.5"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Historique <span class="soon-badge">Bientôt</span></a>
+        <a class="nav-item" href="{{ url_for('admin_users') }}"><span class="ico ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="6.7" cy="6" r="2.4" stroke="currentColor" stroke-width="1.5"/><path d="M2.6 15 c0-2.4 1.9-4 4.1-4 s4.1 1.6 4.1 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="12.6" cy="6.6" r="1.9" stroke="currentColor" stroke-width="1.4"/><path d="M11.2 15 c-.1-2 1.4-3.5 3.2-3.5 s3 1.2 3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span> Équipe</a>
+        <a class="nav-item soon"><span class="ico ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="2.4" stroke="currentColor" stroke-width="1.5"/><path d="M9 2.6 V4.4 M9 13.6 V15.4 M15.4 9 H13.6 M4.4 9 H2.6 M13.5 4.5 L12.2 5.8 M5.8 12.2 L4.5 13.5 M13.5 13.5 L12.2 12.2 M5.8 5.8 L4.5 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span> Paramètres <span class="soon-badge">Bientôt</span></a>
       </nav>
       <div class="sidebar-profile">
         <div class="sidebar-avatar">{{ current_user.email[0]|upper }}</div>
@@ -187,19 +212,19 @@
           <div class="subtitle">Statistiques globales, rentabilité de la plateforme et activité par compte</div>
         </div>
         <div class="header-right">
-          {% if current_user.plan_name %}<span class="plan-pill">✨ {{ current_user.plan_name|capitalize }}</span>{% endif %}
-          <span class="icon-btn" title="Aucune notification">🔔</span>
+          {% if current_user.plan_name %}<span class="plan-pill"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.4 L10.2 6.6 L14.4 7.8 L10.2 9 L9 13.2 L7.8 9 L3.6 7.8 L7.8 6.6 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></span> {{ current_user.plan_name|capitalize }}</span>{% endif %}
+          <span class="icon-btn" title="Aucune notification"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.6 c-2.1 0-3.4 1.6-3.4 3.7 v1.9 c0 .9-.4 1.7-1 2.4l-.6.6 h10 l-.6-.6 c-.6-.7-1-1.5-1-2.4 V6.3 c0-2.1-1.3-3.7-3.4-3.7 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M7.5 13.6 a1.7 1.7 0 0 0 3 0" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span></span>
         </div>
       </header>
 
       <main class="app-content">
         <div class="page-wrap">
           <div class="topbar">
-            <h1>Consommation — vue admin</h1>
+            <span class="muted" style="font-size:0.82rem;display:inline-flex;align-items:center;gap:6px;"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15 4.2 V8.6 c0 3.6-2.5 6-6 7.2 c-3.5-1.2-6-3.6-6-7.2 V4.2 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6.4 9 L8.3 10.9 L11.7 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Vue plateforme</span>
             <div class="topbar-links">
               <a href="{{ url_for('consumption') }}">Ma consommation</a>
               <a href="{{ url_for('admin_users') }}">Gestion équipe</a>
-              <a href="{{ url_for('index') }}">← Retour au bot</a>
+              <a href="{{ url_for('index') }}">← Retour au studio</a>
             </div>
           </div>
 
@@ -304,9 +329,9 @@
                 {% for m in usage_by_mode %}
                 <tr>
                   <td style="font-weight:700;">
-                    {% if m.mode == 'simple' %}🎬 Simple
-                    {% elif m.mode == 'batch' %}📦 Batch
-                    {% elif m.mode == 'variation' %}🎲 Variation
+                    {% if m.mode == 'simple' %}<span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="5.2" width="13" height="10.3" rx="1.8" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 5.2 L4.3 2.4 H6.6 L5.4 5.2 Z M7.1 5.2 L8.9 2.4 H11.2 L10 5.2 Z M11.7 5.2 L13.5 2.4 H15.2 L14.3 5.2 Z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg></span> Simple
+                    {% elif m.mode == 'batch' %}<span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg></span> Batch
+                    {% elif m.mode == 'variation' %}<span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.3"/><circle cx="6.3" cy="6.3" r="1" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1" fill="currentColor"/><circle cx="9" cy="9" r="1" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1" fill="currentColor"/></svg></span> Variation
                     {% else %}{{ m.mode }}
                     {% endif %}
                   </td>
@@ -325,9 +350,20 @@
           {% endif %}
 
           <div class="card">
-            <h2>Activité quotidienne (14 derniers jours)</h2>
+            <h2 style="display:flex;align-items:center;gap:7px;"><span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 15.5 V3 M2.5 15.5 H15.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M3.6 12 L7 8.4 L9.6 10.4 L14.4 5.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Activité quotidienne <span style="color:var(--muted);font-weight:400;font-size:0.78rem;">(14 derniers jours)</span></h2>
             <div class="chart-wrap">
               <svg viewBox="0 0 700 180" width="100%" height="180" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Générations par jour">
+                <defs>
+                  <linearGradient id="vsChartTotal" x1="0" y1="1" x2="0" y2="0">
+                    <stop offset="0%" stop-color="#2F6BFF" stop-opacity=".22"/>
+                    <stop offset="100%" stop-color="#7C5CFF" stop-opacity=".30"/>
+                  </linearGradient>
+                  <linearGradient id="vsChartSuccess" x1="0" y1="1" x2="0" y2="0">
+                    <stop offset="0%" stop-color="#2F6BFF"/>
+                    <stop offset="55%" stop-color="#7C5CFF"/>
+                    <stop offset="100%" stop-color="#FF4DDF"/>
+                  </linearGradient>
+                </defs>
                 {% set max_total = (daily | map(attribute='total') | max) %}
                 {% set chart_max = max_total if max_total and max_total > 0 else 1 %}
                 {% set bar_w = 700 / (daily|length) %}
@@ -336,15 +372,18 @@
                   {% set h_success = (d.successes / chart_max) * 140 %}
                   {% set x = loop.index0 * bar_w %}
                   <rect x="{{ x + bar_w*0.18 }}" y="{{ 150 - h_total }}" width="{{ bar_w*0.64 }}" height="{{ h_total }}"
-                        fill="rgba(124,92,255,.30)" rx="2"></rect>
+                        fill="url(#vsChartTotal)" rx="3"></rect>
                   <rect x="{{ x + bar_w*0.18 }}" y="{{ 150 - h_success }}" width="{{ bar_w*0.64 }}" height="{{ h_success }}"
-                        fill="#7C5CFF" rx="2"></rect>
-                  <text x="{{ x + bar_w/2 }}" y="168" text-anchor="middle" font-size="9" fill="#8B92A8">{{ d.day[5:] }}</text>
+                        fill="url(#vsChartSuccess)" rx="3"></rect>
+                  <text x="{{ x + bar_w/2 }}" y="168" text-anchor="middle" font-size="9" fill="#8B93A7">{{ d.day[5:] }}</text>
                   <title>{{ d.day }} — {{ d.total }} générations ({{ d.successes }} réussies)</title>
                 {% endfor %}
               </svg>
             </div>
-            <p class="chart-caption">Barre claire = total des générations · barre violette = générations réussies</p>
+            <p class="chart-caption" style="display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">
+              <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:9px;height:9px;border-radius:2px;background:linear-gradient(180deg, rgba(124,92,255,.3), rgba(47,107,255,.22));display:inline-block;"></span> Barre claire = total des générations</span>
+              <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:9px;height:9px;border-radius:2px;background:linear-gradient(120deg, #2F6BFF, #7C5CFF, #FF4DDF);display:inline-block;"></span> dégradé ViralScale = générations réussies</span>
+            </p>
           </div>
 
           <div class="card">
@@ -379,20 +418,23 @@
                 <tr>
                   <td data-label="Email">
                     {{ u.email }}
+                    {% set _ico_warn = '<span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.6 L15.8 14.6 H2.2 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M9 7.4 V10.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="9" cy="12.6" r=".95" fill="currentColor"/></svg></span>' %}
+                    {% set _ico_flame = '<span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.4 c1 2 .2 3 -.6 4 c1.4-.3 2.6-1.3 2.8-2.6 c1.6 1.7 2.4 3.6 2.4 5.4 c0 3-2 5-4.6 5 s-4.6-2-4.6-4.6 c0-1.8.9-3 2-4 c-.1 1 .3 1.8 1 2.2 c-.2-1.7.6-3.8 1.6-5.4 Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></svg></span>' %}
+                    {% set _ico_cross = '<span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.4"/><path d="M6.8 6.8 L11.2 11.2 M11.2 6.8 L6.8 11.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>' %}
                     {% if u.videos_generated > heavy_generations_threshold %}
-                      <span class="badge warn-generations" title="Plus de {{ heavy_generations_threshold }} générations">⚠ volume élevé</span>
-                      <span class="badge warn-heavy" title="Usage intensif — plus de {{ heavy_generations_threshold }} générations">🔥 usage intensif</span>
+                      <span class="badge warn-generations" title="Plus de {{ heavy_generations_threshold }} générations">{{ _ico_warn|safe }} volume élevé</span>
+                      <span class="badge warn-heavy" title="Usage intensif — plus de {{ heavy_generations_threshold }} générations">{{ _ico_flame|safe }} usage intensif</span>
                     {% endif %}
                     {% if u.total_cost > cost_threshold %}
-                      <span class="badge warn-cost" title="Coût estimé au-delà de ${{ cost_threshold }}">⚠ coût élevé</span>
+                      <span class="badge warn-cost" title="Coût estimé au-delà de ${{ cost_threshold }}">{{ _ico_warn|safe }} coût élevé</span>
                     {% endif %}
                     {% if u.claude_requests > heavy_claude_requests_threshold %}
-                      <span class="badge warn-claude" title="Plus de {{ heavy_claude_requests_threshold }} requêtes Claude">⚠ usage Claude élevé</span>
+                      <span class="badge warn-claude" title="Plus de {{ heavy_claude_requests_threshold }} requêtes Claude">{{ _ico_warn|safe }} usage Claude élevé</span>
                     {% endif %}
                     {% if pst == 'bad' and p.profit < 0 %}
-                      <span class="badge warn-negative" title="Le coût estimé dépasse le revenu mensuel">❌ profit négatif</span>
+                      <span class="badge warn-negative" title="Le coût estimé dépasse le revenu mensuel">{{ _ico_cross|safe }} profit négatif</span>
                     {% elif pst == 'bad' or pst == 'warn' %}
-                      <span class="badge warn-margin" title="Marge estimée sous le seuil sain ({{ margin_green_threshold }}%)">⚠️ marge faible</span>
+                      <span class="badge warn-margin" title="Marge estimée sous le seuil sain ({{ margin_green_threshold }}%)">{{ _ico_warn|safe }} marge faible</span>
                     {% endif %}
                   </td>
                   <td data-label="Rôle"><span class="badge {{ 'admin' if u.role == 'admin' else 'member' }}">{{ 'Admin' if u.role == 'admin' else 'Membre' }}</span></td>
