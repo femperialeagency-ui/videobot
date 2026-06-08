@@ -143,6 +143,41 @@ def set_user_active(user_id, active):
         conn.commit()
 
 
+def set_user_plan_fields(user_id, plan_name=None, monthly_price=None,
+                         monthly_generation_limit=None, credits_remaining=None):
+    """Additive admin-editing helper for the profitability/plan layer
+    (Phase 6). Each argument is optional — only the fields actually
+    provided are updated, so the existing 'reset password' / 'disable'
+    / 'delete' admin actions remain completely untouched and this can be
+    called from a small, separate form. Values are validated/clamped so
+    a malformed submission can never corrupt the row or crash the route;
+    on any unexpected error the update is simply skipped (never raises)."""
+    fields, params = [], []
+    try:
+        if plan_name is not None:
+            plan_name = (plan_name or "").strip().lower()
+            if plan_name and plan_name in (set(DEFAULT_PLAN_PRICES) | {"starter", "pro", "agency", "internal", "custom"}):
+                fields.append("plan_name = ?")
+                params.append(plan_name)
+        if monthly_price is not None:
+            fields.append("monthly_price = ?")
+            params.append(max(0.0, float(monthly_price)))
+        if monthly_generation_limit is not None:
+            fields.append("monthly_generation_limit = ?")
+            params.append(max(0, int(monthly_generation_limit)))
+        if credits_remaining is not None:
+            fields.append("credits_remaining = ?")
+            params.append(max(0, int(credits_remaining)))
+        if not fields:
+            return
+        params.append(user_id)
+        with _users_db() as conn:
+            conn.execute(f"UPDATE users SET {', '.join(fields)} WHERE id = ?", params)
+            conn.commit()
+    except Exception as e:
+        print(f"[profitability] WARNING: skipped plan-field update for user_id={user_id}: {e}")
+
+
 def delete_user(user_id):
     with _users_db() as conn:
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
@@ -177,6 +212,22 @@ CONSUMPTION_COST_THRESHOLD_USD              = 50.0
 
 # Future subscription plans (display-only — NOT enforced yet, per spec).
 PLAN_LIMITS = {"starter": 100, "pro": 500, "agency": 2000}
+
+# ── Profitability layer (additive, display-only — NEVER enforced) ────
+# Default monthly price (EUR) used whenever a user doesn't have a custom
+# monthly_price set (monthly_price stays at its DEFAULT 0 until an admin
+# sets it manually). "custom"/"internal"/unknown plan names fall back to 0
+# so internal/test accounts never skew revenue figures.
+DEFAULT_PLAN_PRICES = {"starter": 29.0, "pro": 79.0, "agency": 199.0, "internal": 0.0, "custom": 0.0}
+
+# Currency symbol display map — purely cosmetic, falls back to the raw
+# currency code for anything not listed (no behavior depends on this).
+CURRENCY_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£"}
+
+# Profitability badge / color thresholds (display-only, per spec).
+PROFITABILITY_MARGIN_GREEN_THRESHOLD  = 70.0   # margin_percent >= this → "healthy" (green)
+PROFITABILITY_MARGIN_ORANGE_THRESHOLD = 30.0   # margin_percent >= this (and < green) → "low" (orange)
+# margin_percent below the orange threshold, or a negative profit, → "bad" (red)
 
 
 def _init_usage_db():
@@ -226,6 +277,14 @@ def _migrate_user_plan_columns():
             conn.execute("ALTER TABLE users ADD COLUMN credits_remaining INTEGER NOT NULL DEFAULT 100")
         if "monthly_generation_limit" not in existing:
             conn.execute("ALTER TABLE users ADD COLUMN monthly_generation_limit INTEGER NOT NULL DEFAULT 100")
+        # Profitability layer columns (additive — see DEFAULT_PLAN_PRICES below).
+        # monthly_price stays 0 until an admin sets a custom value; until then,
+        # the effective price falls back to the plan's default (see
+        # get_effective_monthly_price()) — so existing rows need no backfill.
+        if "monthly_price" not in existing:
+            conn.execute("ALTER TABLE users ADD COLUMN monthly_price REAL NOT NULL DEFAULT 0")
+        if "currency" not in existing:
+            conn.execute("ALTER TABLE users ADD COLUMN currency TEXT NOT NULL DEFAULT 'EUR'")
         conn.commit()
 
 
@@ -385,6 +444,7 @@ def list_user_usage_table(sort_by="last_activity"):
             SELECT
                 u.id, u.email, u.role, u.plan_name, u.credits_used,
                 u.credits_remaining, u.monthly_generation_limit,
+                u.monthly_price, u.currency,
                 COUNT(l.id)                                                            AS videos_generated,
                 COALESCE(SUM(CASE WHEN l.generation_success = 1 THEN 1 ELSE 0 END), 0) AS successes,
                 COALESCE(SUM(CASE WHEN l.generation_success = 0 THEN 1 ELSE 0 END), 0) AS failures,
@@ -428,6 +488,132 @@ def get_daily_generation_counts(days=14):
         total, successes = by_day.get(day, (0, 0))
         out.append({"day": day, "total": total, "successes": successes})
     return out
+
+
+# ── Profitability calculations (additive, display-only, NEVER raises) ──
+# Pure functions over numbers already computed by the usage-aggregation
+# layer above — they don't touch usage_logs, generation, or any existing
+# query. Every function is defensive: missing/odd inputs degrade to safe
+# defaults (0 cost, "N/A" margin) rather than ever raising or dividing by
+# zero, so a malformed user row can never crash either dashboard.
+
+def get_effective_monthly_price(user):
+    """The price used for profitability math: a manually-set monthly_price
+    above 0 always wins (lets the admin override per spec); otherwise fall
+    back to the default price for the user's plan_name. Unknown plan names
+    (e.g. 'custom' with no manual price, or anything unrecognized) default
+    to 0 — shown to the user as 'Internal account / no billing'."""
+    try:
+        manual = float(user["monthly_price"] or 0)
+    except Exception:
+        manual = 0.0
+    if manual > 0:
+        return round(manual, 2)
+    try:
+        plan = (user["plan_name"] or "starter").strip().lower()
+    except Exception:
+        plan = "starter"
+    return float(DEFAULT_PLAN_PRICES.get(plan, 0.0))
+
+
+def get_user_currency(user):
+    """The display currency for a user — defaults to EUR (matches the
+    column's DEFAULT) and never raises on a malformed/missing value."""
+    try:
+        cur = (user["currency"] or "EUR").strip().upper()
+        return cur if cur else "EUR"
+    except Exception:
+        return "EUR"
+
+
+def compute_profitability(cost, monthly_revenue):
+    """Pure, side-effect-free profitability math for ONE cost figure
+    against ONE monthly revenue figure. Returns a plain dict:
+        revenue, cost, profit, margin_percent (float, or None == 'N/A')
+    Division-by-zero is explicitly handled per spec: a 0 monthly_revenue
+    yields margin_percent = None (rendered as 'N/A'), never an error."""
+    try:
+        cost = max(0.0, float(cost or 0.0))
+    except Exception:
+        cost = 0.0
+    try:
+        revenue = max(0.0, float(monthly_revenue or 0.0))
+    except Exception:
+        revenue = 0.0
+    profit = revenue - cost
+    margin = (profit / revenue * 100.0) if revenue > 0 else None
+    return {
+        "revenue": round(revenue, 2),
+        "cost": round(cost, 6),
+        "profit": round(profit, 6),
+        "margin_percent": (round(margin, 1) if margin is not None else None),
+    }
+
+
+def profitability_status(p):
+    """Maps a compute_profitability() result to a small set of display
+    states the templates use for color-coding and warning badges, per the
+    thresholds in the spec:
+        'good'  — margin >= 70%        (green)
+        'warn'  — 30% <= margin < 70%  (orange)
+        'bad'   — margin < 30% OR profit < 0   (red)
+        'na'    — monthly_revenue is 0 (no billing — neutral, not an error)
+    Never raises — any malformed input degrades to 'na'."""
+    try:
+        if p.get("revenue", 0) <= 0 or p.get("margin_percent") is None:
+            return "na"
+        if p.get("profit", 0) < 0:
+            return "bad"
+        m = p["margin_percent"]
+        if m >= PROFITABILITY_MARGIN_GREEN_THRESHOLD:
+            return "good"
+        if m >= PROFITABILITY_MARGIN_ORANGE_THRESHOLD:
+            return "warn"
+        return "bad"
+    except Exception:
+        return "na"
+
+
+def get_user_profitability_by_period(user, period_summary):
+    """Builds the per-period profitability view for ONE user, reusing the
+    exact same period buckets the usage dashboards already compute
+    (all_time/today/week|last_7d/month|last_30d) — no new period logic.
+    monthly_revenue is the user's fixed monthly price; it is intentionally
+    NOT prorated per period (a 7-day cost is compared against the same
+    monthly budget the user is paying, which is what 'am I still
+    profitable this month so far' actually means for a small business)."""
+    revenue = get_effective_monthly_price(user)
+    out = {}
+    for period_key, period_data in (period_summary or {}).items():
+        cost = (period_data or {}).get("total_cost", 0.0)
+        out[period_key] = compute_profitability(cost, revenue)
+    return out
+
+
+def get_platform_profitability_summary(enriched_user_rows):
+    """Aggregates platform-wide revenue/cost/profit/avg-margin from a list
+    of per-user rows that already carry a 'profitability' dict (all-time).
+    total_revenue/total_cost/total_profit are plain sums; avg_margin is the
+    mean of per-user margins for users who actually generate revenue
+    (revenue > 0) — accounts with no billing don't drag the average down
+    to 'N/A' nor get counted as 0% margin, since they aren't priced plans."""
+    revenues, costs, margins = [], [], []
+    for row in enriched_user_rows or []:
+        p = row.get("profitability") or {}
+        revenues.append(p.get("revenue", 0.0))
+        costs.append(p.get("cost", 0.0))
+        if p.get("margin_percent") is not None:
+            margins.append(p["margin_percent"])
+    total_revenue = round(sum(revenues), 2)
+    total_cost = round(sum(costs), 6)
+    total_profit = round(total_revenue - total_cost, 6)
+    avg_margin = (round(sum(margins) / len(margins), 1) if margins else None)
+    return {
+        "total_revenue": total_revenue,
+        "total_cost": total_cost,
+        "total_profit": total_profit,
+        "avg_margin_percent": avg_margin,
+    }
 
 
 _init_usage_db()
@@ -1679,11 +1865,33 @@ def logout():
 @app.route("/consumption")
 def consumption():
     user = request.current_user
+    summary = get_user_usage_summary(user["id"])
+
+    # ── Profitability layer (additive, own-data-only): the same
+    # get_effective_monthly_price/compute_profitability helpers the admin
+    # dashboard uses, scoped to nothing but this user's own all-time cost —
+    # mirrors the existing per-user separation pattern (WHERE user_id = ?).
+    try:
+        monthly_price = get_effective_monthly_price(user)
+        currency = get_user_currency(user)
+        profitability = compute_profitability(summary["all_time"]["total_cost"], monthly_price)
+        profitability_state = profitability_status(profitability)
+    except Exception as e:
+        print(f"[profitability] WARNING: failed to compute profitability for user={user.get('email', '?')}: {e}")
+        monthly_price, currency = 0.0, "EUR"
+        profitability = compute_profitability(0.0, 0.0)
+        profitability_state = "na"
+
     return render_template(
         "consumption.html",
         current_user=user,
-        summary=get_user_usage_summary(user["id"]),
+        summary=summary,
         plan_limits=PLAN_LIMITS,
+        monthly_price=monthly_price,
+        currency=currency,
+        currency_symbols=CURRENCY_SYMBOLS,
+        profitability=profitability,
+        profitability_state=profitability_state,
     )
 
 
@@ -1710,17 +1918,43 @@ def admin_consumption():
     sort_by = request.args.get("sort", "last_activity")
     if sort_by not in ("videos", "cost", "last_activity"):
         sort_by = "last_activity"
+
+    user_table = list_user_usage_table(sort_by=sort_by)
+
+    # ── Profitability layer (additive): enrich each row with revenue/cost/
+    # profit/margin computed from data the table already carries (all-time
+    # cost + plan/price columns) — no extra queries, no new aggregation.
+    # Wrapped defensively per-row so one malformed row can never blank the
+    # whole dashboard; a row that fails just gets a neutral 'na' entry.
+    for row in user_table:
+        try:
+            revenue = get_effective_monthly_price(row)
+            row["monthly_price_effective"] = revenue
+            row["currency"] = get_user_currency(row)
+            row["profitability"] = compute_profitability(row.get("total_cost", 0.0), revenue)
+            row["profitability_status"] = profitability_status(row["profitability"])
+        except Exception as e:
+            print(f"[profitability] WARNING: failed to compute profitability for user row {row.get('id')}: {e}")
+            row["monthly_price_effective"] = 0.0
+            row["currency"] = "EUR"
+            row["profitability"] = compute_profitability(0.0, 0.0)
+            row["profitability_status"] = "na"
+
     return render_template(
         "admin_consumption.html",
         current_user=request.current_user,
         global_summary=get_global_usage_summary(),
-        user_table=list_user_usage_table(sort_by=sort_by),
+        user_table=user_table,
         daily=get_daily_generation_counts(days=14),
         sort_by=sort_by,
         total_users=len(list_users()),
         heavy_generations_threshold=CONSUMPTION_HEAVY_GENERATIONS_THRESHOLD,
         heavy_claude_requests_threshold=CONSUMPTION_HEAVY_CLAUDE_REQUESTS_THRESHOLD,
         cost_threshold=CONSUMPTION_COST_THRESHOLD_USD,
+        platform_profitability=get_platform_profitability_summary(user_table),
+        currency_symbols=CURRENCY_SYMBOLS,
+        margin_green_threshold=PROFITABILITY_MARGIN_GREEN_THRESHOLD,
+        margin_orange_threshold=PROFITABILITY_MARGIN_ORANGE_THRESHOLD,
     )
 
 
@@ -1766,6 +2000,52 @@ def admin_users_enable(user_id):
 def admin_users_delete(user_id):
     if user_id != request.current_user["id"]:  # an admin can't delete themselves
         delete_user(user_id)
+    return redirect(url_for("admin_users"))
+
+
+# ── Admin: edit plan/pricing fields (Phase 6 — profitability layer) ──
+# Small, additive, separate form/route — completely independent from the
+# create/reset/disable/delete actions above (none of which are touched).
+# Reuses @admin_required (zero new auth code) and the same redirect-back
+# pattern. set_user_plan_fields() validates/clamps everything and silently
+# no-ops on bad input, so a malformed submission can never corrupt a row,
+# 500, or affect login/team-management/generation in any way.
+@app.route("/admin/users/<int:user_id>/edit_plan", methods=["POST"])
+@admin_required
+def admin_users_edit_plan(user_id):
+    plan_name = request.form.get("plan_name")
+    monthly_price_raw = request.form.get("monthly_price", "").strip()
+    limit_raw = request.form.get("monthly_generation_limit", "").strip()
+    credits_raw = request.form.get("credits_remaining", "").strip()
+
+    monthly_price = None
+    if monthly_price_raw != "":
+        try:
+            monthly_price = float(monthly_price_raw.replace(",", "."))
+        except ValueError:
+            monthly_price = None
+
+    monthly_generation_limit = None
+    if limit_raw != "":
+        try:
+            monthly_generation_limit = int(limit_raw)
+        except ValueError:
+            monthly_generation_limit = None
+
+    credits_remaining = None
+    if credits_raw != "":
+        try:
+            credits_remaining = int(credits_raw)
+        except ValueError:
+            credits_remaining = None
+
+    set_user_plan_fields(
+        user_id,
+        plan_name=plan_name,
+        monthly_price=monthly_price,
+        monthly_generation_limit=monthly_generation_limit,
+        credits_remaining=credits_remaining,
+    )
     return redirect(url_for("admin_users"))
 
 
