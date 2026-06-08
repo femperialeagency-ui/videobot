@@ -10,7 +10,7 @@
 /* ── V3 compact-SaaS palette: calmer, single-family accent, tighter surfaces ── */
 --bg: #0B0B0D; --surface: #15151A; --surface-2: rgba(255,255,255,.03);
 --border: rgba(255,255,255,.07); --border-strong: rgba(255,255,255,.13);
---accent: #5E6AD2; --accent2: #6E7AD8; --accent3: #8B94E0; --text: #EDEDEF;
+--accent: #5E6AD2; --accent2: #6E7AD8; --accent3: #8B94E0; --accent-soft: rgba(94,106,210,.16); --text: #EDEDEF;
 --muted: #8B8D98;
 /* ── Unified status-color system: same meaning = same color, everywhere ── */
 --success: #4CC38A; --success-bg: rgba(76,195,138,.12); --success-bd: rgba(76,195,138,.26);
@@ -72,6 +72,26 @@ background: var(--accent);
 box-shadow: none; transition: opacity var(--dur-base) var(--ease); }
 .sidebar-cta:hover { opacity: .92; }
 .sidebar-cta:active { transform: translateY(0); }
+
+/* ── Nouvelle génération dropdown ── */
+.gen-drop-wrap { position: relative; margin-bottom: var(--sp-3); width: 100%; }
+.gen-drop-wrap .sidebar-cta { margin-bottom: 0; width: 100%; justify-content: flex-start; }
+.gen-chevron { margin-left: auto; flex-shrink: 0; transition: transform var(--dur-fast) var(--ease); opacity: .7; }
+.gen-drop-wrap.open .gen-chevron { transform: rotate(180deg); }
+.gen-drop-menu { position: absolute; top: calc(100% + 5px); left: 0; right: 0; z-index: 100;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: 9px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  display: none; flex-direction: column; gap: 1px; }
+.gen-drop-menu.open { display: flex; }
+.gen-drop-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px;
+  border-radius: 7px; border: none; background: transparent; cursor: pointer;
+  color: var(--text); text-align: left; width: 100%;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.gen-drop-item:hover { background: var(--accent-soft); }
+.gen-drop-item .ico-svg { flex-shrink: 0; color: var(--muted); }
+.gen-drop-item:hover .ico-svg { color: var(--accent3); }
+.gen-drop-item-label { font-size: 0.81rem; font-weight: 700; color: inherit; }
+.gen-drop-item-desc { font-size: 0.7rem; color: var(--muted); margin-top: 1px; }
 
 .nav-item { position: relative; display: flex; align-items: center; gap: var(--sp-3); padding: 7px var(--sp-3);
 border-radius: 7px; color: var(--muted); font-size: 0.8rem; font-weight: 600; text-decoration: none;
@@ -489,7 +509,7 @@ transition: border-color .2s; }
 <span class="vs-logo">
 <svg class="vs-mark" viewBox="0 0 36 36" aria-hidden="true">
 <defs><linearGradient id="vsGradSide" x1="0" y1="1" x2="1" y2="0">
-<stop offset="0%" stop-color="#2F6BFF"/><stop offset="50%" stop-color="#7C5CFF"/><stop offset="100%" stop-color="#FF4DDF"/>
+<stop offset="0%" stop-color="#5E6AD2"/><stop offset="50%" stop-color="#6E7AD8"/><stop offset="100%" stop-color="#8B94E0"/>
 </linearGradient></defs>
 <path d="M3 6 L13 27 L16.5 20 L9 6 Z" fill="#fff"/>
 <path d="M22.5 6 L16.5 20 L18.5 24.5 L30 6 Z" fill="#fff" opacity=".5"/>
@@ -500,10 +520,27 @@ transition: border-color .2s; }
 </div>
 
 {% if current_user %}
-<button type="button" class="sidebar-cta" onclick="switchTab('simple')">
+<div class="gen-drop-wrap" id="genDropWrap">
+<button type="button" class="sidebar-cta" id="genDropBtn" onclick="toggleGenDrop(event)">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 3.5 V14.5 M3.5 9 H14.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
 Nouvelle génération
+<span class="ico-svg gen-chevron"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 6.5 L9 11.5 L14 6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
 </button>
+<div class="gen-drop-menu" id="genDropMenu">
+<button type="button" class="gen-drop-item" onclick="selectGen('simple')">
+<span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="6" width="13" height="9.5" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 6 L4.2 2.5 L7 2.5 L5.6 6 Z M7.4 6 L9 2.7 L11.8 2.7 L10.4 6 Z M11.9 6 L13.4 2.7 L15.2 2.7 L14.5 6 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
+<div><div class="gen-drop-item-label">Mode Simple</div><div class="gen-drop-item-desc">Vidéo A + B → C</div></div>
+</button>
+<button type="button" class="gen-drop-item" onclick="selectGen('batch')">
+<span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
+<div><div class="gen-drop-item-label">Mode Batch</div><div class="gen-drop-item-desc">N sources × M cibles</div></div>
+</button>
+<button type="button" class="gen-drop-item" onclick="selectGen('variation')">
+<span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span>
+<div><div class="gen-drop-item-label">Variation Studio</div><div class="gen-drop-item-desc">Dizaines de variantes</div></div>
+</button>
+</div>
+</div>
 {% endif %}
 
 <nav class="sidebar-nav">
@@ -1120,6 +1157,28 @@ document.getElementById('simpleTab').classList.toggle('active', tab === 'simple'
 document.getElementById('batchTab').classList.toggle('active', tab === 'batch');
 document.getElementById('variationTab').classList.toggle('active', tab === 'variation');
 }
+
+function toggleGenDrop(e) {
+  e.stopPropagation();
+  var wrap = document.getElementById('genDropWrap');
+  var menu = document.getElementById('genDropMenu');
+  if (!menu) return;
+  var isOpen = menu.classList.toggle('open');
+  wrap.classList.toggle('open', isOpen);
+}
+function selectGen(tab) {
+  switchTab(tab);
+  var menu = document.getElementById('genDropMenu');
+  var wrap = document.getElementById('genDropWrap');
+  if (menu) menu.classList.remove('open');
+  if (wrap) wrap.classList.remove('open');
+}
+document.addEventListener('click', function() {
+  var menu = document.getElementById('genDropMenu');
+  var wrap = document.getElementById('genDropWrap');
+  if (menu) menu.classList.remove('open');
+  if (wrap) wrap.classList.remove('open');
+});
 
 function escapeHtml(s) {
 return (s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
