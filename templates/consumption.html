@@ -46,6 +46,9 @@
       height: 10px; overflow: hidden; margin-top: 8px; }
     .credit-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
       border-radius: 999px; transition: width .4s; }
+    .stat.profit-good .val { color: var(--ok); }
+    .stat.profit-warn .val { color: var(--warn, #fbbf24); }
+    .stat.profit-bad .val { color: var(--error); }
     @media (max-width: 640px) {
       .stat-grid { grid-template-columns: repeat(2, 1fr); }
     }
@@ -89,6 +92,67 @@
       <p class="muted" style="margin-top:12px;">
         Le système de crédits est une fondation pour de futurs plans tarifaires — vos générations ne sont pas
         actuellement limitées.
+      </p>
+    </div>
+
+    {% set _cur_sym = currency_symbols.get(currency, currency) %}
+    <div class="card">
+      <h2>Mon plan &amp; ma rentabilité</h2>
+      {% if monthly_price <= 0 %}
+        <p class="muted">Compte interne / sans facturation — aucun prix mensuel n'est associé à ce compte.</p>
+        <div class="stat-grid" style="margin-top:14px;">
+          <div class="stat">
+            <div class="lbl">Plan</div>
+            <div class="val"><span class="badge plan">{{ current_user.plan_name|capitalize }}</span></div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Coût estimé généré</div>
+            <div class="val">{{ "%.2f"|format(profitability.cost) }} {{ _cur_sym }}</div>
+          </div>
+        </div>
+      {% else %}
+        <div class="stat-grid">
+          <div class="stat">
+            <div class="lbl">Plan</div>
+            <div class="val"><span class="badge plan">{{ current_user.plan_name|capitalize }}</span></div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Prix mensuel</div>
+            <div class="val">{{ "%.2f"|format(monthly_price) }} {{ _cur_sym }}</div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Crédits utilisés</div>
+            <div class="val">{{ current_user.credits_used }}</div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Crédits restants</div>
+            <div class="val">{{ current_user.credits_remaining }}</div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Limite mensuelle</div>
+            <div class="val">{{ current_user.monthly_generation_limit }}</div>
+          </div>
+          <div class="stat">
+            <div class="lbl">Coût estimé généré</div>
+            <div class="val">{{ "%.2f"|format(profitability.cost) }} {{ _cur_sym }}</div>
+          </div>
+          <div class="stat profit-{{ profitability_state }}">
+            <div class="lbl">Marge restante (buffer)</div>
+            <div class="val">{{ "%.2f"|format(profitability.profit) }} {{ _cur_sym }}</div>
+          </div>
+          <div class="stat profit-{{ profitability_state }}">
+            <div class="lbl">Marge %</div>
+            <div class="val">{{ (("%.1f"|format(profitability.margin_percent)) ~ "%") if profitability.margin_percent is not none else "N/A" }}</div>
+          </div>
+        </div>
+        <p class="muted" style="margin-top:14px;">
+          Exemple de lecture : Plan {{ current_user.plan_name|capitalize }} · Prix mensuel {{ "%.2f"|format(monthly_price) }} {{ _cur_sym }} ·
+          Coût estimé généré {{ "%.2f"|format(profitability.cost) }} {{ _cur_sym }} · Marge restante {{ "%.2f"|format(profitability.profit) }} {{ _cur_sym }}.
+        </p>
+      {% endif %}
+      <p class="muted" style="margin-top:12px;">
+        Ces chiffres sont des estimations basées sur la durée des vidéos traitées et l'usage de Claude Vision —
+        ils servent à comprendre la rentabilité de votre compte, pas à établir une facture.
       </p>
     </div>
 

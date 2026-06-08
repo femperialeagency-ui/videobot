@@ -54,6 +54,17 @@
     .badge.warn-generations { background: rgba(251,191,36,.16); color: var(--warn); }
     .badge.warn-cost { background: rgba(248,113,113,.16); color: var(--error); }
     .badge.warn-claude { background: rgba(167,139,250,.18); color: var(--accent2); }
+    .badge.warn-margin { background: rgba(251,191,36,.16); color: var(--warn); }
+    .badge.warn-negative { background: rgba(248,113,113,.18); color: var(--error); }
+    .badge.warn-heavy { background: rgba(251,146,60,.18); color: #fb923c; }
+    /* Profitability color states — green/orange/red/neutral per spec thresholds */
+    .stat.profit-good .val { color: var(--ok); }
+    .stat.profit-warn .val { color: var(--warn); }
+    .stat.profit-bad .val { color: var(--error); }
+    .profit-good { color: var(--ok); font-weight: 700; }
+    .profit-warn { color: var(--warn); font-weight: 700; }
+    .profit-bad { color: var(--error); font-weight: 700; }
+    .profit-na { color: var(--muted); }
     .muted { color: var(--muted); font-size: 0.82rem; }
     .chart-wrap { overflow-x: auto; }
     .chart-caption { font-size: 0.74rem; color: var(--muted); text-align: center; margin-top: 6px; }
@@ -130,6 +141,37 @@
     </div>
 
     <div class="card">
+      <h2>Rentabilité de la plateforme <span class="muted" style="font-weight:400;">— estimation, basée sur les prix d'abonnement et les coûts depuis le début</span></h2>
+      {% set pp = platform_profitability %}
+      {% set _profit_state = 'good' if (pp.avg_margin_percent is not none and pp.avg_margin_percent >= margin_green_threshold and pp.total_profit >= 0)
+                        else ('bad' if (pp.total_profit < 0 or (pp.avg_margin_percent is not none and pp.avg_margin_percent < margin_orange_threshold))
+                        else ('warn' if pp.avg_margin_percent is not none else 'na')) %}
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="lbl">Revenu estimé</div>
+          <div class="val">{{ "%.2f"|format(pp.total_revenue) }} €</div>
+        </div>
+        <div class="stat">
+          <div class="lbl">Coût estimé</div>
+          <div class="val">{{ "%.2f"|format(pp.total_cost) }} €</div>
+        </div>
+        <div class="stat profit-{{ 'good' if pp.total_profit >= 0 else 'bad' }}">
+          <div class="lbl">Profit estimé</div>
+          <div class="val">{{ "%.2f"|format(pp.total_profit) }} €</div>
+        </div>
+        <div class="stat profit-{{ _profit_state }}">
+          <div class="lbl">Marge moyenne</div>
+          <div class="val">{{ ("%.1f"|format(pp.avg_margin_percent) ~ "%") if pp.avg_margin_percent is not none else "N/A" }}</div>
+        </div>
+      </div>
+      <p class="muted" style="margin-top:14px;">
+        Le revenu utilise le prix mensuel de chaque compte (prix personnalisé si défini, sinon le tarif par défaut du plan :
+        Starter 29€ · Pro 79€ · Agency 199€ · Internal 0€). Les comptes à 0€ (internes / sans facturation) ne sont pas
+        comptés dans la marge moyenne. Ce sont des estimations, pas une comptabilité réelle.
+      </p>
+    </div>
+
+    <div class="card">
       <h2>Activité quotidienne (14 derniers jours)</h2>
       <div class="chart-wrap">
         <svg viewBox="0 0 700 180" width="100%" height="180" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Générations par jour">
@@ -169,22 +211,35 @@
             <th>Requêtes Claude</th>
             <th>Minutes</th>
             <th><a href="?sort=cost" class="{{ 'active-sort' if sort_by == 'cost' else '' }}">Coût ↕</a></th>
+            <th>Prix mensuel</th>
+            <th>Coût estimé</th>
+            <th>Profit estimé</th>
+            <th>Marge %</th>
             <th><a href="?sort=last_activity" class="{{ 'active-sort' if sort_by == 'last_activity' else '' }}">Dernière activité ↕</a></th>
           </tr>
         </thead>
         <tbody>
           {% for u in user_table %}
+          {% set p = u.profitability %}
+          {% set pst = u.profitability_status %}
+          {% set _cur_sym = currency_symbols.get(u.currency, u.currency) %}
           <tr>
             <td data-label="Email">
               {{ u.email }}
               {% if u.videos_generated > heavy_generations_threshold %}
                 <span class="badge warn-generations" title="Plus de {{ heavy_generations_threshold }} générations">⚠ volume élevé</span>
+                <span class="badge warn-heavy" title="Usage intensif — plus de {{ heavy_generations_threshold }} générations">🔥 usage intensif</span>
               {% endif %}
               {% if u.total_cost > cost_threshold %}
                 <span class="badge warn-cost" title="Coût estimé au-delà de ${{ cost_threshold }}">⚠ coût élevé</span>
               {% endif %}
               {% if u.claude_requests > heavy_claude_requests_threshold %}
                 <span class="badge warn-claude" title="Plus de {{ heavy_claude_requests_threshold }} requêtes Claude">⚠ usage Claude élevé</span>
+              {% endif %}
+              {% if pst == 'bad' and p.profit < 0 %}
+                <span class="badge warn-negative" title="Le coût estimé dépasse le revenu mensuel">❌ profit négatif</span>
+              {% elif pst == 'bad' or pst == 'warn' %}
+                <span class="badge warn-margin" title="Marge estimée sous le seuil sain ({{ margin_green_threshold }}%)">⚠️ marge faible</span>
               {% endif %}
             </td>
             <td data-label="Rôle"><span class="badge {{ 'admin' if u.role == 'admin' else 'member' }}">{{ 'Admin' if u.role == 'admin' else 'Membre' }}</span></td>
@@ -195,6 +250,10 @@
             <td class="num" data-label="Requêtes Claude">{{ u.claude_requests }}</td>
             <td class="num" data-label="Minutes">{{ (u.total_seconds / 60) | round(1) }}</td>
             <td class="num" data-label="Coût">${{ "%.2f"|format(u.total_cost) }}</td>
+            <td class="num" data-label="Prix mensuel">{{ "%.2f"|format(p.revenue) }} {{ _cur_sym }}</td>
+            <td class="num" data-label="Coût estimé">{{ "%.2f"|format(p.cost) }} {{ _cur_sym }}</td>
+            <td class="num profit-{{ pst }}" data-label="Profit estimé">{{ "%.2f"|format(p.profit) }} {{ _cur_sym }}</td>
+            <td class="num profit-{{ pst }}" data-label="Marge %">{{ (("%.1f"|format(p.margin_percent)) ~ "%") if p.margin_percent is not none else "N/A" }}</td>
             <td data-label="Dernière activité">{{ u.last_activity or '—' }}</td>
           </tr>
           {% endfor %}
@@ -203,7 +262,9 @@
       {% endif %}
       <p class="muted" style="margin-top:14px;">
         Les coûts sont des estimations approximatives (durée vidéo + usage Claude Vision), pas une facturation réelle.
-        Cliquez sur les en-têtes soulignés pour trier.
+        Le profit/marge utilisent le prix mensuel effectif (personnalisé si défini, sinon le tarif par défaut du plan)
+        comparé au coût total estimé depuis le début. Une marge "N/A" signifie un compte sans facturation (prix = 0,
+        ex. compte interne). Cliquez sur les en-têtes soulignés pour trier.
       </p>
     </div>
   </div>

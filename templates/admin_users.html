@@ -57,6 +57,20 @@
       width: 130px; background: var(--bg); border: 1px solid var(--border);
       border-radius: 7px; color: var(--text); padding: 5px 8px; font-size: 0.78rem; outline: none;
     }
+    .plan-edit { margin-top: 8px; }
+    .plan-edit summary { cursor: pointer; font-size: 0.78rem; font-weight: 600; color: var(--accent2);
+      list-style: none; padding: 4px 0; }
+    .plan-edit summary::-webkit-details-marker { display: none; }
+    .plan-edit summary:hover { text-decoration: underline; }
+    .plan-edit-form { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 8px;
+      max-width: 360px; }
+    .plan-edit-form label { display: block; font-size: 0.72rem; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+    .plan-edit-form input, .plan-edit-form select {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 7px; color: var(--text); padding: 6px 8px; font-size: 0.78rem; outline: none;
+    }
+    .plan-edit-form input:focus, .plan-edit-form select:focus { border-color: var(--accent); }
+    .plan-edit-form .full { grid-column: 1 / -1; }
     @media (max-width: 720px) {
       .new-user-form { grid-template-columns: 1fr; }
       table, thead, tbody, th, td, tr { display: block; }
@@ -142,6 +156,40 @@
                   <button type="submit" class="danger">Supprimer</button>
                 </form>
               </div>
+              <details class="plan-edit">
+                <summary>⚙️ Plan &amp; tarification</summary>
+                <form class="plan-edit-form" method="POST" action="{{ url_for('admin_users_edit_plan', user_id=u.id) }}">
+                  <div>
+                    <label for="plan_name_{{ u.id }}">Plan</label>
+                    <select id="plan_name_{{ u.id }}" name="plan_name">
+                      {% for pn in ['starter', 'pro', 'agency', 'internal', 'custom'] %}
+                        <option value="{{ pn }}" {{ 'selected' if (u.plan_name or 'starter')|lower == pn else '' }}>{{ pn|capitalize }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div>
+                    <label for="monthly_price_{{ u.id }}">Prix mensuel ({{ u.currency or 'EUR' }})</label>
+                    <input type="text" id="monthly_price_{{ u.id }}" name="monthly_price"
+                           placeholder="ex: 29" value="{{ '%.2f'|format(u.monthly_price) if u.monthly_price else '' }}" />
+                  </div>
+                  <div>
+                    <label for="monthly_generation_limit_{{ u.id }}">Limite mensuelle</label>
+                    <input type="text" id="monthly_generation_limit_{{ u.id }}" name="monthly_generation_limit"
+                           placeholder="ex: 100" value="{{ u.monthly_generation_limit if u.monthly_generation_limit is not none else '' }}" />
+                  </div>
+                  <div>
+                    <label for="credits_remaining_{{ u.id }}">Crédits restants</label>
+                    <input type="text" id="credits_remaining_{{ u.id }}" name="credits_remaining"
+                           placeholder="ex: 100" value="{{ u.credits_remaining if u.credits_remaining is not none else '' }}" />
+                  </div>
+                  <div class="full">
+                    <button type="submit">Mettre à jour le plan</button>
+                  </div>
+                  <p class="muted full" style="margin-top:2px;">
+                    Laissez un champ vide pour ne pas le modifier. Un prix manuel &gt; 0 remplace le tarif par défaut du plan.
+                  </p>
+                </form>
+              </details>
             </td>
           </tr>
           {% endfor %}
