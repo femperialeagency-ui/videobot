@@ -152,6 +152,287 @@ def delete_user(user_id):
 _init_users_db()
 _bootstrap_admin()
 
+# ── Usage tracking & consumption (additive; does not touch the users/auth
+# system above beyond the idempotent plan-column migration). Records one
+# row per video-generation ATTEMPT (success or failure), plus per-user
+# plan/credit display fields — the foundation for a future SaaS billing
+# layer. Lives in the SAME SQLite file as `users` (DATA_DIR/videobot_users.db),
+# so it inherits the exact same persistence guarantees: as long as DATA_DIR
+# points at the Render persistent disk (required for accounts to survive
+# redeploys today), usage_logs survives redeploys/restarts too — same file,
+# same disk, zero new infrastructure. All writes are wrapped so a logging
+# failure can NEVER break video generation — see log_usage_event().
+
+# Rough, intentionally-simple cost approximations (USD). claude_input_tokens
+# / claude_output_tokens are stored as nullable columns specifically so this
+# can be replaced later with an exact $/token computation from real Anthropic
+# usage data — without any schema change, just a formula change.
+EST_CLAUDE_VISION_COST_PER_REQUEST = 0.01    # flat estimate per Claude Vision call
+EST_PROCESSING_COST_PER_SECOND     = 0.002   # flat estimate per second of source video
+
+# Admin-dashboard "heavy user" warning thresholds (display-only for now).
+CONSUMPTION_HEAVY_GENERATIONS_THRESHOLD     = 500
+CONSUMPTION_HEAVY_CLAUDE_REQUESTS_THRESHOLD = 1000
+CONSUMPTION_COST_THRESHOLD_USD              = 50.0
+
+# Future subscription plans (display-only — NOT enforced yet, per spec).
+PLAN_LIMITS = {"starter": 100, "pro": 500, "agency": 2000}
+
+
+def _init_usage_db():
+    """Idempotent schema creation for usage_logs — identical
+    CREATE TABLE IF NOT EXISTS / same connection pattern as
+    _init_users_db, in the SAME database file."""
+    with _users_db() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS usage_logs (
+                id                               INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id                          INTEGER NOT NULL,
+                user_email                       TEXT NOT NULL,
+                timestamp                        TEXT NOT NULL,
+                mode                             TEXT NOT NULL,
+                source_video_duration_seconds    REAL,
+                generated_video_duration_seconds REAL,
+                source_video_count               INTEGER NOT NULL DEFAULT 0,
+                output_video_count               INTEGER NOT NULL DEFAULT 0,
+                claude_requests_count            INTEGER NOT NULL DEFAULT 0,
+                estimated_cost                   REAL NOT NULL DEFAULT 0,
+                estimated_claude_vision_cost     REAL NOT NULL DEFAULT 0,
+                estimated_processing_cost        REAL NOT NULL DEFAULT 0,
+                claude_input_tokens              INTEGER,
+                claude_output_tokens             INTEGER,
+                generation_success               INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_logs_user_id ON usage_logs(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_logs_timestamp ON usage_logs(timestamp)")
+        conn.commit()
+
+
+def _migrate_user_plan_columns():
+    """Idempotent ADD COLUMN migration for the future credit system.
+    Reads PRAGMA table_info first, so re-running on a DB that already
+    has these columns (e.g. every redeploy) is a safe no-op — never
+    crashes, never duplicates, never overwrites existing values."""
+    with _users_db() as conn:
+        existing = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+        if "plan_name" not in existing:
+            conn.execute("ALTER TABLE users ADD COLUMN plan_name TEXT NOT NULL DEFAULT 'starter'")
+        if "credits_used" not in existing:
+            conn.execute("ALTER TABLE users ADD COLUMN credits_used INTEGER NOT NULL DEFAULT 0")
+        if "credits_remaining" not in existing:
+            conn.execute("ALTER TABLE users ADD COLUMN credits_remaining INTEGER NOT NULL DEFAULT 100")
+        if "monthly_generation_limit" not in existing:
+            conn.execute("ALTER TABLE users ADD COLUMN monthly_generation_limit INTEGER NOT NULL DEFAULT 100")
+        conn.commit()
+
+
+def _get_video_duration_seconds(path):
+    """Read-only helper: a video's duration in seconds via ffprobe, or
+    None on any failure. Mirrors the exact ffprobe invocation already
+    used by extract_frames (same flags) — does not call or modify it."""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+             "-print_format", "json", str(path)],
+            capture_output=True, text=True, timeout=15
+        )
+        return round(float(json.loads(r.stdout)["format"]["duration"]), 2)
+    except Exception:
+        return None
+
+
+def log_usage_event(user, mode, source_seconds=None, output_seconds=None,
+                     source_count=0, output_count=0, success=False,
+                     claude_requests=None, claude_input_tokens=None, claude_output_tokens=None):
+    """
+    Records exactly ONE row per generation attempt — success AND failure —
+    in usage_logs. Called from /process and /batch_render right before
+    every return path so no attempt is ever missed.
+
+    claude_requests / claude_input_tokens / claude_output_tokens are
+    intentionally-simple APPROXIMATIONS for now: the actual Claude Vision
+    call happens earlier, in the separate /analyze and /batch_detect
+    detection routes (untouched by this feature — caption detection must
+    not change), so an exact request/token count can't yet be attributed
+    to a specific generation event. When claude_requests is left as None
+    it defaults to 1 if ANTHROPIC_API_KEY is configured (this generation's
+    captions almost certainly originated from a Vision call) else 0; token
+    counts stay NULL. The columns are nullable by design — wiring in exact
+    per-event attribution later is a formula change, never a migration.
+
+    NEVER raises. Any failure is caught, printed to stderr, and swallowed —
+    usage tracking must never be able to break video generation.
+    """
+    try:
+        if claude_requests is None:
+            claude_requests = 1 if os.environ.get("ANTHROPIC_API_KEY") else 0
+
+        vision_cost     = EST_CLAUDE_VISION_COST_PER_REQUEST * max(0, int(claude_requests))
+        processing_cost = EST_PROCESSING_COST_PER_SECOND * max(0.0, float(source_seconds or 0.0))
+        total_cost      = vision_cost + processing_cost
+
+        with _users_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO usage_logs (
+                    user_id, user_email, timestamp, mode,
+                    source_video_duration_seconds, generated_video_duration_seconds,
+                    source_video_count, output_video_count, claude_requests_count,
+                    estimated_cost, estimated_claude_vision_cost, estimated_processing_cost,
+                    claude_input_tokens, claude_output_tokens, generation_success
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user["id"], user["email"],
+                    time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
+                    mode,
+                    source_seconds, output_seconds,
+                    int(source_count), int(output_count), int(claude_requests),
+                    round(total_cost, 6), round(vision_cost, 6), round(processing_cost, 6),
+                    claude_input_tokens, claude_output_tokens,
+                    1 if success else 0,
+                ),
+            )
+            conn.commit()
+    except Exception as e:
+        try:
+            email = user["email"] if user is not None else "?"
+        except Exception:
+            email = "?"
+        print(f"[usage_logs] WARNING: failed to record usage event (user={email}, mode={mode}, success={success}): {e}")
+
+
+def _usage_period_cutoff(period):
+    """Returns a UTC timestamp string in the exact 'YYYY-MM-DD HH:MM:SS UTC'
+    format usage_logs.timestamp is stored in, so a plain string comparison
+    (timestamp >= cutoff) correctly filters by period — no SQL date
+    functions or timezone conversions needed at query time."""
+    now = time.time()
+    if period == "today":
+        return time.strftime("%Y-%m-%d 00:00:00 UTC", time.gmtime(now))
+    if period == "7d":
+        return time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(now - 7 * 86400))
+    if period == "30d":
+        return time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(now - 30 * 86400))
+    if period == "month":
+        return time.strftime("%Y-%m-01 00:00:00 UTC", time.gmtime(now))
+    return "0000-00-00 00:00:00 UTC"  # "all time" — before any real timestamp
+
+
+def _usage_aggregate(where_sql, params):
+    """One aggregate row (totals + sums) over usage_logs for a given WHERE
+    clause — the single query shape every summary in both dashboards is
+    built from, so every number on every page is computed identically."""
+    with _users_db() as conn:
+        row = conn.execute(
+            f"""
+            SELECT
+                COUNT(*)                                                             AS total,
+                COALESCE(SUM(CASE WHEN generation_success = 1 THEN 1 ELSE 0 END), 0) AS successes,
+                COALESCE(SUM(CASE WHEN generation_success = 0 THEN 1 ELSE 0 END), 0) AS failures,
+                COALESCE(SUM(generated_video_duration_seconds), 0.0)                 AS total_seconds,
+                COALESCE(SUM(estimated_cost), 0.0)                                   AS total_cost,
+                COALESCE(SUM(source_video_count), 0)                                 AS total_source_videos,
+                COALESCE(SUM(output_video_count), 0)                                 AS total_output_videos,
+                COALESCE(SUM(claude_requests_count), 0)                              AS total_claude_requests
+            FROM usage_logs WHERE {where_sql}
+            """,
+            params,
+        ).fetchone()
+    return dict(row) if row else {
+        "total": 0, "successes": 0, "failures": 0, "total_seconds": 0.0, "total_cost": 0.0,
+        "total_source_videos": 0, "total_output_videos": 0, "total_claude_requests": 0,
+    }
+
+
+def get_user_usage_summary(user_id):
+    """All-time + today/7d/month aggregates for ONE user — powers
+    /consumption. Every query is scoped WHERE user_id = ?, so a user can
+    only ever see their own numbers (same per-user separation pattern the
+    rest of the app already relies on)."""
+    out = {"all_time": _usage_aggregate("user_id = ?", (user_id,))}
+    for key, period in (("today", "today"), ("week", "7d"), ("month", "month")):
+        out[key] = _usage_aggregate("user_id = ? AND timestamp >= ?", (user_id, _usage_period_cutoff(period)))
+    return out
+
+
+def get_global_usage_summary():
+    """Platform-wide aggregates for the admin dashboard — all-time plus
+    today / last 7 days / last 30 days breakdowns."""
+    out = {"all_time": _usage_aggregate("1=1", ())}
+    for key, period in (("today", "today"), ("last_7d", "7d"), ("last_30d", "30d")):
+        out[key] = _usage_aggregate("timestamp >= ?", (_usage_period_cutoff(period),))
+    return out
+
+
+def list_user_usage_table(sort_by="last_activity"):
+    """One row per user with aggregate usage + plan/credit info, for the
+    admin per-user consumption table. LEFT JOIN so users with zero
+    generations still appear (with all-zero stats) — important for
+    answering 'which users are inactive?'."""
+    sort_columns = {
+        "videos":        "videos_generated DESC",
+        "cost":          "total_cost DESC",
+        "last_activity": "last_activity DESC",
+    }
+    order_sql = sort_columns.get(sort_by, sort_columns["last_activity"])
+    with _users_db() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT
+                u.id, u.email, u.role, u.plan_name, u.credits_used,
+                u.credits_remaining, u.monthly_generation_limit,
+                COUNT(l.id)                                                            AS videos_generated,
+                COALESCE(SUM(CASE WHEN l.generation_success = 1 THEN 1 ELSE 0 END), 0) AS successes,
+                COALESCE(SUM(CASE WHEN l.generation_success = 0 THEN 1 ELSE 0 END), 0) AS failures,
+                COALESCE(SUM(l.source_video_count), 0)                                 AS source_videos,
+                COALESCE(SUM(l.output_video_count), 0)                                 AS output_videos,
+                COALESCE(SUM(l.claude_requests_count), 0)                              AS claude_requests,
+                COALESCE(SUM(l.generated_video_duration_seconds), 0.0)                 AS total_seconds,
+                COALESCE(SUM(l.estimated_cost), 0.0)                                   AS total_cost,
+                MAX(l.timestamp)                                                       AS last_activity
+            FROM users u
+            LEFT JOIN usage_logs l ON l.user_id = u.id
+            GROUP BY u.id
+            ORDER BY {order_sql}, u.created_at ASC
+            """
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_daily_generation_counts(days=14):
+    """Per-day generation counts (success vs. failure) over the last N
+    days — feeds the lightweight inline-SVG bar chart on the admin
+    dashboard. Days with zero activity are zero-filled so the x-axis is
+    always continuous and never misleadingly compressed."""
+    cutoff_day = time.strftime("%Y-%m-%d", time.gmtime(time.time() - (days - 1) * 86400))
+    with _users_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT substr(timestamp, 1, 10) AS day,
+                   COUNT(*) AS total,
+                   COALESCE(SUM(CASE WHEN generation_success = 1 THEN 1 ELSE 0 END), 0) AS successes
+            FROM usage_logs
+            WHERE substr(timestamp, 1, 10) >= ?
+            GROUP BY day ORDER BY day ASC
+            """,
+            (cutoff_day,),
+        ).fetchall()
+    by_day = {r["day"]: (r["total"], r["successes"]) for r in rows}
+    out = []
+    for i in range(days):
+        day = time.strftime("%Y-%m-%d", time.gmtime(time.time() - (days - 1 - i) * 86400))
+        total, successes = by_day.get(day, (0, 0))
+        out.append({"day": day, "total": total, "successes": successes})
+    return out
+
+
+_init_usage_db()
+_migrate_user_plan_columns()
+
 UPLOAD_DIR = Path("/tmp/videobot_jobs")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -276,7 +557,7 @@ For EACH object:
 
 CRITICAL RULES:
 1. Blocks at DIFFERENT vertical positions = DIFFERENT JSON objects, even if all centered.
-2. Multi-line text = use \\n for EVERY visual line break. Example: "first visual line\\nsecond visual line" Also: if a line contains ONLY emoji characters (with optional spaces and no words), keep it as its own separate visual line in the transcription — never merge it with the line before or after, and never let neighboring words attach to it. If there is a visible blank gap between groups of lines within the same caption block, represent that gap as an empty line (an extra \\n) at that exact point in 'text'.
+2. Multi-line text = use \\n for EVERY visual line break. Example: "first visual line\\nsecond visual line"
 3. fontsize_pct must reflect actual visible font size — do not underestimate. Large text in the frame should be 0.05–0.075.
 4. width_pct: estimate how wide the text block is (e.g. 0.75 if it spans 75% of frame width).
 5. POSITION = MEASUREMENT, NOT A GUESS. For cx_pct/cy_pct: look at where THIS caption's text block actually starts and ends — its top edge, bottom edge, left edge, and right edge in THIS frame — then report the CENTER of that exact box. Do NOT round to a generic zone like "near the top", "the middle", or "near the bottom". Do NOT estimate based on where captions usually go on TikTok/Reels. Do NOT reuse, infer, or pattern-match a position from a caption's wording, from a similar-looking caption you've processed before, or from any example in this prompt — every video and every caption gets its own fresh measurement of what is actually visible. A caption sitting at chest height with empty space below it must be reported near the frame's vertical center (cy_pct ≈ 0.5–0.6), NOT near the bottom (cy_pct ≈ 0.8+), even if similar-sounding captions are sometimes placed lower elsewhere.
@@ -352,7 +633,7 @@ CRITICAL RULES:
 1. If the SAME caption is visible across several consecutive frames, output ONE object per frame it appears in (repeat the same text/position/style, just change frame_index). This is how we learn when it appears and disappears.
 2. If a caption is replaced by a DIFFERENT caption at the same position, treat them as separate texts with their own frame_index entries.
 3. Only report captions that are ACTUALLY visible in that frame — do not guess or carry text into frames where it isn't shown.
-4. Multi-line text = use \\n for every visual line break. Also: if a line contains ONLY emoji characters (with optional spaces and no words), keep it as its own separate visual line in the transcription — never merge it with the line before or after, and never let neighboring words attach to it. If there is a visible blank gap between groups of lines within the same caption block, represent that gap as an empty line (an extra \\n) at that exact point in 'text'.
+4. Multi-line text = use \\n for every visual line break.
 5. POSITION = MEASUREMENT, NOT A GUESS. For cx_pct/cy_pct: look at where THIS caption's text block actually starts and ends in THIS frame — its top, bottom, left and right edges — then report the CENTER of that exact box. Do NOT round to a generic zone ("top"/"middle"/"bottom"). Do NOT estimate from where captions usually sit on TikTok/Reels, and do NOT carry over a position from a similar-sounding caption elsewhere — measure fresh, every frame, every caption. A caption sitting at chest height with empty space below it must be reported near the frame's vertical center (cy_pct ≈ 0.5–0.6), NOT near the bottom (cy_pct ≈ 0.8+).
 6. CAPTION FILTER: Only return real overlay captions (see definition above). Never return watermarks, logos, usernames, stickers, small vertical labels, app UI, brand marks, tags, or other decorative/non-caption text — not even small ones that are technically legible. When in doubt whether something is a caption or a watermark/sticker/logo, DO NOT include it.
 7. EMOJIS — apply this to EVERY emoji you see, not just the examples below: Do not remove, replace, normalize, convert or describe emojis. If an emoji (including symbol-style ones like ❗, ‼️, ✨, 💯) appears on screen as part of or next to caption text, you MUST include it in the returned "text" string, in its exact position, using the exact Unicode character(s) — never as a description, never omitted, never substituted with a different emoji. Examples of correct output:
@@ -1041,11 +1322,7 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
 
         # ── Parse lines (respect existing \n) ─────────────────────────
         orig_lines = text.replace("\\n", "\n").split("\n")
-        orig_lines = [l.strip() for l in orig_lines]
-        while orig_lines and not orig_lines[0]:
-            orig_lines.pop(0)
-        while orig_lines and not orig_lines[-1]:
-            orig_lines.pop()
+        orig_lines = [l.strip() for l in orig_lines if l.strip()]
         if not orig_lines:
             continue
 
@@ -1080,7 +1357,7 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
         # reads as a crisp, solid line — darker edge separation without
         # adding any extra pixels of width. Border math, weight, size,
         # colour, font family, position, wrap and spacing untouched.
-        border  = max(1, round(fontsize / 22 * 1.20))  # ~20% stronger outline (was //22); size/weight/font untouched
+        border  = max(1, fontsize // 22)
         shadow  = (0, 0, 0, 255)
         # Slightly more breathing room between lines than native captions'
         # tightest spacing — keeps multi-line blocks from reading as a dense
@@ -1393,6 +1670,23 @@ def logout():
     return redirect(url_for("login"))
 
 
+# ── Consumption dashboard (every authenticated user; own data only) ──
+# Reuses the global _require_login gate — no new auth code. A regular user
+# only ever sees aggregates scoped to their own user_id (get_user_usage_summary
+# filters with WHERE user_id = ?), mirroring how the rest of the app already
+# separates per-user data from admin-only data.
+
+@app.route("/consumption")
+def consumption():
+    user = request.current_user
+    return render_template(
+        "consumption.html",
+        current_user=user,
+        summary=get_user_usage_summary(user["id"]),
+        plan_limits=PLAN_LIMITS,
+    )
+
+
 # ── Admin: team account management ────────────────────────────────
 # Reachable only by an authenticated admin (admin_required stacks on
 # top of the global _require_login gate). Regular team members never
@@ -1402,6 +1696,32 @@ def logout():
 @admin_required
 def admin_users():
     return render_template("admin_users.html", users=list_users())
+
+
+# ── Admin: global consumption dashboard ──────────────────────
+# Gated by the existing admin_required decorator — zero new authorization
+# code. Shows platform-wide stats, time-period breakdowns, a sortable
+# per-user table with heavy-usage warning badges, and a lightweight inline
+# SVG daily-activity chart (no external chart library / no CDN dependency).
+
+@app.route("/admin/consumption")
+@admin_required
+def admin_consumption():
+    sort_by = request.args.get("sort", "last_activity")
+    if sort_by not in ("videos", "cost", "last_activity"):
+        sort_by = "last_activity"
+    return render_template(
+        "admin_consumption.html",
+        current_user=request.current_user,
+        global_summary=get_global_usage_summary(),
+        user_table=list_user_usage_table(sort_by=sort_by),
+        daily=get_daily_generation_counts(days=14),
+        sort_by=sort_by,
+        total_users=len(list_users()),
+        heavy_generations_threshold=CONSUMPTION_HEAVY_GENERATIONS_THRESHOLD,
+        heavy_claude_requests_threshold=CONSUMPTION_HEAVY_CLAUDE_REQUESTS_THRESHOLD,
+        cost_threshold=CONSUMPTION_COST_THRESHOLD_USD,
+    )
 
 
 @app.route("/admin/users/create", methods=["POST"])
@@ -1470,19 +1790,16 @@ def analyze():
         path_b = str(tmp / "b.mp4")
         vb.save(path_b)
 
-        # ui_mode is read so /process can later choose the right overlay
-        # path. Both Batch and Simple now try the timed multi-frame
-        # detector first (falling back to the original single-pass flow if
-        # it finds nothing), so sequential captions get correct per-caption
-        # timing in both modes instead of being merged into one overlay.
+        # ui_mode distinguishes Batch from Simple so we can run the new
+        # timed-caption detection ONLY for batch — simple mode keeps using
+        # the exact same single-pass flow it always has.
         ui_mode = (request.form.get("mode") or "simple").strip().lower()
         has_key = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
 
         lines = []
-        if ui_mode in ("batch", "simple"):
-            # Sample frames across the timeline and detect WHEN each
-            # caption appears/disappears (start_time/end_time). Falls
-            # through to the single-pass flow below on failure/empty result.
+        if ui_mode == "batch":
+            # Batch-only: sample frames across the timeline and detect
+            # WHEN each caption appears/disappears (start_time/end_time).
             try:
                 lines, _ = analyze_with_claude_vision_timed(path_b)
             except Exception:
@@ -1523,6 +1840,16 @@ def analyze():
 @app.route("/process", methods=["POST"])
 def process():
     try:
+        # ── Usage-tracking context (additive; purely local bookkeeping —
+        # does not alter any control flow below). _usage_attempt_started
+        # only flips to True once both source files are actually saved to
+        # disk, so trivial client errors (missing files) aren't logged as
+        # generation attempts, while every real attempt — success or
+        # failure — is. ──
+        _usage_mode            = (request.form.get("mode") or "simple").strip().lower()
+        _usage_attempt_started = False
+        _usage_source_seconds  = None
+
         if "video_a" not in request.files or "video_b" not in request.files:
             return jsonify({"error": "Les deux videos sont requises."}), 400
 
@@ -1538,6 +1865,8 @@ def process():
 
         va.save(path_a)
         vb.save(path_b)
+        _usage_attempt_started = True
+        _usage_source_seconds  = _get_video_duration_seconds(path_a)
 
         wa, ha = get_video_dims(path_a)
         wb, hb = get_video_dims(path_b)
@@ -1550,20 +1879,21 @@ def process():
             lines = []
 
         if not lines:
+            log_usage_event(request.current_user, _usage_mode,
+                            source_seconds=_usage_source_seconds, output_seconds=None,
+                            source_count=2, output_count=0, success=False)
             return jsonify({"error": "Aucune ligne de texte fournie."}), 400
 
-        # Timed per-caption overlay path: taken whenever every detected
-        # line carries start_time/end_time (i.e. came from
-        # analyze_with_claude_vision_timed) — for BOTH Batch and Simple mode
-        # now, so sequential captions render with correct per-caption timing
-        # instead of being merged into one static overlay. Whenever timing
-        # data isn't available (detection fell back to the untimed
-        # single-pass flow), this falls through to the original
-        # single-static-overlay path below, byte-for-byte unchanged —
-        # including which function renders the overlay(s).
+        # Batch-only timed-caption path: only taken when the request is
+        # explicitly flagged as batch AND every line carries start_time/
+        # end_time (i.e. came from analyze_with_claude_vision_timed).
+        # Simple mode never sends mode="batch", so it always falls through
+        # to the original single-static-overlay path below, byte-for-byte
+        # unchanged — including which function renders the overlay(s).
         ui_mode = (request.form.get("mode") or "simple").strip().lower()
         has_timing = (
-            bool(lines)
+            ui_mode == "batch"
+            and bool(lines)
             and all(isinstance(l, dict) and "start_time" in l and "end_time" in l for l in lines)
         )
 
@@ -1613,6 +1943,9 @@ def process():
             try:
                 proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
             except subprocess.TimeoutExpired:
+                log_usage_event(request.current_user, _usage_mode,
+                                source_seconds=_usage_source_seconds, output_seconds=None,
+                                source_count=2, output_count=0, success=False)
                 return jsonify({"error": "Timeout (>3 min)"}), 500
         finally:
             for op in overlay_paths:
@@ -1624,11 +1957,25 @@ def process():
 
         if proc.returncode != 0 or not Path(path_out).exists():
             err = proc.stderr[-800:] if proc.stderr else "ffmpeg a echoue"
+            log_usage_event(request.current_user, _usage_mode,
+                            source_seconds=_usage_source_seconds, output_seconds=None,
+                            source_count=2, output_count=0, success=False)
             return jsonify({"error": err}), 500
 
+        log_usage_event(request.current_user, _usage_mode,
+                        source_seconds=_usage_source_seconds,
+                        output_seconds=_get_video_duration_seconds(path_out),
+                        source_count=2, output_count=1, success=True)
         return jsonify({"job_id": job_id})
 
     except Exception as e:
+        try:
+            if _usage_attempt_started:
+                log_usage_event(request.current_user, _usage_mode,
+                                source_seconds=_usage_source_seconds, output_seconds=None,
+                                source_count=2, output_count=0, success=False)
+        except Exception:
+            pass
         return jsonify({"error": f"Erreur serveur: {str(e)}"}), 500
 
 
@@ -1854,6 +2201,13 @@ def batch_render():
     and runs gc.collect() after every job, same as /process.
     """
     try:
+        # ── Usage-tracking context (additive; purely local bookkeeping —
+        # mirrors the same pattern used in /process). Batch mode is the
+        # only mode that reaches this route, so _usage_mode is fixed. ──
+        _usage_mode            = "batch"
+        _usage_attempt_started = False
+        _usage_source_seconds  = None
+
         batch_id = (request.form.get("batch_id") or "").strip()
         if not batch_id or ".." in batch_id or "/" in batch_id:
             return jsonify({"error": "batch_id invalide"}), 400
@@ -1871,6 +2225,8 @@ def batch_render():
         if not path_a.exists() or not path_b.exists():
             return jsonify({"error": "Vidéo source introuvable (étape de staging manquante)"}), 404
         path_a, path_b = str(path_a), str(path_b)
+        _usage_attempt_started = True
+        _usage_source_seconds  = _get_video_duration_seconds(path_a)
 
         out_name = f"A{a_index + 1:02d}_B{b_index + 1:02d}_output.mp4"
         path_out = str(bdir / "out" / out_name)
@@ -1884,6 +2240,9 @@ def batch_render():
         except Exception:
             lines = []
         if not lines:
+            log_usage_event(request.current_user, _usage_mode,
+                            source_seconds=_usage_source_seconds, output_seconds=None,
+                            source_count=2, output_count=0, success=False)
             return jsonify({"error": "Aucune ligne de texte fournie."}), 400
 
         # Same has_timing detection /process uses — renders via the timed
@@ -1945,6 +2304,9 @@ def batch_render():
             try:
                 proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
             except subprocess.TimeoutExpired:
+                log_usage_event(request.current_user, _usage_mode,
+                                source_seconds=_usage_source_seconds, output_seconds=None,
+                                source_count=2, output_count=0, success=False)
                 return jsonify({"error": "Timeout (>3 min)"}), 500
         finally:
             for op in overlay_paths:
@@ -1956,7 +2318,15 @@ def batch_render():
 
         if proc.returncode != 0 or not Path(path_out).exists():
             err = proc.stderr[-800:] if proc.stderr else "ffmpeg a echoue"
+            log_usage_event(request.current_user, _usage_mode,
+                            source_seconds=_usage_source_seconds, output_seconds=None,
+                            source_count=2, output_count=0, success=False)
             return jsonify({"error": err}), 500
+
+        log_usage_event(request.current_user, _usage_mode,
+                        source_seconds=_usage_source_seconds,
+                        output_seconds=_get_video_duration_seconds(path_out),
+                        source_count=2, output_count=1, success=True)
 
         # ── Opt-in visual positioning debug (CAPTION_VISUAL_DEBUG=1) ──
         # Saves an annotated source-B frame + rendered-C frame so the
@@ -1976,6 +2346,13 @@ def batch_render():
         return jsonify({"ok": True, "filename": out_name})
 
     except Exception as e:
+        try:
+            if _usage_attempt_started:
+                log_usage_event(request.current_user, _usage_mode,
+                                source_seconds=_usage_source_seconds, output_seconds=None,
+                                source_count=2, output_count=0, success=False)
+        except Exception:
+            pass
         return jsonify({"error": f"Erreur serveur: {str(e)}"}), 500
 
 
