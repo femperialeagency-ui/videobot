@@ -9,13 +9,14 @@
     :root {
       --bg: #05060A; --surface: #0D1018; --surface-2: rgba(255,255,255,.025);
       --border: rgba(255,255,255,.08); --border-strong: rgba(255,255,255,.14);
-      --accent: #7C5CFF; --accent2: #2F6BFF; --accent3: #FF4DDF; --text: #F0F1F7;
+      --accent: #5E6AD2; --accent2: #6E7AD8; --accent3: #8B94E0; --text: #F0F1F7;
       --muted: #8B92A8; --success: #20D98A; --warn: #FFB547; --error: #f87171; --ok: #20D98A;
+      --accent-soft: rgba(94,106,210,.16);
       --radius: 14px;
       --glass: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.015));
       --shadow-card: 0 10px 36px rgba(0,0,0,.40);
-      --shadow-glow: 0 0 0 1px rgba(124,92,255,.14), 0 16px 46px rgba(124,92,255,.12);
-      --sidebar-w: 220px;
+      --shadow-glow: 0 0 0 1px rgba(94,106,210,.14), 0 16px 46px rgba(94,106,210,.12);
+      --sidebar-w: 218px;
     }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background:
@@ -24,60 +25,70 @@
         var(--bg);
       color: var(--text); min-height: 100vh; }
 
-    /* ── App shell ── */
-    .app-shell { display: flex; min-height: 100vh; width: 100%; }
-    .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar-w);
-      display: flex; flex-direction: column; padding: 15px 11px;
-      background: linear-gradient(180deg, rgba(124,92,255,.06), rgba(13,16,24,.2)), rgba(13,16,24,.75);
-      border-right: 1px solid var(--border); backdrop-filter: blur(22px); z-index: 20; }
-    .sidebar-logo { display: flex; align-items: center; padding: 4px 8px 18px; }
-    .vs-logo { display: inline-flex; align-items: center; gap: 9px; }
-    .vs-mark { width: 26px; height: 26px; flex-shrink: 0; filter: drop-shadow(0 3px 12px rgba(124,92,255,.4)); }
-    .vs-word { font-size: 1.1rem; font-weight: 800; letter-spacing: -.02em; color: #fff; }
-    .vs-word em { font-style: normal;
-      background: linear-gradient(115deg, var(--accent2), var(--accent), var(--accent3));
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .vs-word.lg { font-size: 1.34rem; }
-    .sidebar-nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
-    .nav-item { display: flex; align-items: center; gap: 11px; padding: 8px 10px; border-radius: 9px;
-      color: var(--muted); text-decoration: none; font-size: 0.88rem; font-weight: 600; border: none;
-      background: transparent; cursor: pointer; width: 100%; text-align: left;
-      transition: background .15s ease, color .15s ease, transform .15s ease; }
-    .nav-item .ico { font-size: 1.02rem; width: 20px; text-align: center; flex-shrink: 0; }
-    .ico-svg { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .ico-svg svg { width: 17px; height: 17px; display: block; }
-    .ico-svg.sm svg { width: 14px; height: 14px; }
-    .ico-svg.lg svg { width: 22px; height: 22px; }
-    .nav-item .ico-svg { color: currentColor; opacity: .85; }
-    .nav-item.active .ico-svg, .nav-item:hover .ico-svg { opacity: 1; }
+    /* ── SVG icon system ── */
+    .ico-svg { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; stroke-width: 1.8;
+    fill: none; stroke-linecap: round; stroke-linejoin: round; vertical-align: -4px; }
+    .ico-svg.sm { width: 15px; height: 15px; }
+    .ico-svg.lg { width: 22px; height: 22px; }
     .stat .lbl .ico-svg { color: var(--muted); margin-right: 5px; vertical-align: -3px; }
     .badge .ico-svg { vertical-align: -2px; margin-right: 2px; }
-    .nav-item:hover { background: rgba(255,255,255,.04); color: var(--text); transform: translateX(2px); }
-    .nav-item.active { background: linear-gradient(135deg, rgba(124,92,255,.22), rgba(47,107,255,.14));
-      color: #fff; box-shadow: inset 0 0 0 1px rgba(124,92,255,.3); }
-    .nav-item.active:hover { transform: none; }
-    .nav-item.soon { opacity: .45; cursor: default; }
-    .nav-item.soon:hover { background: transparent; color: var(--muted); transform: none; }
-    .soon-badge { margin-left: auto; font-size: 0.62rem; font-weight: 800; letter-spacing: .04em;
-      text-transform: uppercase; color: var(--accent2); background: rgba(47,107,255,.14);
-      border: 1px solid rgba(47,107,255,.28); border-radius: 999px; padding: 2px 7px; }
-    .nav-section-label { font-size: 0.68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
-      color: var(--muted); opacity: .6; padding: 13px 10px 5px; }
-    .sidebar-profile { display: flex; align-items: center; gap: 10px; padding: 10px; margin-top: 8px;
-      border-radius: 12px; background: rgba(255,255,255,.03); border: 1px solid var(--border); }
-    .sidebar-avatar { width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
-      background: linear-gradient(120deg, var(--accent2), var(--accent), var(--accent3)); color: #fff;
-      display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.95rem;
-      box-shadow: 0 6px 18px rgba(124,92,255,.35); }
-    .sidebar-profile-info { min-width: 0; }
-    .sidebar-profile-email { font-size: 0.8rem; font-weight: 700; white-space: nowrap; overflow: hidden;
-      text-overflow: ellipsis; }
-    .sidebar-profile-role { font-size: 0.72rem; color: var(--muted); white-space: nowrap; overflow: hidden;
-      text-overflow: ellipsis; }
-    .sidebar-logout { display: block; text-align: center; margin-top: 10px; padding: 9px 12px;
-      border-radius: 10px; border: 1px solid var(--border); color: var(--muted); text-decoration: none;
-      font-size: 0.8rem; font-weight: 700; transition: border-color .15s, color .15s, background .15s; }
-    .sidebar-logout:hover { border-color: rgba(248,113,113,.4); color: var(--error); background: rgba(248,113,113,.06); }
+
+    /* ── App shell: fixed sidebar + main column ── */
+    .app-shell { display: flex; min-height: 100vh; width: 100%; }
+    .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar-w);
+      display: flex; flex-direction: column; padding: 12px 9px;
+      background: linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.008)), rgba(21,21,26,.8);
+      border-right: 1px solid var(--border); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      z-index: 20; }
+    .sidebar-logo { display: flex; align-items: center; padding: 4px 6px 14px; }
+    .vs-logo { display: inline-flex; align-items: center; gap: 9px; }
+    .vs-mark { width: 24px; height: 24px; flex-shrink: 0; filter: none; }
+    .vs-word { font-size: 1.02rem; font-weight: 700; letter-spacing: -.02em; color: #fff; }
+    .vs-word em { font-style: normal; color: var(--accent2); }
+    .sidebar-nav { display: flex; flex-direction: column; gap: 3px; flex: 1; overflow-y: auto;
+      scrollbar-width: thin; padding-right: 2px; }
+    .sidebar-nav::-webkit-scrollbar { width: 4px; }
+    .sidebar-nav::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+    .sidebar-cta { display: flex; align-items: center; justify-content: center; gap: 6px;
+      width: 100%; padding: 9px 10px; margin-bottom: 10px; border: 1px solid rgba(255,255,255,.13);
+      border-radius: 8px; cursor: pointer; font-size: 0.8rem; font-weight: 700; color: #fff; text-align: center;
+      background: var(--accent); text-decoration: none; transition: opacity .22s; }
+    .sidebar-cta:hover { opacity: .92; }
+    .nav-item { position: relative; display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+      border-radius: 7px; color: var(--muted); font-size: 0.8rem; font-weight: 600; text-decoration: none;
+      border: 1px solid transparent; cursor: pointer; transition: background .15s, color .15s, border-color .15s, transform .15s;
+      background: transparent; width: 100%; text-align: left; }
+    .nav-item:hover:not(.active):not(.soon) { background: rgba(255,255,255,.045); color: var(--text);
+      border-color: var(--border); transform: translateX(2px); }
+    .nav-item.active { color: #fff; background: var(--accent-soft, rgba(94,106,210,.16));
+      border-color: transparent; }
+    .nav-item.active::before { content: ""; position: absolute; left: -11px; top: 50%; transform: translateY(-50%);
+      width: 3px; height: 16px; border-radius: 0 4px 4px 0; background: var(--accent); }
+    .nav-item.soon { opacity: .42; cursor: default; }
+    .nav-item.soon:hover { transform: none; background: transparent; }
+    .nav-badge { margin-left: auto; font-size: 0.64rem; font-weight: 800; letter-spacing: .03em;
+      padding: 2px 8px; border-radius: 999px; flex-shrink: 0; }
+    .nav-badge.soon { text-transform: uppercase; background: rgba(255,255,255,.06); color: var(--muted); }
+    .nav-group { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+    .nav-group:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+    .nav-group-label { display: flex; align-items: center; gap: 6px; font-size: 0.65rem; font-weight: 800;
+      text-transform: uppercase; letter-spacing: .09em; color: var(--muted); opacity: .6; padding: 0 10px 6px; }
+    .sidebar-profile { display: flex; align-items: center; gap: 10px; padding: 9px; border-radius: 9px;
+      background: rgba(255,255,255,.03); border: 1px solid var(--border); margin-top: 6px;
+      transition: border-color .15s, background .15s; }
+    .sidebar-profile:hover { border-color: var(--border-strong); background: rgba(255,255,255,.04); }
+    .sidebar-avatar { width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .86rem; color: #fff;
+      background: var(--accent); }
+    .sidebar-profile-info { min-width: 0; flex: 1; }
+    .sidebar-profile-email { font-size: 0.78rem; font-weight: 700; color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sidebar-profile-role { font-size: 0.72rem; color: var(--muted); margin-top: 1px; }
+    .sidebar-logout { display: flex; align-items: center; justify-content: center; gap: 6px; text-align: center;
+      margin-top: 6px; padding: 8px; border-radius: 9px; font-size: 0.76rem; font-weight: 700;
+      color: var(--muted); text-decoration: none; border: 1px solid var(--border);
+      transition: color .15s, border-color .15s, background .15s; }
+    .sidebar-logout:hover { color: var(--error); border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.06); }
 
     .app-main { flex: 1; margin-left: var(--sidebar-w); display: flex; flex-direction: column; min-height: 100vh; }
     .app-header { position: sticky; top: 0; z-index: 15; display: flex; align-items: center; justify-content: space-between;
@@ -183,18 +194,65 @@
           <span class="vs-word">Viral<em>Scale</em></span>
         </span>
       </div>
+
+      <a href="{{ url_for('index') }}" class="sidebar-cta">
+        <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 3.5 V14.5 M3.5 9 H14.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+        Nouvelle génération
+      </a>
+
       <nav class="sidebar-nav">
-        <a class="nav-item" href="{{ url_for('consumption') }}"><span class="ico ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.4" y="2.4" width="6" height="6" rx="1.6" stroke="currentColor" stroke-width="1.5"/><rect x="9.6" y="2.4" width="6" height="6" rx="1.6" stroke="currentColor" stroke-width="1.5"/><rect x="2.4" y="9.6" width="6" height="6" rx="1.6" stroke="currentColor" stroke-width="1.5"/><rect x="9.6" y="9.6" width="6" height="6" rx="1.6" stroke="currentColor" stroke-width="1.5"/></svg></span> Dashboard</a>
-        <div class="nav-section-label">Génération</div>
-        <a class="nav-item" href="{{ url_for('index') }}"><span class="ico ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="5.2" width="13" height="10.3" rx="1.8" stroke="currentColor" stroke-width="1.5"/><path d="M2.5 5.2 L4.3 2.4 H6.6 L5.4 5.2 Z M7.1 5.2 L8.9 2.4 H11.2 L10 5.2 Z M11.7 5.2 L13.5 2.4 H15.2 L14.3 5.2 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></span> Mode Simple</a>
-        <a class="nav-item" href="{{ url_for('index') }}"><span class="ico ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg></span> Mode Batch</a>
-        <a class="nav-item" href="{{ url_for('index') }}"><span class="ico ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.5"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span> Mode Variation</a>
-        <div class="nav-section-label">Compte</div>
-        <a class="nav-item active" href="{{ url_for('admin_consumption') }}"><span class="ico ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 15.5 V3 M2.5 15.5 H15.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="4.6" y="10.2" width="2.3" height="5.3" rx=".6" fill="currentColor"/><rect x="8" y="7.4" width="2.3" height="8.1" rx=".6" fill="currentColor"/><rect x="11.4" y="4.6" width="2.3" height="10.9" rx=".6" fill="currentColor"/></svg></span> Analytics</a>
-        <a class="nav-item soon"><span class="ico ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.5"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Historique <span class="soon-badge">Bientôt</span></a>
-        <a class="nav-item" href="{{ url_for('admin_users') }}"><span class="ico ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="6.7" cy="6" r="2.4" stroke="currentColor" stroke-width="1.5"/><path d="M2.6 15 c0-2.4 1.9-4 4.1-4 s4.1 1.6 4.1 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="12.6" cy="6.6" r="1.9" stroke="currentColor" stroke-width="1.4"/><path d="M11.2 15 c-.1-2 1.4-3.5 3.2-3.5 s3 1.2 3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span> Équipe</a>
-        <a class="nav-item soon"><span class="ico ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="2.4" stroke="currentColor" stroke-width="1.5"/><path d="M9 2.6 V4.4 M9 13.6 V15.4 M15.4 9 H13.6 M4.4 9 H2.6 M13.5 4.5 L12.2 5.8 M5.8 12.2 L4.5 13.5 M13.5 13.5 L12.2 12.2 M5.8 5.8 L4.5 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span> Paramètres <span class="soon-badge">Bientôt</span></a>
+        <div class="nav-group">
+          <a class="nav-item" href="{{ url_for('index') }}">
+            <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="2.5" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="2.5" y="10" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="10" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/></svg></span>
+            Dashboard
+          </a>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-group-label">Création</div>
+          <a class="nav-item" href="{{ url_for('index') }}">
+            <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="6" width="13" height="9.5" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 6 L4.2 2.5 L7 2.5 L5.6 6 Z M7.4 6 L9 2.7 L11.8 2.7 L10.4 6 Z M11.9 6 L13.4 2.7 L15.2 2.7 L14.5 6 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
+            Mode Simple
+          </a>
+          <a class="nav-item" href="{{ url_for('index') }}">
+            <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
+            Mode Batch
+          </a>
+          <a class="nav-item" href="{{ url_for('index') }}">
+            <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span>
+            Variation Studio
+          </a>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-group-label">Analytics</div>
+          <a class="nav-item active" href="{{ url_for('admin_consumption') }}">
+            <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 15.5 V8.5 M8 15.5 V4 M13 15.5 V11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M2.5 15.5 H15.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+            Consommation
+          </a>
+          <a class="nav-item soon">
+            <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            Historique <span class="nav-badge soon">Bientôt</span>
+          </a>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-group-label">Administration</div>
+          <a class="nav-item" href="{{ url_for('admin_users') }}">
+            <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="6.7" cy="6" r="2.4" stroke="currentColor" stroke-width="1.6"/><path d="M2.6 15 c0-2.5 1.9-4 4.1-4 s4.1 1.5 4.1 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12.6" cy="6.6" r="1.9" stroke="currentColor" stroke-width="1.5" opacity=".75"/><path d="M11.4 9.3 c1.9-.15 3.5 1.15 3.9 3.35" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".75"/></svg></span>
+            Gestion équipe
+          </a>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-group-label">Paramètres</div>
+          <a class="nav-item soon">
+            <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 2.6 V4.3 M9 13.7 V15.4 M15.4 9 H13.7 M4.3 9 H2.6 M13.5 4.5 L12.3 5.7 M5.7 12.3 L4.5 13.5 M13.5 13.5 L12.3 12.3 M5.7 5.7 L4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+            Paramètres <span class="nav-badge soon">Bientôt</span>
+          </a>
+        </div>
       </nav>
+
       <div class="sidebar-profile">
         <div class="sidebar-avatar">{{ current_user.email[0]|upper }}</div>
         <div class="sidebar-profile-info">
@@ -202,7 +260,10 @@
           <div class="sidebar-profile-role">{{ 'Administrateur' if current_user.role == 'admin' else 'Membre' }}{% if current_user.plan_name %} · {{ current_user.plan_name|capitalize }}{% endif %}</div>
         </div>
       </div>
-      <a class="sidebar-logout" href="{{ url_for('logout') }}">Se déconnecter</a>
+      <a class="sidebar-logout" href="{{ url_for('logout') }}">
+        <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.2 2.6 H4 a1.4 1.4 0 0 0-1.4 1.4 v10 a1.4 1.4 0 0 0 1.4 1.4 h3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 9 H15.4 M12.4 6 L15.4 9 L12.4 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        Se déconnecter
+      </a>
     </aside>
 
     <div class="app-main">
