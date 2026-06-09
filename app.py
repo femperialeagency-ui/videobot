@@ -1516,21 +1516,15 @@ def analyze_with_claude_vision(frame_paths: list) -> list:
 
     normalized.sort(key=lambda l: l.get("cy_pct", 0))
 
-    # ── Static-overlay deduplication (Simple mode + Batch fallback) ───────
-    # Problem: when a video contains caption SLOTS that show different text
-    # at different times (e.g. "1. Young guy" → "2. Shy one" → "3. Older man"
-    # all at cy_pct ≈ 0.55), extract_frames() captures all variants across 4
-    # evenly-spaced frames and Claude Vision correctly returns them as separate
-    # JSON objects — each at the same cy_pct. render_text_overlay() then draws
-    # ALL of them at the same y pixel, causing characters to overlap and
-    # produce garbled output like "3.2Oldergman".
-    #
-    # Batch mode is immune: _merge_timed_captions() already groups same-slot
-    # detections into non-overlapping time windows so they render sequentially.
-    # This deduplication applies that same logic to static overlays: if multiple
-    # blocks share the same screen slot (cy_pct within 0.10, cx_pct within 0.20),
-    # only the most representative one is kept (longest text = most complete).
-    # Genuinely distinct captions at different vertical positions are unaffected.
+    # ── Static-overlay deduplication (last-resort fallback only) ────────────
+    # This function is now only reached when analyze_with_claude_vision_timed
+    # found nothing (tesseract fallback, API unavailable, or fully static video).
+    # In the normal path, timed detection handles same-slot captions with proper
+    # start_time/end_time windows. Here, as a safety net for the static path:
+    # if multiple blocks still share the same screen slot (cy_pct within 0.10,
+    # cx_pct within 0.20), keep only the longest text per slot to avoid
+    # character overlap on the single static overlay. Genuinely distinct captions
+    # at different vertical positions are unaffected.
     deduped: list = []
     for block in normalized:
         matched = False
@@ -2835,16 +2829,21 @@ def analyze():
         path_b = str(tmp / "b.mp4")
         vb.save(path_b)
 
-        # ui_mode distinguishes Batch from Simple so we can run the new
-        # timed-caption detection ONLY for batch — simple mode keeps using
-        # the exact same single-pass flow it always has.
+        # Both Simple and Batch run timed detection first: it correctly
+        # handles videos where a caption slot shows different text at
+        # different times (e.g. "1. Young guy" → "2. Shy one" → "3. Older man"
+        # all at the same vertical position). Timed detection produces
+        # non-overlapping start_time/end_time windows so each caption renders
+        # sequentially; the static single-pass fallback is kept for videos
+        # where timed detection finds nothing (fully static captions, or API
+        # unavailable).
         ui_mode = (request.form.get("mode") or "simple").strip().lower()
         has_key = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
 
         lines = []
-        if ui_mode == "batch":
-            # Batch-only: sample frames across the timeline and detect
-            # WHEN each caption appears/disappears (start_time/end_time).
+        if has_key:
+            # Timed detection for ALL modes: sample frames across the timeline
+            # and detect WHEN each caption appears/disappears (start_time/end_time).
             try:
                 lines, _ = analyze_with_claude_vision_timed(path_b)
             except Exception:
@@ -2929,16 +2928,16 @@ def process():
                             source_count=2, output_count=0, success=False)
             return jsonify({"error": "Aucune ligne de texte fournie."}), 400
 
-        # Batch-only timed-caption path: only taken when the request is
-        # explicitly flagged as batch AND every line carries start_time/
-        # end_time (i.e. came from analyze_with_claude_vision_timed).
-        # Simple mode never sends mode="batch", so it always falls through
-        # to the original single-static-overlay path below, byte-for-byte
-        # unchanged — including which function renders the overlay(s).
+        # Timed-caption path: taken for ANY mode (Simple or Batch) when
+        # every line carries start_time/end_time (i.e. came from
+        # analyze_with_claude_vision_timed). This lets Simple mode handle
+        # videos where captions change over time — each caption renders on
+        # its own non-overlapping time window instead of all being stacked
+        # on a single static overlay. Falls through to the static path only
+        # when timing info is absent (tesseract fallback, or API unavailable).
         ui_mode = (request.form.get("mode") or "simple").strip().lower()
         has_timing = (
-            ui_mode == "batch"
-            and bool(lines)
+            bool(lines)
             and all(isinstance(l, dict) and "start_time" in l and "end_time" in l for l in lines)
         )
 
