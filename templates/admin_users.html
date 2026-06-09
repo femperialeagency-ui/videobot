@@ -274,6 +274,90 @@
       td { border: none; padding: 4px 0; }
       td.actions { padding-top: 8px; }
     }
+
+    /* ══ VIRALSCALE BRAND COLOR PASS — CSS-only ══ */
+    body {
+      background:
+        radial-gradient(1200px 700px at 12% -5%,  rgba(58,111,255,.22), transparent 60%),
+        radial-gradient(900px  600px at 100% 0%,   rgba(123,92,240,.18), transparent 55%),
+        radial-gradient(600px  400px at 60% 100%,  rgba(217,70,239,.08), transparent 50%),
+        var(--bg);
+    }
+    /* Sidebar */
+    .sidebar { border-right-color: rgba(67,105,255,.26); }
+    .sidebar-cta {
+      background: var(--vs-gradient);
+      box-shadow: 0 0 0 1px rgba(58,111,255,.35), 0 8px 28px rgba(123,92,240,.25), 0 0 40px rgba(217,70,239,.15);
+      border-color: rgba(58,111,255,.22);
+    }
+    .sidebar-cta:hover {
+      opacity: 1;
+      box-shadow: 0 0 0 1px rgba(58,111,255,.50), 0 10px 34px rgba(123,92,240,.34), 0 0 50px rgba(217,70,239,.22);
+    }
+    .nav-item:hover:not(.active):not(.soon) { background: rgba(67,105,255,.14); color: #b8c8ff; border-color: rgba(67,105,255,.30); }
+    .nav-item.active { background: rgba(67,105,255,.18); border-color: rgba(67,105,255,.26); }
+    .nav-item.active::before { background: var(--vs-gradient); }
+    .nav-group { border-top-color: rgba(67,105,255,.18); }
+    .sidebar-avatar { background: var(--vs-gradient); }
+    /* Header */
+    .app-header { border-bottom-color: rgba(67,105,255,.24); }
+    .app-header h1 {
+      background: linear-gradient(115deg, #fff 20%, #90A8FF 52%, #C07BFF);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .plan-pill { background: rgba(67,105,255,.16); border-color: rgba(67,105,255,.32); color: #a8bcff; }
+    /* Cards */
+    .card { border-color: rgba(123,92,240,.22); }
+    .card:hover { border-color: rgba(123,92,240,.42); box-shadow: var(--shadow-card), 0 0 0 1px rgba(123,92,240,.22), 0 8px 24px rgba(123,92,240,.12); }
+    .card h2 { color: #b8c8ff; }
+    /* Team summary stats */
+    .team-stat { border-color: rgba(123,92,240,.22); }
+    .team-stat:hover { border-color: rgba(123,92,240,.45); box-shadow: var(--shadow-card), 0 0 0 1px rgba(123,92,240,.22), 0 8px 24px rgba(123,92,240,.12); }
+    .team-stat-icon.violet { background: rgba(123,92,240,.20); color: #cdc3ff; }
+    .team-stat-icon.blue { background: rgba(67,105,255,.20); color: #a8bcff; }
+    .team-stat-value {
+      background: linear-gradient(115deg, #FFFFFF 10%, #7FB0FF 45%, #C38CFF 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    /* Form inputs */
+    .new-user-form input:focus, .new-user-form select:focus { border-color: rgba(123,92,240,.60); background: rgba(123,92,240,.06); }
+    .team-search input:focus { border-color: rgba(123,92,240,.60); background: rgba(123,92,240,.06); }
+    .menu-reset-row input[type="password"]:focus { border-color: rgba(123,92,240,.60); }
+    .menu-plan-form input:focus, .menu-plan-form select:focus { border-color: rgba(123,92,240,.60); }
+    /* Créer le compte button — VS gradient with glow */
+    .new-user-form button[type="submit"] {
+      background: var(--vs-gradient);
+      border: none;
+      box-shadow: 0 0 0 1px rgba(58,111,255,.35), 0 8px 28px rgba(123,92,240,.25), 0 0 40px rgba(217,70,239,.15);
+    }
+    .new-user-form button[type="submit"]:hover {
+      filter: none; color: #fff;
+      box-shadow: 0 0 0 1px rgba(58,111,255,.50), 0 10px 34px rgba(123,92,240,.34), 0 0 50px rgba(217,70,239,.22);
+    }
+    /* Role/status badges */
+    .badge.admin { background: rgba(123,92,240,.20); color: #cdc3ff; border-color: rgba(123,92,240,.32); }
+    .status-badge.s-admin { background: rgba(123,92,240,.18); color: #cdc3ff; border-color: rgba(123,92,240,.28); }
+    .status-badge.s-admin .status-dot { background: var(--accent2); box-shadow: 0 0 6px var(--accent2); }
+    /* Action buttons (inline table) */
+    button:hover { border-color: rgba(123,92,240,.40); color: #cdc3ff; background: rgba(123,92,240,.10); }
+    button.danger:hover { border-color: rgba(248,113,113,.40); color: var(--error); background: rgba(248,113,113,.08); }
+    .menu-btn:hover, .menu-btn.open { border-color: rgba(123,92,240,.40); color: #cdc3ff; background: rgba(123,92,240,.10); }
+    .menu-item:hover { background: rgba(67,105,255,.12); color: #b8c8ff; }
+    /* Table */
+    tbody tr:hover td { background: rgba(67,105,255,.06); transition: background .12s; }
+    th { border-bottom-color: rgba(67,105,255,.20); }
+    /* Member avatars — VS palette */
+    .member-avatar.av-0 { background: linear-gradient(120deg, #3A6FFF, #7B5CF0); }
+    .member-avatar.av-1 { background: linear-gradient(120deg, #7B5CF0, #D946EF); }
+    .member-avatar.av-2 { background: linear-gradient(120deg, #3A6FFF, #9B8AFF); }
+    .member-avatar.av-3 { background: linear-gradient(120deg, #D946EF, #7B5CF0); }
+    /* "Vous" tag */
+    .member-you { color: #90AAFF; background: rgba(67,105,255,.16); border-color: rgba(67,105,255,.30); }
+    /* Topbar title */
+    .topbar h1 {
+      background: linear-gradient(115deg, #fff 18%, #7FB0FF 52%, #C07BFF 90%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
   </style>
 </head>
 <body>
