@@ -1515,6 +1515,39 @@ def analyze_with_claude_vision(frame_paths: list) -> list:
         normalized.append(b)
 
     normalized.sort(key=lambda l: l.get("cy_pct", 0))
+
+    # ── Static-overlay deduplication (Simple mode + Batch fallback) ───────
+    # Problem: when a video contains caption SLOTS that show different text
+    # at different times (e.g. "1. Young guy" → "2. Shy one" → "3. Older man"
+    # all at cy_pct ≈ 0.55), extract_frames() captures all variants across 4
+    # evenly-spaced frames and Claude Vision correctly returns them as separate
+    # JSON objects — each at the same cy_pct. render_text_overlay() then draws
+    # ALL of them at the same y pixel, causing characters to overlap and
+    # produce garbled output like "3.2Oldergman".
+    #
+    # Batch mode is immune: _merge_timed_captions() already groups same-slot
+    # detections into non-overlapping time windows so they render sequentially.
+    # This deduplication applies that same logic to static overlays: if multiple
+    # blocks share the same screen slot (cy_pct within 0.10, cx_pct within 0.20),
+    # only the most representative one is kept (longest text = most complete).
+    # Genuinely distinct captions at different vertical positions are unaffected.
+    deduped: list = []
+    for block in normalized:
+        matched = False
+        for i, existing in enumerate(deduped):
+            if (abs(block.get("cy_pct", 0.5) - existing.get("cy_pct", 0.5)) < 0.10
+                    and abs(block.get("cx_pct", 0.5) - existing.get("cx_pct", 0.5)) < 0.20):
+                # Same caption slot — keep whichever has the longest text
+                # (most informative representative of that time-varying slot).
+                if len(block.get("text", "")) > len(existing.get("text", "")):
+                    deduped[i] = block
+                matched = True
+                break
+        if not matched:
+            deduped.append(block)
+    normalized = deduped
+    # ──────────────────────────────────────────────────────────────────────
+
     return normalized
 
 
