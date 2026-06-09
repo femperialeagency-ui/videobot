@@ -59,12 +59,8 @@ display: flex; flex-direction: column; padding: 12px 9px;
 background: linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.008)), rgba(21,21,26,.8);
 border-right: 1px solid var(--border); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
 z-index: 20; }
-.sidebar-logo { display: flex; align-items: center; padding: 4px 6px 14px; }
-.vs-logo { display: inline-flex; align-items: center; gap: 9px; }
-.vs-mark { width: 24px; height: 24px; flex-shrink: 0; filter: none; }
-.vs-word { font-size: 1.02rem; font-weight: 700; letter-spacing: -.02em; color: #fff; }
-.vs-word em { font-style: normal; color: var(--accent2); }
-.vs-word.lg { font-size: 1.34rem; }
+.sidebar-logo { display: flex; align-items: center; padding: 8px 10px 18px; }
+.sidebar-logo-img { display: block; width: 100%; height: auto; object-fit: contain; }
 .sidebar-nav { display: flex; flex-direction: column; gap: var(--sp-1); flex: 1; overflow-y: auto;
 scrollbar-width: thin; padding-right: 2px; }
 .sidebar-nav::-webkit-scrollbar { width: 4px; }
@@ -700,17 +696,7 @@ body {
 <div class="app-shell">
 <aside class="sidebar">
 <div class="sidebar-logo">
-<span class="vs-logo">
-<svg class="vs-mark" viewBox="0 0 36 36" aria-hidden="true">
-<defs><linearGradient id="vsGradSide" x1="0" y1="1" x2="1" y2="0">
-<stop offset="0%" stop-color="#3A6FFF"/><stop offset="50%" stop-color="#7B5CF0"/><stop offset="100%" stop-color="#D946EF"/>
-</linearGradient></defs>
-<path d="M3 6 L13 27 L16.5 20 L9 6 Z" fill="#fff"/>
-<path d="M22.5 6 L16.5 20 L18.5 24.5 L30 6 Z" fill="#fff" opacity=".5"/>
-<path d="M14.5 19.5 L29 5 L29 13 L18.5 23.5 Z" fill="url(#vsGradSide)"/>
-</svg>
-<span class="vs-word">Viral<em>Scale</em></span>
-</span>
+<img src="{{ url_for('static', filename='img/viralscale-logo.png') }}" alt="ViralScale" class="sidebar-logo-img">
 </div>
 
 {% if current_user %}
@@ -783,9 +769,9 @@ Consommation
 </a>
 {% endif %}
 {% endif %}
-<a class="nav-item soon">
+<a class="nav-item" href="{{ url_for('history') }}">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-Historique <span class="nav-badge soon">Bientôt</span>
+Historique
 </a>
 </div>
 

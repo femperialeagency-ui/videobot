@@ -38,8 +38,8 @@
       background: radial-gradient(420px 160px at 50% -20%, rgba(124,92,255,.16), transparent 70%); }
     .card:hover { transform: translateY(-2px); border-color: rgba(124,92,255,.26);
       box-shadow: var(--shadow-card), 0 0 0 1px rgba(124,92,255,.2), 0 22px 56px rgba(124,92,255,.16); }
-    .vs-logo-mark { display: flex; align-items: center; justify-content: center; margin-bottom: 14px; position: relative; z-index: 1; }
-    .vs-logo-mark svg { width: 46px; height: 46px; filter: drop-shadow(0 6px 18px rgba(124,92,255,.45)); }
+    .login-logo { display: flex; align-items: center; justify-content: center; margin-bottom: 14px; position: relative; z-index: 1; }
+    .login-logo-img { display: block; width: 180px; height: auto; object-fit: contain; }
     h1 { position: relative; z-index: 1; font-size: 1.5rem; font-weight: 800; text-align: center; margin-bottom: 6px; letter-spacing: -.01em;
       background: linear-gradient(115deg, #fff 18%, var(--accent2) 58%, var(--accent3));
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
@@ -70,15 +70,8 @@
   <div class="frame">
     <span class="vs-badge"><span class="dot"></span> Espace agences &amp; créateurs</span>
     <div class="card">
-      <div class="vs-logo-mark">
-        <svg viewBox="0 0 36 36" aria-hidden="true">
-          <defs><linearGradient id="vsGradLogin" x1="0" y1="1" x2="1" y2="0">
-            <stop offset="0%" stop-color="#2F6BFF"/><stop offset="50%" stop-color="#7C5CFF"/><stop offset="100%" stop-color="#FF4DDF"/>
-          </linearGradient></defs>
-          <path d="M3 6 L13 27 L16.5 20 L9 6 Z" fill="#fff"/>
-          <path d="M22.5 6 L16.5 20 L18.5 24.5 L30 6 Z" fill="#fff" opacity=".5"/>
-          <path d="M14.5 19.5 L29 5 L29 13 L18.5 23.5 Z" fill="url(#vsGradLogin)"/>
-        </svg>
+      <div class="login-logo">
+        <img src="{{ url_for('static', filename='img/viralscale-logo.png') }}" alt="ViralScale" class="login-logo-img">
       </div>
       <h1>ViralScale</h1>
       <p class="sub">Accès protégé — connectez-vous avec votre compte pour piloter vos générations.</p>

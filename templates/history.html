@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ViralScale — Historique</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #05060A; --surface: #0D1018; --surface-2: rgba(255,255,255,.025);
+      --border: rgba(255,255,255,.08); --border-strong: rgba(255,255,255,.14);
+      --accent: #4369FF; --accent2: #7B5CF0; --accent3: #9B8AFF; --text: #F0F1F7;
+      --muted: #8B92A8; --success: #20D98A; --warn: #FFB547; --error: #f87171; --ok: #20D98A;
+      --accent-soft: rgba(67,105,255,.15);
+      --vs-gradient: linear-gradient(115deg, #3A6FFF 0%, #7B5CF0 58%, #D946EF 100%);
+      --vs-blue: #3A6FFF; --vs-violet: #7B5CF0; --vs-magenta: #D946EF;
+      --radius: 14px;
+      --glass: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.015));
+      --shadow-card: 0 10px 36px rgba(0,0,0,.40);
+      --sidebar-w: 218px;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(1200px 700px at 12% -5%, rgba(58,111,255,.22), transparent 60%),
+        radial-gradient(900px 600px at 100% 0%, rgba(123,92,240,.18), transparent 55%),
+        radial-gradient(600px 400px at 60% 100%, rgba(217,70,239,.08), transparent 50%),
+        var(--bg);
+      color: var(--text); min-height: 100vh;
+    }
+
+    /* ── Icon system ── */
+    .ico-svg { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex-shrink: 0; vertical-align: -4px; }
+    .ico-svg.sm { width: 15px; height: 15px; }
+
+    /* ── App shell ── */
+    .app-shell { display: flex; min-height: 100vh; width: 100%; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar-w);
+      display: flex; flex-direction: column; padding: 12px 9px;
+      background: linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.008)), rgba(21,21,26,.8);
+      border-right: 1px solid rgba(67,105,255,.26);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); z-index: 20;
+    }
+    .sidebar-logo { display: flex; align-items: center; padding: 8px 10px 18px; }
+    .sidebar-logo-img { display: block; width: 100%; height: auto; object-fit: contain; }
+    .sidebar-nav { display: flex; flex-direction: column; gap: 3px; flex: 1; overflow-y: auto; scrollbar-width: thin; padding-right: 2px; }
+    .sidebar-nav::-webkit-scrollbar { width: 4px; }
+    .sidebar-nav::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+    .sidebar-cta {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      width: 100%; padding: 9px 10px; margin-bottom: 10px;
+      border: 1px solid rgba(58,111,255,.22); border-radius: 8px;
+      cursor: pointer; font-size: 0.8rem; font-weight: 700; color: #fff;
+      text-align: center; background: var(--vs-gradient); text-decoration: none;
+      transition: opacity .22s, box-shadow .22s;
+      box-shadow: 0 0 0 1px rgba(58,111,255,.35), 0 8px 28px rgba(123,92,240,.25), 0 0 40px rgba(217,70,239,.15);
+    }
+    .sidebar-cta:hover { opacity: 1; box-shadow: 0 0 0 1px rgba(58,111,255,.50), 0 10px 34px rgba(123,92,240,.34), 0 0 50px rgba(217,70,239,.22); }
+    .nav-item {
+      position: relative; display: flex; align-items: center; gap: 10px;
+      padding: 7px 10px; border-radius: 7px; color: var(--muted);
+      font-size: 0.8rem; font-weight: 600; text-decoration: none;
+      border: 1px solid transparent; cursor: pointer;
+      transition: background .15s, color .15s, border-color .15s; background: transparent; width: 100%; text-align: left;
+    }
+    .nav-item:hover:not(.active):not(.soon) { background: rgba(67,105,255,.14); color: #b8c8ff; border-color: rgba(67,105,255,.30); }
+    .nav-item.active { color: #fff; background: rgba(67,105,255,.18); border-color: rgba(67,105,255,.26); }
+    .nav-item.active::before {
+      content: ""; position: absolute; left: -11px; top: 50%; transform: translateY(-50%);
+      width: 3px; height: 16px; border-radius: 0 4px 4px 0; background: var(--vs-gradient);
+    }
+    .nav-item.soon { opacity: .42; cursor: default; }
+    .nav-badge { margin-left: auto; font-size: 0.64rem; font-weight: 800; letter-spacing: .03em; padding: 2px 8px; border-radius: 999px; flex-shrink: 0; }
+    .nav-badge.soon { text-transform: uppercase; background: rgba(255,255,255,.06); color: var(--muted); }
+    .nav-group { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(67,105,255,.18); }
+    .nav-group:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+    .nav-group-label { font-size: 0.65rem; font-weight: 800; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); opacity: .6; padding: 0 10px 6px; }
+    .sidebar-profile {
+      display: flex; align-items: center; gap: 10px; padding: 9px;
+      border-radius: 9px; background: rgba(255,255,255,.03);
+      border: 1px solid var(--border); margin-top: 6px;
+      transition: border-color .15s, background .15s;
+    }
+    .sidebar-profile:hover { border-color: var(--border-strong); background: rgba(255,255,255,.04); }
+    .sidebar-avatar {
+      width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: .86rem; color: #fff; background: var(--vs-gradient);
+    }
+    .sidebar-profile-info { min-width: 0; flex: 1; }
+    .sidebar-profile-email { font-size: 0.78rem; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sidebar-profile-role { font-size: 0.72rem; color: var(--muted); margin-top: 1px; }
+    .sidebar-logout {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      margin-top: 6px; padding: 8px; border-radius: 9px;
+      font-size: 0.76rem; font-weight: 700; color: var(--muted);
+      text-decoration: none; border: 1px solid var(--border);
+      transition: color .15s, border-color .15s, background .15s;
+    }
+    .sidebar-logout:hover { color: var(--error); border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.06); }
+
+    /* ── Main layout ── */
+    .app-main { flex: 1; margin-left: var(--sidebar-w); display: flex; flex-direction: column; min-height: 100vh; }
+    .app-header {
+      position: sticky; top: 0; z-index: 15;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 11px 22px; background: rgba(13,16,24,.55);
+      backdrop-filter: blur(18px); border-bottom: 1px solid rgba(67,105,255,.24);
+    }
+    .app-header h1 {
+      font-size: 1.18rem; font-weight: 800; letter-spacing: -.01em;
+      background: linear-gradient(115deg, #fff 20%, #90A8FF 52%, #C07BFF);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .app-header .subtitle { font-size: 0.8rem; color: var(--muted); margin-top: 3px; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .plan-pill { font-size: 0.76rem; font-weight: 800; letter-spacing: .02em; padding: 6px 13px; border-radius: 999px; background: rgba(67,105,255,.16); color: #a8bcff; border: 1px solid rgba(67,105,255,.32); white-space: nowrap; }
+    .icon-btn { width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.03); border: 1px solid var(--border); color: var(--muted); }
+    .app-content { flex: 1; padding: 18px 24px 42px; display: flex; flex-direction: column; align-items: center; }
+    .page-wrap { width: 100%; max-width: 1240px; display: flex; flex-direction: column; }
+
+    /* ── KPI grid ── */
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 13px; margin-bottom: 16px; }
+    .kpi-card {
+      background: var(--glass), var(--surface);
+      border: 1px solid rgba(123,92,240,.25); border-radius: var(--radius);
+      padding: 16px 18px; box-shadow: var(--shadow-card);
+      transition: transform .22s, border-color .22s;
+    }
+    .kpi-card:hover { transform: translateY(-2px); border-color: rgba(123,92,240,.45); }
+    .kpi-label { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 8px; }
+    .kpi-value {
+      font-size: 1.7rem; font-weight: 800; letter-spacing: -.02em;
+      background: linear-gradient(115deg, #FFFFFF 10%, #7FB0FF 45%, #C38CFF 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .kpi-sub { font-size: 0.74rem; color: var(--muted); margin-top: 4px; }
+
+    /* ── Filter bar ── */
+    .filter-bar { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+    .filter-group { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .filter-label { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-right: 2px; }
+    .filter-btn {
+      padding: 7px 14px; border: 1px solid var(--border); border-radius: 9px;
+      background: rgba(255,255,255,.025); color: var(--muted);
+      cursor: pointer; font-size: 0.81rem; font-weight: 700;
+      text-decoration: none; transition: all .15s;
+    }
+    .filter-btn:hover { border-color: rgba(67,105,255,.40); color: #b8c8ff; background: rgba(67,105,255,.10); }
+    .filter-btn.active {
+      background: var(--vs-gradient); color: #fff; border-color: transparent;
+      box-shadow: 0 0 0 1px rgba(58,111,255,.35), 0 6px 20px rgba(123,92,240,.28), 0 0 28px rgba(217,70,239,.12);
+    }
+    .filter-btn.mode-simple.active  { background: rgba(58,111,255,.9);  border-color: transparent; box-shadow: 0 4px 14px rgba(58,111,255,.35); }
+    .filter-btn.mode-batch.active   { background: rgba(123,92,240,.9);  border-color: transparent; box-shadow: 0 4px 14px rgba(123,92,240,.35); }
+    .filter-btn.mode-var.active     { background: rgba(217,70,239,.9);  border-color: transparent; box-shadow: 0 4px 14px rgba(217,70,239,.35); }
+    .filter-divider { width: 1px; height: 28px; background: var(--border); }
+
+    /* ── Card / table wrapper ── */
+    .card {
+      background: var(--glass), var(--surface);
+      border: 1px solid rgba(123,92,240,.22); border-radius: var(--radius);
+      padding: 18px; box-shadow: var(--shadow-card);
+      backdrop-filter: blur(16px);
+    }
+    .card h2 { font-size: 0.95rem; font-weight: 700; color: #b8c8ff; margin-bottom: 16px; }
+
+    /* ── Table ── */
+    .table-scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+    th {
+      text-align: left; padding: 10px 9px;
+      border-bottom: 1px solid rgba(67,105,255,.20);
+      color: var(--muted); font-weight: 700; font-size: 0.71rem;
+      text-transform: uppercase; letter-spacing: .04em; white-space: nowrap;
+    }
+    td { text-align: left; padding: 11px 9px; border-bottom: 1px solid rgba(255,255,255,.045); vertical-align: middle; }
+    tbody tr { transition: background .12s; }
+    tbody tr:hover td { background: rgba(67,105,255,.06); }
+    tbody tr:last-child td { border-bottom: none; }
+    td.num { font-variant-numeric: tabular-nums; }
+    td.ts { font-size: 0.77rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    /* ── Badges ── */
+    .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 0.73rem; font-weight: 700; white-space: nowrap; }
+    .badge.mode-simple    { background: rgba(58,111,255,.16); color: #90AAFF; border: 1px solid rgba(58,111,255,.38); }
+    .badge.mode-batch     { background: rgba(123,92,240,.16); color: #C4A8FF; border: 1px solid rgba(123,92,240,.38); }
+    .badge.mode-variation { background: rgba(217,70,239,.16); color: #F0A0FF; border: 1px solid rgba(217,70,239,.38); }
+    .badge.status-ok  { background: rgba(32,217,138,.12); color: var(--success); border: 1px solid rgba(32,217,138,.26); }
+    .badge.status-err { background: rgba(248,113,113,.12); color: var(--error);   border: 1px solid rgba(248,113,113,.26); }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; box-shadow: 0 0 5px currentColor; }
+
+    /* ── Action menu ── */
+    td.act { white-space: nowrap; text-align: right; }
+    .menu-wrap { position: relative; display: inline-block; }
+    .menu-btn {
+      width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 8px; border: 1px solid var(--border);
+      background: rgba(255,255,255,.03); color: var(--muted); cursor: pointer;
+      transition: border-color .15s, color .15s, background .15s;
+    }
+    .menu-btn:hover, .menu-btn.open { border-color: rgba(123,92,240,.40); color: #cdc3ff; background: rgba(123,92,240,.10); }
+    .menu-dropdown {
+      display: none; position: absolute; right: 0; top: calc(100% + 6px); z-index: 40;
+      min-width: 190px;
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02)), var(--surface);
+      border: 1px solid var(--border-strong); border-radius: 12px; padding: 6px;
+      box-shadow: 0 18px 50px rgba(0,0,0,.55), 0 0 0 1px rgba(123,92,240,.10);
+      backdrop-filter: blur(20px);
+    }
+    .menu-dropdown.open { display: block; animation: menuPop .13s ease; }
+    @keyframes menuPop { from { opacity:0; transform:translateY(-4px) scale(.98); } to { opacity:1; transform:translateY(0) scale(1); } }
+    .menu-item {
+      display: flex; align-items: center; gap: 9px; width: 100%;
+      text-align: left; padding: 8px 10px; border-radius: 8px;
+      border: none; background: transparent; color: var(--text);
+      font-size: 0.82rem; font-weight: 600; cursor: pointer;
+      transition: background .12s, color .12s;
+    }
+    .menu-item:hover { background: rgba(67,105,255,.12); color: #b8c8ff; }
+    .menu-item.danger:hover { background: rgba(248,113,113,.10); color: var(--error); }
+    .menu-item .ico-svg svg { stroke: var(--muted); }
+    .menu-item:hover .ico-svg svg, .menu-item.danger:hover .ico-svg svg { stroke: currentColor; }
+    .menu-item.disabled { opacity: .42; cursor: not-allowed; pointer-events: none; }
+    .menu-divider { height: 1px; background: var(--border); margin: 4px 3px; }
+
+    /* ── Empty state ── */
+    .empty { text-align: center; padding: 56px 20px; color: var(--muted); }
+    .empty svg { width: 44px; height: 44px; margin: 0 auto 14px; display: block; opacity: .35; stroke: currentColor; stroke-width: 1.4; fill: none; }
+    .empty h3 { font-size: 1rem; font-weight: 700; color: var(--text); margin-bottom: 7px; }
+    .empty p { font-size: 0.84rem; }
+
+    /* ── Pagination ── */
+    .pagination { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; flex-wrap: wrap; }
+    .pag-info { font-size: 0.79rem; color: var(--muted); }
+    .pag-btns { display: flex; gap: 6px; }
+    .pag-btn { padding: 7px 16px; border: 1px solid var(--border); border-radius: 9px; background: rgba(255,255,255,.025); color: var(--muted); font-size: 0.81rem; font-weight: 700; text-decoration: none; transition: all .15s; }
+    .pag-btn:hover { border-color: rgba(67,105,255,.40); color: #b8c8ff; background: rgba(67,105,255,.10); }
+    .pag-btn.off { opacity: .3; pointer-events: none; }
+
+    /* ── Detail modal ── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 50;
+      background: rgba(0,0,0,.65); backdrop-filter: blur(7px);
+      align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02)), #0D1018;
+      border: 1px solid rgba(123,92,240,.28); border-radius: 18px;
+      width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto;
+      box-shadow: 0 24px 60px rgba(0,0,0,.65), 0 0 0 1px rgba(123,92,240,.14);
+      animation: modalIn .17s ease;
+    }
+    @keyframes modalIn { from { opacity:0; transform:scale(.96) translateY(8px); } to { opacity:1; transform:scale(1) translateY(0); } }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px 14px; border-bottom: 1px solid rgba(67,105,255,.18); }
+    .modal-title { font-size: 1rem; font-weight: 800; color: #b8c8ff; }
+    .modal-close { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid var(--border); background: rgba(255,255,255,.03); color: var(--muted); cursor: pointer; font-size: 1.1rem; line-height: 1; transition: color .15s, border-color .15s, background .15s; }
+    .modal-close:hover { color: var(--error); border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.06); }
+    .modal-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 18px; }
+    .modal-sec-label { font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); opacity: .65; margin-bottom: 10px; }
+    .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .modal-field { background: rgba(255,255,255,.025); border: 1px solid var(--border); border-radius: 10px; padding: 10px 13px; }
+    .modal-field.full { grid-column: 1/-1; }
+    .modal-field-label { font-size: 0.67rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 4px; }
+    .modal-field-value { font-size: 0.88rem; font-weight: 700; color: var(--text); word-break: break-all; }
+    .modal-footer { padding: 14px 20px 18px; border-top: 1px solid rgba(67,105,255,.14); display: flex; justify-content: flex-end; gap: 8px; }
+    .btn-ghost { padding: 8px 16px; border: 1px solid var(--border); border-radius: 9px; background: rgba(255,255,255,.03); color: var(--muted); cursor: pointer; font-size: 0.8rem; font-weight: 700; transition: all .15s; }
+    .btn-ghost:hover { border-color: rgba(67,105,255,.40); color: #b8c8ff; background: rgba(67,105,255,.10); }
+    .btn-dl { padding: 8px 16px; border: none; border-radius: 9px; background: var(--vs-gradient); color: #fff; cursor: not-allowed; font-size: 0.8rem; font-weight: 700; opacity: .45; display: inline-flex; align-items: center; gap: 6px; }
+
+    @media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2,1fr); } }
+    @media (max-width: 600px) { .kpi-grid { grid-template-columns: 1fr; } .modal-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <img src="{{ url_for('static', filename='img/viralscale-logo.png') }}" alt="ViralScale" class="sidebar-logo-img">
+    </div>
+
+    <a href="{{ url_for('index') }}" class="sidebar-cta">
+      <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 3.5 V14.5 M3.5 9 H14.5"/></svg></span>
+      Nouvelle génération
+    </a>
+
+    <nav class="sidebar-nav">
+      <div class="nav-group">
+        <a class="nav-item" href="{{ url_for('index') }}">
+          <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="2.5" width="5.5" height="5.5" rx="1.4"/><rect x="10" y="2.5" width="5.5" height="5.5" rx="1.4"/><rect x="2.5" y="10" width="5.5" height="5.5" rx="1.4"/><rect x="10" y="10" width="5.5" height="5.5" rx="1.4"/></svg></span>
+          Dashboard
+        </a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Création</div>
+        <a class="nav-item" href="{{ url_for('index') }}">
+          <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="5.5" width="13" height="10" rx="1.8"/><path d="M5.5 2.5 L4.5 5.5 M9 2.5 L9 5.5 M12.5 2.5 L13.5 5.5" stroke-linecap="round"/></svg></span>
+          Mode Simple
+        </a>
+        <a class="nav-item" href="{{ url_for('index') }}">
+          <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4"/></svg></span>
+          Mode Batch
+        </a>
+        <a class="nav-item" href="{{ url_for('index') }}">
+          <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="2.5" width="13" height="13" rx="3"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor" stroke="none"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor" stroke="none"/><circle cx="9" cy="9" r="1.05" fill="currentColor" stroke="none"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor" stroke="none"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor" stroke="none"/></svg></span>
+          Variation Studio
+        </a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-label">Analytics</div>
+        {% if current_user.role == 'admin' %}
+        <a class="nav-item" href="{{ url_for('admin_consumption') }}">
+        {% else %}
+        <a class="nav-item" href="{{ url_for('consumption') }}">
+        {% endif %}
+          <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 15.5 V8.5 M8 15.5 V4 M13 15.5 V11"/><path d="M2.5 15.5 H15.5"/></svg></span>
+          Consommation
+        </a>
+        <a class="nav-item active" href="{{ url_for('history') }}">
+          <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="6.5"/><path d="M9 5.5 V9 L11.5 10.8"/></svg></span>
+          Historique
+        </a>
+      </div>
+
+      {% if current_user.role == 'admin' %}
+      <div class="nav-group">
+        <div class="nav-group-label">Administration</div>
+        <a class="nav-item" href="{{ url_for('admin_users') }}">
+          <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="6.7" cy="6" r="2.4"/><path d="M2.6 15 c0-2.5 1.9-4 4.1-4 s4.1 1.5 4.1 4" stroke-linecap="round"/><circle cx="12.6" cy="6.6" r="1.9" stroke-width="1.5" opacity=".75"/><path d="M11.4 9.3 c1.9-.15 3.5 1.15 3.9 3.35" stroke-width="1.5" stroke-linecap="round" opacity=".75"/></svg></span>
+          Gestion équipe
+        </a>
+      </div>
+      {% endif %}
+
+      <div class="nav-group">
+        <div class="nav-group-label">Paramètres</div>
+        <a class="nav-item soon">
+          <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="9" cy="9" r="2.5"/><path d="M9 2.6 V4.3 M9 13.7 V15.4 M15.4 9 H13.7 M4.3 9 H2.6 M13.5 4.5 L12.3 5.7 M5.7 12.3 L4.5 13.5 M13.5 13.5 L12.3 12.3 M5.7 5.7 L4.5 4.5"/></svg></span>
+          Paramètres <span class="nav-badge soon">Bientôt</span>
+        </a>
+      </div>
+    </nav>
+
+    <div class="sidebar-profile">
+      <div class="sidebar-avatar">{{ current_user.email[0]|upper }}</div>
+      <div class="sidebar-profile-info">
+        <div class="sidebar-profile-email">{{ current_user.email }}</div>
+        <div class="sidebar-profile-role">{{ 'Administrateur' if current_user.role == 'admin' else 'Membre' }}{% if current_user.plan_name %} · {{ current_user.plan_name|capitalize }}{% endif %}</div>
+      </div>
+    </div>
+    <a class="sidebar-logout" href="{{ url_for('logout') }}">
+      <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7.2 2.6 H4 a1.4 1.4 0 0 0-1.4 1.4 v10 a1.4 1.4 0 0 0 1.4 1.4 h3.2"/><path d="M7 9 H15.4 M12.4 6 L15.4 9 L12.4 12"/></svg></span>
+      Se déconnecter
+    </a>
+  </aside>
+
+  <!-- ── Main content ── -->
+  <div class="app-main">
+    <header class="app-header">
+      <div>
+        <h1>Historique des générations</h1>
+        <div class="subtitle">Toutes vos vidéos générées, leur statut, durée et coût.</div>
+      </div>
+      <div class="header-right">
+        {% if current_user.plan_name %}<span class="plan-pill">{{ current_user.plan_name|capitalize }}</span>{% endif %}
+        <span class="icon-btn" title="Notifications">
+          <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M9 2.6 c-2.1 0-3.4 1.6-3.4 3.7 v1.9 c0 .9-.4 1.7-1 2.4l-.6.6 h10 l-.6-.6 c-.6-.7-1-1.5-1-2.4 V6.3 c0-2.1-1.3-3.7-3.4-3.7 Z"/><path d="M7.5 13.6 a1.7 1.7 0 0 0 3 0" stroke-linecap="round"/></svg></span>
+        </span>
+      </div>
+    </header>
+
+    <main class="app-content">
+      <div class="page-wrap">
+
+        <!-- KPI cards -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-label">Générations totales</div>
+            <div class="kpi-value">{{ kpis.total }}</div>
+            <div class="kpi-sub">{{ kpis.successes }} réussies · {{ kpis.failures }} échouées</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Vidéos générées</div>
+            <div class="kpi-value">{{ kpis.total_output_videos }}</div>
+            <div class="kpi-sub">depuis {{ kpis.total_source_videos }} vidéo{% if kpis.total_source_videos != 1 %}s{% endif %} source</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Minutes générées</div>
+            <div class="kpi-value">{{ (kpis.total_seconds / 60)|round(1) }}</div>
+            <div class="kpi-sub">minutes de contenu produit</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Coût total estimé</div>
+            <div class="kpi-value">${{ "%.2f"|format(kpis.total_cost) }}</div>
+            <div class="kpi-sub">API + traitement</div>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filter-bar">
+          <div class="filter-group">
+            <span class="filter-label">Période</span>
+            <a class="filter-btn {% if period == 'all' %}active{% endif %}" href="?period=all&mode={{ mode_filter }}">Tout</a>
+            <a class="filter-btn {% if period == 'today' %}active{% endif %}" href="?period=today&mode={{ mode_filter }}">Aujourd'hui</a>
+            <a class="filter-btn {% if period == '7d' %}active{% endif %}" href="?period=7d&mode={{ mode_filter }}">7 jours</a>
+            <a class="filter-btn {% if period == '30d' %}active{% endif %}" href="?period=30d&mode={{ mode_filter }}">30 jours</a>
+          </div>
+          <div class="filter-divider"></div>
+          <div class="filter-group">
+            <span class="filter-label">Mode</span>
+            <a class="filter-btn {% if mode_filter == 'all' %}active{% endif %}" href="?period={{ period }}&mode=all">Tous</a>
+            <a class="filter-btn mode-simple {% if mode_filter == 'simple' %}active{% endif %}" href="?period={{ period }}&mode=simple">Simple</a>
+            <a class="filter-btn mode-batch {% if mode_filter == 'batch' %}active{% endif %}" href="?period={{ period }}&mode=batch">Batch</a>
+            <a class="filter-btn mode-var {% if mode_filter == 'variation' %}active{% endif %}" href="?period={{ period }}&mode=variation">Variation</a>
+          </div>
+        </div>
+
+        <!-- Table card -->
+        <div class="card">
+          <h2>
+            {% if total == 0 %}Aucune génération
+            {% elif total == 1 %}1 génération
+            {% else %}{{ total }} générations{% endif %}
+            {% if period != 'all' %}
+            <span style="font-weight:400;color:var(--muted);font-size:.82rem;">
+              &nbsp;·&nbsp;{% if period=='today' %}aujourd'hui{% elif period=='7d' %}7 derniers jours{% elif period=='30d' %}30 derniers jours{% endif %}
+            </span>{% endif %}
+          </h2>
+
+          {% if rows %}
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  {% if is_admin %}<th>Utilisateur</th>{% endif %}
+                  <th>Mode</th>
+                  <th>Statut</th>
+                  <th>Sources</th>
+                  <th>Résultat</th>
+                  <th>Durée générée</th>
+                  <th>Coût</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in rows %}
+                {% set dur_s = (row.generated_video_duration_seconds or 0)|int %}
+                {% set dur_m = dur_s // 60 %}
+                {% set dur_r = dur_s % 60 %}
+                <tr
+                  data-id="{{ row.id }}"
+                  data-email="{{ (row.account_email or row.user_email or '')|e }}"
+                  data-ts="{{ (row.timestamp or '')|e }}"
+                  data-mode="{{ (row.mode or '')|e }}"
+                  data-success="{{ row.generation_success|int }}"
+                  data-sources="{{ row.source_video_count|int }}"
+                  data-outputs="{{ row.output_video_count|int }}"
+                  data-src-dur="{{ (row.source_video_duration_seconds or 0)|round(1) }}"
+                  data-out-dur="{{ (row.generated_video_duration_seconds or 0)|round(1) }}"
+                  data-cost="{{ row.estimated_cost or 0 }}"
+                  data-filename="{{ (row.source_filename or '')|e }}"
+                  data-strength="{{ (row.variation_strength or '')|e }}"
+                  data-claude="{{ row.claude_requests_count|int }}"
+                >
+                  <td class="ts">{{ row.timestamp[:16] if row.timestamp else '—' }}</td>
+                  {% if is_admin %}
+                  <td style="font-size:.78rem;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);">{{ row.account_email or row.user_email or '—' }}</td>
+                  {% endif %}
+                  <td>
+                    {% if row.mode == 'simple' %}
+                      <span class="badge mode-simple">Simple</span>
+                    {% elif row.mode == 'batch' %}
+                      <span class="badge mode-batch">Batch</span>
+                    {% elif row.mode == 'variation' %}
+                      <span class="badge mode-variation">Variation</span>
+                    {% else %}
+                      <span class="badge" style="background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--muted);">{{ row.mode|capitalize if row.mode else '—' }}</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if row.generation_success == 1 %}
+                      <span class="badge status-ok"><span class="status-dot"></span>Succès</span>
+                    {% else %}
+                      <span class="badge status-err"><span class="status-dot"></span>Erreur</span>
+                    {% endif %}
+                  </td>
+                  <td class="num">{{ row.source_video_count|int }}</td>
+                  <td class="num">{{ row.output_video_count|int }}</td>
+                  <td class="ts num">{% if dur_m > 0 %}{{ dur_m }}m {{ dur_r }}s{% elif dur_s > 0 %}{{ dur_s }}s{% else %}—{% endif %}</td>
+                  <td class="ts num">${{ "%.4f"|format(row.estimated_cost or 0) }}</td>
+                  <td class="act">
+                    <div class="menu-wrap">
+                      <button type="button" class="menu-btn" id="mb{{ row.id }}" onclick="toggleMenu({{ row.id }},event)">
+                        <svg width="14" height="14" viewBox="0 0 18 18" fill="currentColor"><circle cx="9" cy="4" r="1.4"/><circle cx="9" cy="9" r="1.4"/><circle cx="9" cy="14" r="1.4"/></svg>
+                      </button>
+                      <div class="menu-dropdown" id="md{{ row.id }}">
+                        <button type="button" class="menu-item" onclick="openDetail({{ row.id }})">
+                          <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="9" cy="9" r="6.5"/><path d="M9 6 V10 M9 12.5 V12.5"/></svg></span>
+                          Voir détails
+                        </button>
+                        <button type="button" class="menu-item disabled" title="Fichier non persisté — disponible uniquement pendant la génération">
+                          <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3 V12 M5 8.5 L9 12 L13 8.5"/><path d="M3 15 H15"/></svg></span>
+                          Télécharger
+                        </button>
+                        <div class="menu-divider"></div>
+                        <form method="POST" action="{{ url_for('history_delete', log_id=row.id) }}" onsubmit="return confirm('Supprimer cette entrée ?');">
+                          <button type="submit" class="menu-item danger">
+                            <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 5.2 H14.5 M7.2 5.2 V3.6 a.9.9 0 0 1 .9-.9 H10a.9.9 0 0 1 .9.9 V5.2 M5.6 5.2 L6.2 14.4 a1 1 0 0 0 1 .94 H10.9 a1 1 0 0 0 1-.94 L12.5 5.2"/></svg></span>
+                            Supprimer
+                          </button>
+                        </form>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          {% if pages > 1 %}
+          <div class="pagination">
+            <span class="pag-info">{{ (page-1)*per_page + 1 }}–{{ [page*per_page, total]|min }} sur {{ total }}</span>
+            <div class="pag-btns">
+              <a class="pag-btn {% if page <= 1 %}off{% endif %}"
+                 href="?period={{ period }}&mode={{ mode_filter }}&page={{ page-1 }}">← Précédent</a>
+              <a class="pag-btn {% if page >= pages %}off{% endif %}"
+                 href="?period={{ period }}&mode={{ mode_filter }}&page={{ page+1 }}">Suivant →</a>
+            </div>
+          </div>
+          {% endif %}
+
+          {% else %}
+          <div class="empty">
+            <svg viewBox="0 0 18 18"><circle cx="9" cy="9" r="6.5"/><path d="M9 5.5 V9 L11.5 10.8"/></svg>
+            <h3>Aucune génération trouvée</h3>
+            <p>{% if period != 'all' or mode_filter != 'all' %}Essayez d'élargir les filtres.{% else %}Lancez votre première génération depuis le Dashboard.{% endif %}</p>
+          </div>
+          {% endif %}
+        </div><!-- /card -->
+
+      </div><!-- /page-wrap -->
+    </main>
+  </div><!-- /app-main -->
+</div><!-- /app-shell -->
+
+<!-- ── Detail modal ── -->
+<div class="modal-overlay" id="detailModal" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Détails de la génération</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <div class="modal-sec-label">Informations générales</div>
+        <div class="modal-grid">
+          <div class="modal-field">
+            <div class="modal-field-label">Date</div>
+            <div class="modal-field-value" id="dTs">—</div>
+          </div>
+          <div class="modal-field" id="dEmailWrap">
+            <div class="modal-field-label">{{ 'Utilisateur' if is_admin else 'ID' }}</div>
+            <div class="modal-field-value" id="dEmail">—</div>
+          </div>
+          <div class="modal-field">
+            <div class="modal-field-label">Mode</div>
+            <div class="modal-field-value" id="dMode">—</div>
+          </div>
+          <div class="modal-field">
+            <div class="modal-field-label">Statut</div>
+            <div class="modal-field-value" id="dStatus">—</div>
+          </div>
+          <div class="modal-field">
+            <div class="modal-field-label">Durée générée</div>
+            <div class="modal-field-value" id="dDur">—</div>
+          </div>
+          <div class="modal-field">
+            <div class="modal-field-label">Coût estimé</div>
+            <div class="modal-field-value" id="dCost">—</div>
+          </div>
+          <div class="modal-field">
+            <div class="modal-field-label">Requêtes Claude</div>
+            <div class="modal-field-value" id="dClaude">—</div>
+          </div>
+          <div class="modal-field" id="dStrengthWrap" style="display:none;">
+            <div class="modal-field-label">Force variation</div>
+            <div class="modal-field-value" id="dStrength">—</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="modal-sec-label">Fichiers</div>
+        <div class="modal-grid">
+          <div class="modal-field">
+            <div class="modal-field-label">Vidéos sources</div>
+            <div class="modal-field-value" id="dSrc">—</div>
+          </div>
+          <div class="modal-field">
+            <div class="modal-field-label">Vidéos générées</div>
+            <div class="modal-field-value" id="dOut">—</div>
+          </div>
+          <div class="modal-field full" id="dFnWrap" style="display:none;">
+            <div class="modal-field-label">Fichier source</div>
+            <div class="modal-field-value" id="dFn">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal()">Fermer</button>
+      <button class="btn-dl" title="Fichier non persisté après la génération" disabled>
+        <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3 V12 M5 8.5 L9 12 L13 8.5"/><path d="M3 15 H15"/></svg></span>
+        Télécharger
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── Kebab menus ──────────────────────────────────────────────────
+  function toggleMenu(id, e) {
+    e && e.stopPropagation();
+    var btn  = document.getElementById('mb' + id);
+    var drop = document.getElementById('md' + id);
+    if (!drop) return;
+    var willOpen = !drop.classList.contains('open');
+    closeAllMenus();
+    if (willOpen) {
+      drop.classList.add('open');
+      btn.classList.add('open');
+    }
+  }
+  function closeAllMenus() {
+    document.querySelectorAll('.menu-dropdown.open').forEach(function(d){ d.classList.remove('open'); });
+    document.querySelectorAll('.menu-btn.open').forEach(function(b){ b.classList.remove('open'); });
+  }
+  document.addEventListener('click', closeAllMenus);
+
+  // ── Detail modal ─────────────────────────────────────────────────
+  function openDetail(id) {
+    closeAllMenus();
+    var tr = document.querySelector('tr[data-id="' + id + '"]');
+    if (!tr) return;
+
+    var ts       = tr.dataset.ts      || '';
+    var email    = tr.dataset.email   || '';
+    var mode     = tr.dataset.mode    || '';
+    var success  = parseInt(tr.dataset.success);
+    var sources  = parseInt(tr.dataset.sources  || 0);
+    var outputs  = parseInt(tr.dataset.outputs  || 0);
+    var outDur   = parseFloat(tr.dataset.outDur || 0);
+    var cost     = parseFloat(tr.dataset.cost   || 0);
+    var fname    = tr.dataset.filename || '';
+    var strength = tr.dataset.strength || '';
+    var claude   = parseInt(tr.dataset.claude || 0);
+    var isAdmin  = {{ 'true' if is_admin else 'false' }};
+
+    // Date
+    setText('dTs', ts.slice(0, 16) || '—');
+
+    // Email or ID
+    setText('dEmail', isAdmin ? (email || '—') : ('#' + id));
+
+    // Mode
+    var modeLabel = mode ? (mode.charAt(0).toUpperCase() + mode.slice(1)) : '—';
+    setText('dMode', modeLabel);
+
+    // Strength (variation only)
+    var sw = document.getElementById('dStrengthWrap');
+    if (sw) {
+      if (strength && mode === 'variation') {
+        sw.style.display = '';
+        setText('dStrength', strength);
+      } else {
+        sw.style.display = 'none';
+      }
+    }
+
+    // Status
+    setText('dStatus', success === 1 ? '✓ Succès' : '✕ Erreur');
+
+    // Duration
+    var m = Math.floor(outDur / 60), s = Math.floor(outDur % 60);
+    setText('dDur', outDur > 0 ? (m > 0 ? m + 'm ' + s + 's' : s + 's') : '—');
+
+    // Cost
+    setText('dCost', '$' + cost.toFixed(4));
+
+    // Claude
+    setText('dClaude', claude + ' requête' + (claude !== 1 ? 's' : ''));
+
+    // Files
+    setText('dSrc', sources + ' vidéo' + (sources !== 1 ? 's' : '') + ' source');
+    setText('dOut', outputs + ' vidéo' + (outputs !== 1 ? 's' : '') + ' générée' + (outputs !== 1 ? 's' : ''));
+
+    var fw = document.getElementById('dFnWrap');
+    if (fw) {
+      if (fname) { fw.style.display = ''; setText('dFn', fname); }
+      else { fw.style.display = 'none'; }
+    }
+
+    document.getElementById('detailModal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function setText(id, val) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = val;
+  }
+
+  function closeModal() {
+    var m = document.getElementById('detailModal');
+    if (m) m.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeModal();
+  });
+</script>
+</body>
+</html>
