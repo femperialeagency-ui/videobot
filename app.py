@@ -672,6 +672,29 @@ def list_user_usage_table(sort_by="last_activity"):
     return [dict(r) for r in rows]
 
 
+def get_recent_activity(user_id, limit=6):
+    """Most recent individual usage_logs rows for ONE user — read-only,
+    scoped WHERE user_id = ? exactly like every other per-user query in
+    this file (get_user_usage_summary, get_usage_by_mode). Purely exposes
+    rows that already exist in usage_logs (same table the dashboards above
+    already aggregate from) so the main dashboard can show a real recent-
+    activity feed instead of an empty card. No new processing — just the
+    same _usage_aggregate-style SELECT, unaggregated and limited."""
+    with _users_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT mode, timestamp, output_video_count, source_video_count,
+                   generation_success, estimated_cost, source_filename
+            FROM usage_logs
+            WHERE user_id = ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+            """,
+            (user_id, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_daily_generation_counts(days=14):
     """Per-day generation counts (success vs. failure) over the last N
     days — feeds the lightweight inline-SVG bar chart on the admin
@@ -2337,6 +2360,90 @@ def _build_timed_overlay_cmd(path_a: str, path_b: str, overlay_specs: list, path
 # does not change, wrap, or touch any simple-mode or batch-mode logic
 # — those run completely unchanged once request.current_user holds an
 # active account.
+# ── Generation History (additive — new read-only queries for /history) ───────
+# These functions only SELECT from usage_logs. No existing code is modified.
+
+def get_history_rows(user_id=None, period="all", mode_filter="all",
+                     page=1, per_page=50, admin=False):
+    """Paginated list of individual usage_log rows for the /history page.
+    admin=True → returns all users' rows (user_id param ignored unless set).
+    admin=False → always scoped to user_id.
+    period: 'all' / 'today' / '7d' / '30d'
+    mode_filter: 'all' / 'simple' / 'batch' / 'variation'
+    Returns dict with rows, total, pages, page, per_page.
+    """
+    where_clauses, params = [], []
+    if not admin and user_id is not None:
+        where_clauses.append("l.user_id = ?")
+        params.append(user_id)
+    if period == "today":
+        where_clauses.append("l.timestamp >= ?")
+        params.append(_usage_period_cutoff("today"))
+    elif period == "7d":
+        where_clauses.append("l.timestamp >= ?")
+        params.append(_usage_period_cutoff("7d"))
+    elif period == "30d":
+        where_clauses.append("l.timestamp >= ?")
+        params.append(_usage_period_cutoff("30d"))
+    if mode_filter in ("simple", "batch", "variation"):
+        where_clauses.append("l.mode = ?")
+        params.append(mode_filter)
+    where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+    with _users_db() as conn:
+        total = conn.execute(
+            f"SELECT COUNT(*) FROM usage_logs l {where_sql}", params
+        ).fetchone()[0]
+        offset = (page - 1) * per_page
+        rows = conn.execute(
+            f"""
+            SELECT l.id, l.user_id, l.user_email, l.timestamp, l.mode,
+                   l.generation_success, l.source_video_count, l.output_video_count,
+                   l.source_video_duration_seconds, l.generated_video_duration_seconds,
+                   l.estimated_cost, l.claude_requests_count,
+                   l.variation_strength, l.source_filename,
+                   u.email AS account_email
+            FROM usage_logs l
+            LEFT JOIN users u ON u.id = l.user_id
+            {where_sql}
+            ORDER BY l.timestamp DESC
+            LIMIT ? OFFSET ?
+            """,
+            params + [per_page, offset],
+        ).fetchall()
+    pages = max(1, (total + per_page - 1) // per_page)
+    return {
+        "rows": [dict(r) for r in rows],
+        "total": total,
+        "pages": pages,
+        "page": page,
+        "per_page": per_page,
+    }
+
+
+def get_history_kpis(user_id=None, period="all", mode_filter="all", admin=False):
+    """KPI aggregates for the /history page header.
+    Uses the same _usage_aggregate() pattern as the consumption pages.
+    """
+    where_clauses, params = [], []
+    if not admin and user_id is not None:
+        where_clauses.append("user_id = ?")
+        params.append(user_id)
+    if period == "today":
+        where_clauses.append("timestamp >= ?")
+        params.append(_usage_period_cutoff("today"))
+    elif period == "7d":
+        where_clauses.append("timestamp >= ?")
+        params.append(_usage_period_cutoff("7d"))
+    elif period == "30d":
+        where_clauses.append("timestamp >= ?")
+        params.append(_usage_period_cutoff("30d"))
+    if mode_filter in ("simple", "batch", "variation"):
+        where_clauses.append("mode = ?")
+        params.append(mode_filter)
+    where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+    return _usage_aggregate(where_sql, tuple(params))
+
+
 _PUBLIC_ENDPOINTS = {"login", "static"}
 
 
@@ -2497,6 +2604,66 @@ def admin_consumption():
     )
 
 
+@app.route("/history")
+def history():
+    user = request.current_user
+    period = request.args.get("period", "all")
+    if period not in ("all", "today", "7d", "30d"):
+        period = "all"
+    mode_filter = request.args.get("mode", "all")
+    if mode_filter not in ("all", "simple", "batch", "variation"):
+        mode_filter = "all"
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (ValueError, TypeError):
+        page = 1
+    is_admin = user["role"] == "admin"
+    result = get_history_rows(
+        user_id=user["id"] if not is_admin else None,
+        period=period,
+        mode_filter=mode_filter,
+        page=page,
+        per_page=50,
+        admin=is_admin,
+    )
+    kpis = get_history_kpis(
+        user_id=user["id"] if not is_admin else None,
+        period=period,
+        mode_filter=mode_filter,
+        admin=is_admin,
+    )
+    return render_template(
+        "history.html",
+        current_user=user,
+        rows=result["rows"],
+        total=result["total"],
+        pages=result["pages"],
+        page=result["page"],
+        per_page=result["per_page"],
+        kpis=kpis,
+        period=period,
+        mode_filter=mode_filter,
+        is_admin=is_admin,
+    )
+
+
+@app.route("/history/delete/<int:log_id>", methods=["POST"])
+def history_delete(log_id):
+    """Delete a single usage_log row. Non-admins can only delete their own rows."""
+    user = request.current_user
+    with _users_db() as conn:
+        row = conn.execute(
+            "SELECT user_id FROM usage_logs WHERE id = ?", (log_id,)
+        ).fetchone()
+        if row is None:
+            return redirect(url_for("history"))
+        if user["role"] != "admin" and row["user_id"] != user["id"]:
+            return ("Accès refusé.", 403)
+        conn.execute("DELETE FROM usage_logs WHERE id = ?", (log_id,))
+        conn.commit()
+    return redirect(request.referrer or url_for("history"))
+
+
 @app.route("/admin/users/create", methods=["POST"])
 @admin_required
 def admin_users_create():
@@ -2592,7 +2759,33 @@ def admin_users_edit_plan(user_id):
 
 @app.route("/")
 def index():
-    return render_template("index.html", current_user=request.current_user)
+    user = request.current_user
+    # ── Dashboard overview data (additive, read-only): reuses the exact
+    # same helpers /consumption already calls (get_user_usage_summary,
+    # get_usage_by_mode) plus a small new read-only query
+    # (get_recent_activity) that mirrors their WHERE user_id = ? scoping —
+    # so the landing dashboard can show real KPI numbers and a real
+    # recent-activity feed instead of empty space. Wrapped defensively so
+    # a query hiccup can never blank the page (mirrors the try/except
+    # pattern already used around profitability in /consumption).
+    dashboard_summary = None
+    dashboard_usage_by_mode = []
+    dashboard_recent_activity = []
+    if user:
+        try:
+            dashboard_summary = get_user_usage_summary(user["id"])
+            dashboard_usage_by_mode = get_usage_by_mode(scope="user", user_id=user["id"])
+            dashboard_recent_activity = get_recent_activity(user["id"], limit=6)
+        except Exception as e:
+            print(f"[dashboard] WARNING: failed to load overview data for user={user.get('email', '?')}: {e}")
+
+    return render_template(
+        "index.html",
+        current_user=user,
+        dashboard_summary=dashboard_summary,
+        dashboard_usage_by_mode=dashboard_usage_by_mode,
+        dashboard_recent_activity=dashboard_recent_activity,
+    )
 
 
 @app.route("/analyze", methods=["POST"])
