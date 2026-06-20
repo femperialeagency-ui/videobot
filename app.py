@@ -873,18 +873,6 @@ BATCH_DIR.mkdir(parents=True, exist_ok=True)
 MAX_BATCH_FILES  = 10   # max source (A) videos AND max target (B) videos
 MAX_BATCH_COMBOS = 100  # MAX_BATCH_FILES × MAX_BATCH_FILES
 
-# ── Batch Variation (V1, additive) ────────────────────────────────
-# Optional post-step that runs Variation Mode's pure FFmpeg helpers on
-# each already-rendered A×B output video. Disabled unless the client
-# explicitly opts in (checkbox off by default). These caps bound the
-# worst case so a big matrix can't silently explode into thousands of
-# files: combos (≤100) × variants-per-combo (≤5) is further clamped by
-# MAX_BATCH_TOTAL_OUTPUTS. Validated server-side in /batch_variation_run
-# regardless of what the client sends.
-BATCH_VARIATION_CHOICES        = (1, 2, 3, 5)  # UI-exposed counts
-MAX_BATCH_VARIATIONS_PER_COMBO = 5             # hard per-combo cap
-MAX_BATCH_TOTAL_OUTPUTS        = 200           # hard cap on combos × variants
-
 
 def _cleanup_stale_batches(max_age_hours: float = 3.0):
     """
@@ -3067,12 +3055,6 @@ def batch_zip():
 
             out_dir = BATCH_DIR / batch_id / "out"
             files = sorted(out_dir.glob("*.mp4")) if out_dir.exists() else []
-            # Batch Variation (additive): include any per-combo variants
-            # produced by /batch_variation_run. Guarded by exists() so the
-            # variant-free path stays byte-identical to before this feature.
-            var_dir = BATCH_DIR / batch_id / "variations"
-            if var_dir.exists():
-                files = files + sorted(var_dir.glob("*.mp4"))
             if not files:
                 return jsonify({"error": "Aucun fichier valide trouvé"}), 400
 
@@ -3448,120 +3430,6 @@ def batch_cleanup():
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
-# ══════════════════════════════════════════════════════════════════
-# BATCH VARIATION — one additive route (V1)
-#
-# Optional post-processing step: turn an already-rendered A×B batch
-# output into one technically-distinct variant, using ONLY Variation
-# Mode's pure FFmpeg helpers (_pick_variation_params,
-# _pick_metadata_profile, _build_variation_ffmpeg_cmd). It reads those
-# helpers but MODIFIES NONE of them, and it never calls /batch_render,
-# /variation_run, /analyze, /process, or any caption/Vision code. The
-# source is a finished video C (no caption work to redo). Everything
-# lives under the existing BATCH_DIR/<batch_id>/ tree (new variations/
-# subfolder) — no bridge to VARIATION_DIR. Like /batch_render and
-# /variation_run, it produces exactly ONE file per call; the client
-# loops sequentially with `await`, so at most one FFmpeg encode is ever
-# in flight. A per-variant FFmpeg failure is reported back as a
-# per-item error (HTTP 200) and never crashes the route.
-# ══════════════════════════════════════════════════════════════════
-
-@app.route("/batch_variation_run", methods=["POST"])
-def batch_variation_run():
-    """
-    Generate exactly ONE variant of one already-rendered batch output.
-    Params: batch_id, combo_name (e.g. A01_B02_output.mp4), var_index
-    (0..var_count-1), var_count, strength (light/medium/strong).
-
-    Logs one usage_logs row per call under the distinct analytics mode
-    "batch_variation" (claude_requests=0 — no Vision is ever involved).
-    get_usage_by_mode picks the mode up dynamically; consumption.html /
-    admin_consumption.html already render unknown modes via their
-    existing {% else %} branch (a dedicated label branch is the optional
-    KPI polish shipped alongside this feature).
-    """
-    try:
-        batch_id   = (request.form.get("batch_id") or "").strip()
-        combo_name = (request.form.get("combo_name") or "").strip()
-        if not batch_id or ".." in batch_id or "/" in batch_id:
-            return jsonify({"error": "batch_id invalide"}), 400
-        if not combo_name or ".." in combo_name or "/" in combo_name:
-            return jsonify({"error": "combo_name invalide"}), 400
-
-        try:
-            var_index = int(request.form.get("var_index", "-1"))
-        except Exception:
-            var_index = -1
-        try:
-            var_count = int(request.form.get("var_count", "0"))
-        except Exception:
-            var_count = 0
-        if var_count not in BATCH_VARIATION_CHOICES:
-            return jsonify({"error": "Nombre de variantes invalide (1/2/3/5)."}), 400
-        if var_index < 0 or var_index >= var_count or var_count > MAX_BATCH_VARIATIONS_PER_COMBO:
-            return jsonify({"error": "Paramètres de variation batch invalides."}), 400
-
-        strength = (request.form.get("strength") or VARIATION_DEFAULT_STRENGTH).strip().lower()
-        if strength not in VARIATION_STRENGTH_PRESETS:
-            strength = VARIATION_DEFAULT_STRENGTH
-
-        bdir     = BATCH_DIR / batch_id
-        path_in  = bdir / "out" / combo_name
-        if not path_in.exists():
-            return jsonify({"error": "Vidéo batch source introuvable (rendu A×B manquant)"}), 404
-
-        var_dir = bdir / "variations"
-        var_dir.mkdir(parents=True, exist_ok=True)
-        stem      = combo_name[:-4] if combo_name.lower().endswith(".mp4") else combo_name
-        filename  = f"{stem}_v{var_index + 1:02d}.mp4"
-        path_out  = var_dir / filename
-
-        width, height = get_video_dims(str(path_in))
-        src_seconds   = _get_video_duration_seconds(str(path_in))
-
-        # Deterministic per-(batch, combo, index) RNG — same params if a
-        # single variant is retried, distinct from every other variant.
-        rng     = random.Random(f"{batch_id}:{combo_name}:{var_index}")
-        params  = _pick_variation_params(strength, rng)
-        profile = _pick_metadata_profile(rng)
-        cmd     = _build_variation_ffmpeg_cmd(str(path_in), str(path_out), params, profile, width, height)
-
-        try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-        except subprocess.TimeoutExpired:
-            return jsonify({"error": "Timeout (>3 min)", "filename": filename}), 200
-        finally:
-            gc.collect()
-
-        ok = (proc.returncode == 0 and path_out.exists())
-
-        # One usage row per variant attempt (success AND failure), under
-        # the distinct "batch_variation" analytics mode. No Vision call,
-        # so claude_requests=0 keeps estimated_claude_vision_cost at 0.
-        try:
-            log_usage_event(
-                request.current_user, "batch_variation",
-                source_seconds=src_seconds,
-                output_seconds=(src_seconds if ok else None),
-                source_count=1, output_count=(1 if ok else 0),
-                success=ok, claude_requests=0,
-            )
-        except Exception as e:
-            print(f"[batch_variation] WARNING: failed to log usage for batch={batch_id}: {e}")
-
-        if not ok:
-            err = (proc.stderr or "ffmpeg a échoué")[-500:]
-            try:
-                path_out.unlink(missing_ok=True)
-            except Exception:
-                pass
-            return jsonify({"error": err, "filename": filename}), 200
-
-        return jsonify({"filename": filename, "ok": True})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 200
 
 
 # ══════════════════════════════════════════════════════════════════
