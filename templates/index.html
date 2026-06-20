@@ -727,6 +727,10 @@ Nouvelle génération
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2 V11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M9 2 L13.5 3.7 V6.5 L9 4.8 Z" fill="currentColor"/><circle cx="6.5" cy="11.5" r="2.6" stroke="currentColor" stroke-width="1.6"/></svg></span>
 <div><div class="gen-drop-item-label">Audio Converter</div><div class="gen-drop-item-desc">Audio (.opus…) → .mp3</div></div>
 </button>
+<button type="button" class="gen-drop-item" onclick="selectGen('photo')">
+<span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="4" width="13" height="10" rx="1.8" stroke="currentColor" stroke-width="1.6"/><circle cx="6.5" cy="8" r="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 13 L7.5 9.5 L10 11.5 L12.5 9 L14.5 11" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
+<div><div class="gen-drop-item-label">Photo Metadata Studio</div><div class="gen-drop-item-desc">Nettoyer / réécrire EXIF</div></div>
+</button>
 </div>
 </div>
 {% endif %}
@@ -767,6 +771,10 @@ Variation Studio Multi
 <button class="tab-btn nav-item" data-tab="audio" onclick="switchTab('audio')">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2 V11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M9 2 L13.5 3.7 V6.5 L9 4.8 Z" fill="currentColor"/><circle cx="6.5" cy="11.5" r="2.6" stroke="currentColor" stroke-width="1.6"/></svg></span>
 Audio Converter
+</button>
+<button class="tab-btn nav-item" data-tab="photo" onclick="switchTab('photo')">
+<span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="4" width="13" height="10" rx="1.8" stroke="currentColor" stroke-width="1.6"/><circle cx="6.5" cy="8" r="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 13 L7.5 9.5 L10 11.5 L12.5 9 L14.5 11" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
+Photo Metadata Studio
 </button>
 </div>
 
@@ -1521,6 +1529,86 @@ credits, no video pipeline. IDs namespaced au*.
 
 </div><!-- /audioTab -->
 
+<!-- ══════════════════════════════════════════
+PHOTO METADATA STUDIO — fully isolated, additive (photo only).
+Cleans / rewrites image EXIF for 1–300 photos (jpg/png/webp) via the
+dedicated /photo_* routes + /tmp/videobot_photos. Pillow only. No AI,
+no credits, no video/audio pipeline. IDs namespaced ph*.
+══════════════════════════════════════════ -->
+<div id="photoTab" class="tab-content">
+
+<!-- Upload -->
+<div class="card">
+<h2><span class="num">1</span> Photos <span style="font-weight:500;opacity:.7;font-size:.85rem">(1 à 300)</span></h2>
+<div class="drop-zone upcard" id="phZone" style="max-width:420px;margin:0 auto;">
+<input type="file" id="phInput" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple />
+<span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="4" width="13" height="10" rx="1.8" stroke="currentColor" stroke-width="1.6"/><circle cx="6.5" cy="8" r="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 13 L7.5 9.5 L10 11.5 L12.5 9 L14.5 11" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
+<div class="meta">
+<div class="lbl">Photos</div>
+<div class="sub">.jpg .jpeg .png .webp — 500 Mo max</div>
+<div class="fn" id="phName"></div>
+</div>
+</div>
+<div id="phFileList" style="margin-top:12px;"></div>
+</div>
+
+<!-- Settings -->
+<div class="card">
+<h2><span class="num">2</span> Traitement des métadonnées</h2>
+<div class="v-section-label"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.5 5.5 H14.5 M3.5 9 H14.5 M3.5 12.5 H14.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="5.5" r="1.5" fill="currentColor"/><circle cx="11.5" cy="9" r="1.5" fill="currentColor"/><circle cx="6" cy="12.5" r="1.5" fill="currentColor"/></svg></span> Mode</div>
+<div class="v-modeswitch">
+<label><input type="radio" name="phMode" value="rapide" checked> Rapide <span style="font-weight:500;opacity:.8">(strip EXIF, pixels intacts)</span></label>
+<label><input type="radio" name="phMode" value="standard"> Standard <span style="font-weight:500;opacity:.8">(nettoie + réécrit)</span></label>
+<label><input type="radio" name="phMode" value="avance"> Avancé <span style="font-weight:500;opacity:.8">(contrôle total)</span></label>
+</div>
+
+<div id="phModeHint" style="font-size:0.78rem;color:var(--muted);margin:8px 0 4px;"></div>
+
+<!-- Advanced panel -->
+<div id="phAdvancedPanel" style="display:none;">
+<div class="v-group-title"><span class="v-dot" style="background:var(--accent);color:var(--accent)"></span> Métadonnées</div>
+<label class="v-slider-row" style="cursor:pointer;"><span><input type="checkbox" id="phStripAll"> Supprimer tout l'EXIF</span></label>
+<label class="v-slider-row" style="cursor:pointer;"><span><input type="checkbox" id="phStripGps" checked> Supprimer GPS / localisation</span></label>
+<label class="v-slider-row" style="cursor:pointer;"><span><input type="checkbox" id="phRewriteDates" checked> Réécrire dates (EXIF DateTime)</span></label>
+<label class="v-slider-row" style="cursor:pointer;"><span><input type="checkbox" id="phRewriteSoftware" checked> Réécrire software</span></label>
+<label class="v-slider-row" style="cursor:pointer;"><span><input type="checkbox" id="phRewriteAuthor" checked> Réécrire auteur / copyright</span></label>
+<label class="v-slider-row" style="cursor:pointer;"><span><input type="checkbox" id="phRecompress"> Recompression légère (qualité 90)</span></label>
+
+<div class="v-group-title" style="margin-top:12px;"><span class="v-dot" style="background:var(--accent2);color:var(--accent2)"></span> Valeurs réécrites</div>
+<div class="v-preset-row"><input type="text" id="phSoftware" placeholder="Software (ex: ViralScale)" maxlength="120" value="ViralScale"></div>
+<div class="v-preset-row"><input type="text" id="phAuthor" placeholder="Auteur" maxlength="120"></div>
+<div class="v-preset-row"><input type="text" id="phCopyright" placeholder="Copyright (ex: © 2026)" maxlength="160"></div>
+<div class="v-preset-row"><input type="text" id="phDatetime" placeholder="Date EXIF (AAAA:MM:JJ HH:MM:SS)" maxlength="32"></div>
+<div style="font-size:0.74rem;color:var(--muted);margin-top:6px;">Si « Supprimer tout l'EXIF » est coché, les réécritures sont ignorées (tout est effacé).</div>
+</div>
+</div>
+
+<!-- Stats -->
+<div class="card">
+<h2><span class="num">3</span> Statistiques</h2>
+<div class="v-est-grid">
+<div class="v-est-item"><div class="v-est-label">Photos</div><div class="v-est-value" id="phEstCount">0</div></div>
+<div class="v-est-item"><div class="v-est-label">Taille totale</div><div class="v-est-value" id="phEstSize">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Mode</div><div class="v-est-value" id="phEstMode">Rapide</div></div>
+<div class="v-est-item"><div class="v-est-label">Sortie</div><div class="v-est-value" id="phEstOut">Même format</div></div>
+</div>
+<div id="phSizeWarning" style="display:none;color:var(--error);font-size:0.8rem;margin-top:10px;"></div>
+<div style="font-size:0.74rem;color:var(--muted);margin-top:10px;">Traitement Pillow (EXIF). Aucun appel IA, aucun crédit consommé. Le mode Rapide garde les pixels visuellement identiques.</div>
+</div>
+
+<button id="phLaunchBtn" class="primary-btn" onclick="runPhotoProcess()" disabled><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="4" width="13" height="10" rx="1.8" stroke="currentColor" stroke-width="1.6"/><circle cx="6.5" cy="8" r="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 13 L7.5 9.5 L10 11.5 L12.5 9 L14.5 11" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span> Traiter les photos</button>
+
+<!-- Progress -->
+<div class="card" id="phProgressCard" style="display:none;">
+<h2 id="phProgressTitle"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Traitement en cours…</h2>
+<div class="pbar"><div class="pbar-fill" id="phGlobalFill"></div></div>
+<div id="phGlobalStatus" style="font-size:.85rem;color:var(--muted);margin-bottom:14px"></div>
+<div id="phResultsList"></div>
+<button class="zip-btn" id="phZipBtn" onclick="downloadPhotoZip()" style="display:none;"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span> Télécharger tout (.zip)</button>
+</div>
+
+</div><!-- /photoTab -->
+
 </main>
 </div><!-- /app-main -->
 </div><!-- /app-shell -->
@@ -1540,6 +1628,7 @@ document.getElementById('batchTab').classList.toggle('active', tab === 'batch');
 document.getElementById('variationTab').classList.toggle('active', tab === 'variation');
 document.getElementById('variationMultiTab').classList.toggle('active', tab === 'variation_multi');
 document.getElementById('audioTab').classList.toggle('active', tab === 'audio');
+document.getElementById('photoTab').classList.toggle('active', tab === 'photo');
 }
 
 function toggleGenDrop(e) {
@@ -2975,6 +3064,198 @@ fetch("/audio_cleanup", { method: "POST", headers: { "Content-Type": "applicatio
 } catch(e) { alert("Erreur ZIP : " + e.message); }
 finally { btn.disabled = false; btn.textContent = orig; }
 }
+
+// ══════════════════════════════════════════
+// PHOTO METADATA STUDIO (ph*) — fully isolated, additive.
+// Cleans / rewrites image EXIF for 1–300 photos via the dedicated
+// /photo_* routes. Pillow only, no AI, no credits, no video/audio.
+// ══════════════════════════════════════════
+const MAX_PH_FILES = 300;
+const MAX_PH_TOTAL_BYTES = 500 * 1024 * 1024;
+const PH_ALLOWED_EXT = ["jpg", "jpeg", "png", "webp"];
+
+let phFiles = [];
+let phJobId = null;
+let phRunning = false;
+let phResults = [];
+
+function isPhotoFile(f) {
+const ext = (f.name.split(".").pop() || "").toLowerCase();
+return PH_ALLOWED_EXT.includes(ext) || (f.type && f.type.startsWith("image/"));
+}
+function phNowExif() {
+const d = new Date(), p = n => String(n).padStart(2, "0");
+return `${d.getFullYear()}:${p(d.getMonth() + 1)}:${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+function phStem(name) { return (name || "photo").replace(/\.[^.]+$/, ""); }
+
+const phInput = document.getElementById("phInput");
+const phZone = document.getElementById("phZone");
+function handlePhFiles(files) {
+const imgs = files.filter(isPhotoFile);
+if (imgs.length > MAX_PH_FILES) alert(`Maximum ${MAX_PH_FILES} photos. Seules les ${MAX_PH_FILES} premières seront utilisées.`);
+phFiles = imgs.slice(0, MAX_PH_FILES).map(f => ({ file: f, name: f.name, size: f.size }));
+phJobId = null;
+const n = phFiles.length;
+document.getElementById("phName").textContent = n > 0 ? `✓ ${n} photo${n > 1 ? "s" : ""}` : "";
+renderPhFileList(); updatePhStats(); checkPhReady();
+}
+phInput.addEventListener("change", () => handlePhFiles(Array.from(phInput.files)));
+phZone.addEventListener("dragover", e => { e.preventDefault(); phZone.classList.add("drag-over"); });
+phZone.addEventListener("dragleave", () => phZone.classList.remove("drag-over"));
+phZone.addEventListener("drop", e => { e.preventDefault(); phZone.classList.remove("drag-over"); handlePhFiles(Array.from(e.dataTransfer.files)); });
+
+function renderPhFileList() {
+const el = document.getElementById("phFileList");
+if (!phFiles.length) { el.innerHTML = ""; return; }
+el.innerHTML = phFiles.map((f, i) =>
+`<div class="batch-row"><span class="batch-idx">${i + 1}</span><span class="batch-fname" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span><span class="batch-st" style="color:var(--muted)">${fmtBytes(f.size)}</span></div>`
+).join("");
+}
+function phTotalBytes() { return phFiles.reduce((s, f) => s + (f.size || 0), 0); }
+function getPhMode() { const s = document.querySelector('input[name="phMode"]:checked'); return s ? s.value : "rapide"; }
+const PH_MODE_HINTS = {
+rapide: "Supprime tout l'EXIF (GPS inclus). Pixels conservés à l'identique, aucune recompression.",
+standard: "Supprime le GPS, réécrit dates / software / auteur / copyright. Pixels conservés.",
+avance: "Contrôle total : choisissez chaque opération et les valeurs réécrites ci-dessous.",
+};
+const PH_MODE_LABEL = { rapide: "Rapide", standard: "Standard", avance: "Avancé" };
+document.querySelectorAll('input[name="phMode"]').forEach(r => r.addEventListener("change", () => {
+const mode = getPhMode();
+document.getElementById("phAdvancedPanel").style.display = (mode === "avance") ? "block" : "none";
+document.getElementById("phModeHint").textContent = PH_MODE_HINTS[mode] || "";
+document.getElementById("phEstMode").textContent = PH_MODE_LABEL[mode] || mode;
+updatePhStats();
+}));
+function updatePhStats() {
+const cEl = document.getElementById("phEstCount"); if (!cEl) return;
+cEl.textContent = phFiles.length;
+const total = phTotalBytes();
+document.getElementById("phEstSize").textContent = total > 0 ? fmtBytes(total) : "—";
+document.getElementById("phEstMode").textContent = PH_MODE_LABEL[getPhMode()];
+const recomp = (getPhMode() === "avance") && document.getElementById("phRecompress").checked;
+document.getElementById("phEstOut").textContent = recomp ? "Même format · q90" : "Même format";
+const warn = document.getElementById("phSizeWarning");
+if (total > MAX_PH_TOTAL_BYTES) { warn.style.display = "block"; warn.textContent = `Taille totale ${fmtBytes(total)} dépasse la limite de 500 Mo.`; }
+else { warn.style.display = "none"; warn.textContent = ""; }
+}
+function checkPhReady() {
+document.getElementById("phLaunchBtn").disabled = phRunning || phFiles.length === 0 || phTotalBytes() > MAX_PH_TOTAL_BYTES;
+}
+function getPhotoOpts() {
+const mode = getPhMode();
+if (mode === "rapide") return { strip_all: 1 };
+if (mode === "standard") return {
+strip_gps: 1, rewrite_dates: 1, rewrite_software: 1, rewrite_author: 1,
+software: "ViralScale", author: "", copyright: "", datetime: phNowExif(),
+};
+// avancé
+const v = id => document.getElementById(id);
+return {
+strip_all: v("phStripAll").checked ? 1 : 0,
+strip_gps: v("phStripGps").checked ? 1 : 0,
+rewrite_dates: v("phRewriteDates").checked ? 1 : 0,
+rewrite_software: v("phRewriteSoftware").checked ? 1 : 0,
+rewrite_author: v("phRewriteAuthor").checked ? 1 : 0,
+recompress: v("phRecompress").checked ? 1 : 0,
+software: v("phSoftware").value || "",
+author: v("phAuthor").value || "",
+copyright: v("phCopyright").value || "",
+datetime: (v("phDatetime").value || "").trim() || phNowExif(),
+};
+}
+// keep stats in sync when advanced toggles change
+["phStripAll","phStripGps","phRewriteDates","phRewriteSoftware","phRewriteAuthor","phRecompress"].forEach(id => {
+const el = document.getElementById(id); if (el) el.addEventListener("change", updatePhStats);
+});
+
+async function runPhotoProcess() {
+if (phRunning || phFiles.length === 0) return;
+if (phTotalBytes() > MAX_PH_TOTAL_BYTES) { alert("Taille totale dépasse 500 Mo."); return; }
+const opts = getPhotoOpts();
+
+phRunning = true; phJobId = null;
+document.getElementById("phLaunchBtn").disabled = true;
+phResults = phFiles.map(f => ({ name: f.name, outBase: phStem(f.name), stored: null, status: "pending", statusText: "⏳ En attente", filename: null }));
+const card = document.getElementById("phProgressCard"); card.style.display = "block";
+document.getElementById("phProgressTitle").textContent = "📤 Envoi des photos…";
+document.getElementById("phZipBtn").style.display = "none";
+renderPhResults(); updatePhProgress(0, phResults.length);
+
+try {
+for (let i = 0; i < phFiles.length; i++) {
+try {
+const fd = new FormData();
+fd.append("file", phFiles[i].file);
+if (phJobId) fd.append("job_id", phJobId);
+const r = await fetch("/photo_stage", { method: "POST", body: fd });
+const d = await r.json();
+if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+phJobId = d.job_id; phResults[i].stored = d.stored_name;
+} catch(e) { phResults[i].status = "error"; phResults[i].statusText = "❌ envoi: " + e.message; }
+}
+
+document.getElementById("phProgressTitle").textContent = "🖼️ Traitement des métadonnées…";
+const total = phResults.length; let done = 0;
+for (let i = 0; i < phResults.length; i++) {
+const row = phResults[i];
+if (!row.stored) { done++; updatePhProgress(done, total); continue; }
+row.status = "processing"; row.statusText = "⚙️ Traitement…"; renderPhResults();
+try {
+const fd = new FormData();
+fd.append("job_id", phJobId);
+fd.append("stored_name", row.stored);
+fd.append("out_name", row.outBase);
+fd.append("index", i);
+fd.append("count", total);
+Object.keys(opts).forEach(k => fd.append(k, opts[k]));
+const r = await fetch("/photo_process", { method: "POST", body: fd });
+const d = await r.json();
+if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+row.status = "done"; row.statusText = "✅ Traité"; row.filename = d.filename;
+} catch(e) { row.status = "error"; row.statusText = "❌ " + e.message; }
+done++; renderPhResults(); updatePhProgress(done, total);
+}
+document.getElementById("phProgressTitle").textContent = "✅ Traitement terminé";
+} catch(e) {
+document.getElementById("phProgressTitle").textContent = "❌ Erreur";
+alert("Erreur traitement : " + e.message);
+}
+
+phRunning = false; checkPhReady();
+const ok = phResults.filter(r => r.status === "done");
+if (ok.length > 0) { const b = document.getElementById("phZipBtn"); b.style.display = "inline-flex"; b.textContent = `📦 Télécharger les ${ok.length} photo${ok.length > 1 ? "s" : ""} (.zip)`; }
+}
+
+function renderPhResults() {
+const colorMap = { pending: "var(--muted)", processing: "var(--accent2)", done: "var(--success)", error: "var(--error)" };
+document.getElementById("phResultsList").innerHTML = phResults.map((r, i) => {
+const color = colorMap[r.status] || "var(--muted)";
+const dl = (r.status === "done" && phJobId && r.filename)
+? `<a class="dl-link" href="/photo_file/${phJobId}/${encodeURIComponent(r.filename)}" download title="Télécharger">⬇️</a>`
+: `<span style="width:1.1rem;display:inline-block"></span>`;
+const shown = r.filename || r.name;
+return `<div class="batch-row"><span class="batch-idx">${i + 1}</span><span class="batch-fname" title="${escapeHtml(shown)}">${escapeHtml(shown)}</span><span class="batch-st" style="color:${color}">${escapeHtml(r.statusText)}</span>${dl}</div>`;
+}).join("");
+}
+function updatePhProgress(done, total) {
+const pct = total > 0 ? Math.round(done / total * 100) : 0;
+document.getElementById("phGlobalFill").style.width = pct + "%";
+document.getElementById("phGlobalStatus").textContent = `${done} / ${total} photo${total > 1 ? "s" : ""}`;
+}
+async function downloadPhotoZip() {
+if (!phJobId) return;
+const btn = document.getElementById("phZipBtn"); btn.disabled = true; const orig = btn.textContent; btn.textContent = "⏳ Préparation du ZIP…";
+try {
+const res = await fetch("/photo_zip", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: phJobId }) });
+if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || res.statusText); }
+const blob = await res.blob(); const url = URL.createObjectURL(blob);
+const a = document.createElement("a"); a.href = url; a.download = "photos.zip"; a.click(); URL.revokeObjectURL(url);
+fetch("/photo_cleanup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: phJobId }) }).catch(() => {});
+} catch(e) { alert("Erreur ZIP : " + e.message); }
+finally { btn.disabled = false; btn.textContent = orig; }
+}
+document.getElementById("phModeHint").textContent = PH_MODE_HINTS["rapide"];
 </script>
 </body>
 </html>

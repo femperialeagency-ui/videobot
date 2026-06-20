@@ -2412,7 +2412,7 @@ def get_history_rows(user_id=None, period="all", mode_filter="all",
     elif period == "30d":
         where_clauses.append("l.timestamp >= ?")
         params.append(_usage_period_cutoff("30d"))
-    if mode_filter in ("simple", "batch", "variation", "variation_multi", "audio_converter"):
+    if mode_filter in ("simple", "batch", "variation", "variation_multi", "audio_converter", "photo_metadata"):
         where_clauses.append("l.mode = ?")
         params.append(mode_filter)
     where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
@@ -2464,7 +2464,7 @@ def get_history_kpis(user_id=None, period="all", mode_filter="all", admin=False)
     elif period == "30d":
         where_clauses.append("timestamp >= ?")
         params.append(_usage_period_cutoff("30d"))
-    if mode_filter in ("simple", "batch", "variation", "variation_multi", "audio_converter"):
+    if mode_filter in ("simple", "batch", "variation", "variation_multi", "audio_converter", "photo_metadata"):
         where_clauses.append("mode = ?")
         params.append(mode_filter)
     where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
@@ -2638,7 +2638,7 @@ def history():
     if period not in ("all", "today", "7d", "30d"):
         period = "all"
     mode_filter = request.args.get("mode", "all")
-    if mode_filter not in ("all", "simple", "batch", "variation", "variation_multi", "audio_converter"):
+    if mode_filter not in ("all", "simple", "batch", "variation", "variation_multi", "audio_converter", "photo_metadata"):
         mode_filter = "all"
     try:
         page = max(1, int(request.args.get("page", 1)))
@@ -4277,6 +4277,345 @@ def audio_cleanup():
         if not job_id or ".." in job_id or "/" in job_id:
             return jsonify({"error": "job_id invalide"}), 400
         jdir = AUDIO_DIR / job_id
+        if jdir.exists():
+            shutil.rmtree(jdir, ignore_errors=True)
+        gc.collect()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+# PHOTO METADATA STUDIO — fully isolated, additive (photo only).
+#
+# Cleans / rewrites image metadata (EXIF) for up to 300 photos
+# (jpg/jpeg/png/webp) using Pillow ONLY — no new dependency, no
+# Dockerfile change, no AI, no credits. A COMPLETELY separate pipeline:
+# its own /tmp dir, its own 5 routes, its own cleanup. It NEVER calls or
+# is called by any video/audio route, captions, OCR, or Claude Vision.
+# Logged under the distinct analytics mode "photo_metadata".
+# ══════════════════════════════════════════════════════════════════
+
+PHOTO_DIR = Path("/tmp/videobot_photos")
+PHOTO_DIR.mkdir(parents=True, exist_ok=True)
+
+MAX_PHOTO_FILES       = 300                       # max photos per job
+MAX_PHOTO_TOTAL_BYTES = 500 * 1024 * 1024         # 500 MB total per job
+PHOTO_ALLOWED_EXT     = {".jpg", ".jpeg", ".png", ".webp"}
+PHOTO_RECOMPRESS_QUALITY = 90                     # used only when recompress is on
+
+# EXIF tag ids (TIFF/EXIF standard) used by the rewrite/strip logic.
+_EXIF_SOFTWARE   = 0x0131
+_EXIF_ARTIST     = 0x013B
+_EXIF_COPYRIGHT  = 0x8298
+_EXIF_DATETIME   = 0x0132   # IFD0 DateTime (modification)
+_EXIF_GPS_IFD    = 0x8825   # GPSInfo pointer
+_EXIF_DT_ORIG    = 0x9003   # DateTimeOriginal (Exif IFD)
+_EXIF_DT_DIGIT   = 0x9004   # DateTimeDigitized (Exif IFD)
+
+
+def _cleanup_stale_photo_jobs(max_age_hours: float = 3.0):
+    """Remove photo job dirs left by earlier sessions. Runs on new stage."""
+    try:
+        cutoff = time.time() - max_age_hours * 3600
+        for d in PHOTO_DIR.iterdir():
+            try:
+                if d.is_dir() and d.stat().st_mtime < cutoff:
+                    shutil.rmtree(d, ignore_errors=True)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _photo_sanitize_name(name: str) -> str:
+    base = os.path.basename(name or "")
+    base = base.replace("..", "").replace("/", "").replace("\\", "")
+    cleaned = "".join(c for c in base if c.isalnum() or c in (" ", ".", "-", "_", "(", ")")).strip()
+    return cleaned[:120]
+
+
+def _process_one_photo(path_in: str, path_out: str, opts: dict) -> None:
+    """
+    Apply the requested metadata operations to ONE image with Pillow only,
+    keeping pixels visually identical. Raises on failure (caller handles).
+
+    opts keys (all booleans unless noted):
+      strip_all, strip_gps, rewrite_dates, rewrite_software, rewrite_author,
+      recompress, plus string values: software, author, copyright, datetime.
+    """
+    from PIL import Image
+
+    img = Image.open(path_in)
+    fmt = (img.format or "").upper()
+    ext = os.path.splitext(path_out)[1].lower()
+
+    # Decide the output EXIF block.
+    if opts.get("strip_all"):
+        exif = None  # drop everything
+    else:
+        exif = img.getexif()
+        if opts.get("strip_gps") and _EXIF_GPS_IFD in exif:
+            try:
+                del exif[_EXIF_GPS_IFD]
+            except Exception:
+                pass
+        if opts.get("rewrite_software"):
+            exif[_EXIF_SOFTWARE] = str(opts.get("software", "") or "")
+        if opts.get("rewrite_author"):
+            exif[_EXIF_ARTIST] = str(opts.get("author", "") or "")
+            exif[_EXIF_COPYRIGHT] = str(opts.get("copyright", "") or "")
+        if opts.get("rewrite_dates"):
+            dt = str(opts.get("datetime", "") or "")
+            exif[_EXIF_DATETIME] = dt
+            try:
+                exif_ifd = exif.get_ifd(0x8769)  # Exif sub-IFD
+                exif_ifd[_EXIF_DT_ORIG] = dt
+                exif_ifd[_EXIF_DT_DIGIT] = dt
+            except Exception:
+                pass
+
+    # Build save kwargs. Recompression only when explicitly requested;
+    # otherwise keep the most visually-faithful save for the format.
+    save_kwargs = {}
+    out_fmt = "JPEG" if ext in (".jpg", ".jpeg") else ("PNG" if ext == ".png" else "WEBP")
+    if out_fmt == "JPEG":
+        save_kwargs["quality"] = PHOTO_RECOMPRESS_QUALITY if opts.get("recompress") else "keep"
+        save_kwargs["subsampling"] = "keep" if not opts.get("recompress") else 2
+    elif out_fmt == "WEBP":
+        if opts.get("recompress"):
+            save_kwargs["quality"] = PHOTO_RECOMPRESS_QUALITY
+        else:
+            save_kwargs["lossless"] = True   # metadata-only: keep pixels exact
+    elif out_fmt == "PNG":
+        save_kwargs["optimize"] = bool(opts.get("recompress"))  # PNG is lossless either way
+
+    save_img = img
+    # JPEG cannot carry alpha; convert if needed (rare for jpg sources).
+    if out_fmt == "JPEG" and img.mode in ("RGBA", "P", "LA"):
+        save_img = img.convert("RGB")
+
+    if exif is not None:
+        try:
+            save_kwargs["exif"] = exif.tobytes()
+        except Exception:
+            # If a particular EXIF block can't be serialized, fall back to
+            # stripping it rather than failing the whole conversion.
+            save_kwargs.pop("exif", None)
+
+    # "quality='keep'" is only valid for JPEG re-encode of a JPEG source;
+    # guard against it on a non-JPEG source.
+    if out_fmt == "JPEG" and save_kwargs.get("quality") == "keep" and fmt != "JPEG":
+        save_kwargs["quality"] = 95
+        save_kwargs.pop("subsampling", None)
+
+    save_img.save(path_out, out_fmt, **save_kwargs)
+
+    # Optionally align the output file's mtime/atime with the rewritten
+    # EXIF date (best-effort, never fatal).
+    if opts.get("rewrite_dates") and not opts.get("strip_all"):
+        try:
+            ts = time.mktime(time.strptime(str(opts.get("datetime", "")), "%Y:%m:%d %H:%M:%S"))
+            os.utime(path_out, (ts, ts))
+        except Exception:
+            pass
+
+
+@app.route("/photo_stage", methods=["POST"])
+def photo_stage():
+    """
+    Upload ONE photo into a job. First call (no job_id) creates a fresh
+    job; later calls reuse it. Enforces allowed extensions, the 300-file
+    count and the 500 MB total cap, server-side. Returns job_id + stored
+    input filename.
+    """
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "Fichier manquant"}), 400
+        f = request.files["file"]
+        orig = f.filename or "photo"
+        ext = os.path.splitext(orig)[1].lower()
+        if ext not in PHOTO_ALLOWED_EXT:
+            return jsonify({"error": f"Format non supporté ({ext or 'inconnu'})"}), 400
+
+        job_id = (request.form.get("job_id") or "").strip()
+        if job_id and (".." in job_id or "/" in job_id):
+            return jsonify({"error": "job_id invalide"}), 400
+        if not job_id:
+            _cleanup_stale_photo_jobs()
+            job_id = uuid.uuid4().hex
+        jdir = PHOTO_DIR / job_id
+        in_dir = jdir / "in"
+        in_dir.mkdir(parents=True, exist_ok=True)
+        (jdir / "out").mkdir(parents=True, exist_ok=True)
+
+        existing = sorted(in_dir.glob("*"))
+        if len(existing) >= MAX_PHOTO_FILES:
+            return jsonify({"error": f"Maximum {MAX_PHOTO_FILES} photos."}), 400
+
+        idx = len(existing)
+        stored_name = f"{idx:03d}_{_photo_sanitize_name(orig)}"
+        path_in = in_dir / stored_name
+        f.save(str(path_in))
+
+        try:
+            total = sum(p.stat().st_size for p in in_dir.glob("*") if p.is_file())
+        except Exception:
+            total = 0
+        if total > MAX_PHOTO_TOTAL_BYTES:
+            try:
+                path_in.unlink(missing_ok=True)
+            except Exception:
+                pass
+            return jsonify({"error": "Taille totale dépasse 500 Mo."}), 400
+
+        return jsonify({
+            "job_id": job_id,
+            "stored_name": stored_name,
+            "original_name": orig[:160],
+            "size": path_in.stat().st_size,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/photo_process", methods=["POST"])
+def photo_process():
+    """
+    Process ONE staged photo (Pillow EXIF ops). Sequential, one per call.
+    Params: job_id, stored_name, out_name, index, count, and the option
+    flags (mode + toggles + rewrite values). Per-item error → HTTP 200.
+    Logs one usage_logs row under mode "photo_metadata" at the last call.
+    """
+    try:
+        job_id = (request.form.get("job_id") or "").strip()
+        if not job_id or ".." in job_id or "/" in job_id:
+            return jsonify({"error": "job_id invalide"}), 400
+        stored_name = _photo_sanitize_name(request.form.get("stored_name") or "")
+        if not stored_name:
+            return jsonify({"error": "stored_name invalide"}), 400
+
+        try:
+            index = int(request.form.get("index", "-1"))
+        except Exception:
+            index = -1
+        try:
+            count = int(request.form.get("count", "0"))
+        except Exception:
+            count = 0
+
+        def _b(key):
+            return (request.form.get(key, "0") or "0").strip().lower() in ("1", "true", "on", "yes")
+
+        opts = {
+            "strip_all":        _b("strip_all"),
+            "strip_gps":        _b("strip_gps"),
+            "rewrite_dates":    _b("rewrite_dates"),
+            "rewrite_software": _b("rewrite_software"),
+            "rewrite_author":   _b("rewrite_author"),
+            "recompress":       _b("recompress"),
+            "software":         (request.form.get("software") or "")[:120],
+            "author":           (request.form.get("author") or "")[:120],
+            "copyright":        (request.form.get("copyright") or "")[:160],
+            "datetime":         (request.form.get("datetime") or "")[:32],
+        }
+
+        jdir = PHOTO_DIR / job_id
+        path_in = jdir / "in" / stored_name
+        if not path_in.exists():
+            return jsonify({"error": "Fichier source introuvable"}), 404
+        out_dir = jdir / "out"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        in_ext = os.path.splitext(stored_name)[1].lower()
+        if in_ext not in PHOTO_ALLOWED_EXT:
+            in_ext = ".jpg"
+        base = _photo_sanitize_name(request.form.get("out_name") or os.path.splitext(stored_name)[0])
+        base = os.path.splitext(base)[0] or f"photo{index + 1}"
+        out_name = f"{base}{in_ext}"
+        n = 2
+        while (out_dir / out_name).exists():
+            out_name = f"{base}_{n}{in_ext}"; n += 1
+        path_out = out_dir / out_name
+
+        ok = True
+        err = ""
+        try:
+            _process_one_photo(str(path_in), str(path_out), opts)
+            ok = path_out.exists()
+        except Exception as e:
+            ok = False
+            err = str(e)[-300:]
+        finally:
+            gc.collect()
+
+        if index == count - 1:
+            try:
+                produced = [p for p in out_dir.glob("*") if p.is_file()]
+                success_count = len(produced)
+                log_usage_event(
+                    request.current_user, "photo_metadata",
+                    source_seconds=None, output_seconds=None,
+                    source_count=count, output_count=success_count,
+                    success=(success_count > 0),
+                    claude_requests=0,
+                )
+            except Exception as e:
+                print(f"[photo_metadata] WARNING: usage log failed job={job_id}: {e}")
+
+        if not ok:
+            try:
+                path_out.unlink(missing_ok=True)
+            except Exception:
+                pass
+            return jsonify({"error": err or "Échec du traitement", "index": index}), 200
+
+        return jsonify({"index": index, "filename": out_name, "ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e), "index": request.form.get("index")}), 200
+
+
+@app.route("/photo_zip", methods=["POST"])
+def photo_zip():
+    """Zip every processed photo for a job (flat, no subfolders)."""
+    try:
+        data = request.get_json(force=True) or {}
+        job_id = (data.get("job_id") or "").strip()
+        if not job_id or ".." in job_id or "/" in job_id:
+            return jsonify({"error": "job_id invalide"}), 400
+        out_dir = PHOTO_DIR / job_id / "out"
+        files = sorted(p for p in out_dir.glob("*") if p.is_file()) if out_dir.exists() else []
+        if not files:
+            return jsonify({"error": "Aucun fichier valide trouvé"}), 400
+        zip_path = f"/tmp/photos_{uuid.uuid4().hex}.zip"
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as zf:
+            for p in files:
+                zf.write(str(p), p.name)
+        return send_file(zip_path, as_attachment=True, download_name="photos.zip", mimetype="application/zip")
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/photo_file/<job_id>/<filename>")
+def photo_file(job_id, filename):
+    """Download a single processed photo."""
+    if ".." in job_id or "/" in job_id or ".." in filename or "/" in filename:
+        return jsonify({"error": "Invalid"}), 400
+    path = PHOTO_DIR / job_id / "out" / filename
+    if path.exists():
+        return send_file(str(path), as_attachment=True, download_name=filename)
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.route("/photo_cleanup", methods=["POST"])
+def photo_cleanup():
+    """Delete all staged inputs/outputs for a finished photo job."""
+    try:
+        data = request.get_json(force=True) or {}
+        job_id = (data.get("job_id") or "").strip()
+        if not job_id or ".." in job_id or "/" in job_id:
+            return jsonify({"error": "job_id invalide"}), 400
+        jdir = PHOTO_DIR / job_id
         if jdir.exists():
             shutil.rmtree(jdir, ignore_errors=True)
         gc.collect()
