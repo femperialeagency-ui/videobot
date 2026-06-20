@@ -1984,7 +1984,70 @@ def _wrap_lines(orig_lines: list, font, max_w: int) -> list:
     return result if result else orig_lines
 
 
-def _load_caption_font(fontsize: int, bold: bool):
+# ── Font Studio (optional) — candidate font files per choice ───────
+# Used ONLY when a non-"default" font is explicitly chosen in the UI.
+# Each list is tried in order; the first that loads wins; if NONE load
+# (e.g. an optional .ttf the user hasn't supplied), _load_caption_font
+# falls straight through to the EXACT current default behaviour. Some
+# choices already work out of the box via the fonts the Dockerfile
+# installs (Liberation Serif/Sans); others degrade gracefully to the
+# default until the matching .ttf is dropped into fonts/. No font files
+# are bundled or shared by this code.
+_FONT_DIR_FS = Path(__file__).parent / "fonts"
+_FONT_STUDIO_CANDIDATES = {
+    "tiktok_bold": {
+        "regular": [str(_FONT_DIR_FS / "TikTokBold.ttf"), str(_FONT_DIR_FS / "Montserrat-Bold.ttf"), FONT_BOLD],
+        "bold":    [str(_FONT_DIR_FS / "TikTokBold.ttf"), str(_FONT_DIR_FS / "Montserrat-Bold.ttf"), FONT_BOLD],
+    },
+    "clean_sans": {
+        "regular": [str(_FONT_DIR_FS / "CleanSans-Regular.ttf"), str(_FONT_DIR_FS / "Roboto-Regular.ttf"), FONT_REG],
+        "bold":    [str(_FONT_DIR_FS / "CleanSans-Bold.ttf"), str(_FONT_DIR_FS / "Roboto-Bold.ttf"), FONT_BOLD],
+    },
+    "rounded": {
+        "regular": [str(_FONT_DIR_FS / "Rounded-Regular.ttf"), str(_FONT_DIR_FS / "Nunito-Regular.ttf")],
+        "bold":    [str(_FONT_DIR_FS / "Rounded-Bold.ttf"), str(_FONT_DIR_FS / "Nunito-Bold.ttf")],
+    },
+    "serif": {
+        "regular": [str(_FONT_DIR_FS / "Serif-Regular.ttf"), "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf"],
+        "bold":    [str(_FONT_DIR_FS / "Serif-Bold.ttf"), "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf"],
+    },
+    "handwritten": {
+        "regular": [str(_FONT_DIR_FS / "Handwritten.ttf"), str(_FONT_DIR_FS / "Caveat-Regular.ttf")],
+        "bold":    [str(_FONT_DIR_FS / "Handwritten.ttf"), str(_FONT_DIR_FS / "Caveat-Bold.ttf")],
+    },
+}
+
+
+def _parse_hex_rgba(s):
+    """Parse '#RRGGBB' (or 'RRGGBB') into an opaque RGBA tuple. Returns
+    None for anything invalid/empty so callers keep their current color."""
+    if not s or not isinstance(s, str):
+        return None
+    h = s.strip().lstrip("#")
+    if len(h) == 6:
+        try:
+            return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), 255)
+        except Exception:
+            return None
+    return None
+
+
+def _caption_style_from_request():
+    """Read the OPTIONAL Font Studio 'caption_style' JSON from the current
+    request form. Returns a non-empty dict, or None when absent/invalid —
+    and None means render_text_overlay runs its exact pre-Font-Studio path.
+    Used only by /process and /batch_render (Simple + Batch)."""
+    try:
+        raw = request.form.get("caption_style")
+        if not raw:
+            return None
+        cs = json.loads(raw)
+        return cs if isinstance(cs, dict) and cs else None
+    except Exception:
+        return None
+
+
+def _load_caption_font(fontsize: int, bold: bool, font_key: str = "default"):
     """
     Load the caption font at the requested pixel size, selecting the
     Bold or Regular weight from the bundled Inter variable font.
@@ -1997,6 +2060,17 @@ def _load_caption_font(fontsize: int, bold: bool):
     fall back to Liberation if the bundled font can't be loaded/instanced.
     """
     from PIL import ImageFont
+
+    # Font Studio (optional): a non-"default" choice tries its candidate
+    # files first. If none load, we fall straight through to the EXACT
+    # current default path below — Inter is never forced, the fallback is
+    # never broken.
+    if font_key and font_key != "default":
+        for cand in _FONT_STUDIO_CANDIDATES.get(font_key, {}).get("bold" if bold else "regular", []):
+            try:
+                return ImageFont.truetype(cand, fontsize)
+            except Exception:
+                continue
 
     try:
         font = ImageFont.truetype(FONT_CAPTION, fontsize)
@@ -2043,9 +2117,15 @@ def _load_caption_font(fontsize: int, bold: bool):
 # adds such a step by mistake. (The [EMOJI_DEBUG] log below proves this
 # at runtime: raw_text_from_vision == text_sent_to_renderer ==
 # text_after_cleanup for any caption containing emojis.)
-def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str:
+def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, style: dict = None) -> str:
     """
     Render all text objects onto a transparent RGBA image.
+
+    `style` is an OPTIONAL Font Studio override dict (global per render).
+    When it is None or every key is the default sentinel, EVERY computed
+    value below equals the original hard-coded expression, so the output
+    is byte-identical to the pre-Font-Studio behaviour. Only explicitly
+    non-default keys change anything.
     Improvements over v1:
     - Word-wrap BEFORE shrinking font (preserves readability)
     - Font size floor: never below max(24px, 60% of target size)
@@ -2058,6 +2138,20 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
 
     overlay = Image.new("RGBA", (wa, ha), (0, 0, 0, 0))
     _caption_debug_log.clear()
+
+    # ── Font Studio (optional) — parse overrides once. Every default
+    # sentinel maps to the original hard-coded value, so style=None (or
+    # all-defaults) ⇒ byte-identical render. ──
+    style = style or {}
+    _fs_font    = (style.get("font") or "default")
+    _fs_sizef   = style.get("size_factor")
+    _fs_size    = float(_fs_sizef) if isinstance(_fs_sizef, (int, float)) and _fs_sizef > 0 else 1.0
+    _fs_contour = (style.get("contour") or "default")
+    _fs_shadow  = (style.get("shadow") or "off")
+    _fs_txt     = _parse_hex_rgba(style.get("text_color"))
+    _fs_stroke  = _parse_hex_rgba(style.get("stroke_color"))
+    _FS_CONTOUR_DIV = {"default": 22, "fin": 30, "moyen": 16, "epais": 11}
+    _FS_SHADOW_CFG  = {"legere": (2, 110), "forte": (4, 175)}  # (offset_px_per_unit, alpha)
 
     use_pilmoji = True
     try:
@@ -2074,7 +2168,7 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
         # Scale down from the vision-estimated size — generated captions were
         # consistently reading larger/heavier than native TikTok captions.
         fontsize_pct   = max(0.022, min(block.get("fontsize_pct", 0.035), 0.08)) * CAPTION_SIZE_SCALE
-        target_fontsize = int(ha * fontsize_pct)
+        target_fontsize = int(ha * fontsize_pct * _fs_size)  # _fs_size=1.0 by default ⇒ unchanged
         fontsize        = max(24, target_fontsize)
         # Floor: never shrink below 60% of the requested size (or 24px)
         min_fontsize    = max(24, int(target_fontsize * 0.60))
@@ -2087,6 +2181,8 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
         bold      = block.get("bold", False)
         color_str = block.get("color", "white")
         color     = (255, 255, 255, 255) if "white" in color_str.lower() else (0, 0, 0, 255)
+        if _fs_txt:
+            color = _fs_txt   # Font Studio text-color override (else unchanged)
         align     = block.get("align", "center")
 
         # ── Max width: use width_pct if provided, else 88% of frame ──
@@ -2100,12 +2196,12 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
             continue
 
         # ── Phase 1: word-wrap at target font size ────────────────────
-        font  = _load_caption_font(fontsize, bold)
+        font  = _load_caption_font(fontsize, bold, _fs_font)
         lines = _wrap_lines(orig_lines, font, max_w)
 
         # ── Phase 2: shrink only if still overflowing, respect floor ──
         for _ in range(30):
-            font = _load_caption_font(fontsize, bold)
+            font = _load_caption_font(fontsize, bold, _fs_font)
             max_line_w = max((_measure_text(font, ln) for ln in lines), default=0)
             if max_line_w <= max_w or fontsize <= min_fontsize:
                 break
@@ -2130,8 +2226,8 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
         # reads as a crisp, solid line — darker edge separation without
         # adding any extra pixels of width. Border math, weight, size,
         # colour, font family, position, wrap and spacing untouched.
-        border  = max(1, fontsize // 22)
-        shadow  = (0, 0, 0, 255)
+        border  = max(1, fontsize // _FS_CONTOUR_DIV.get(_fs_contour, 22))  # //22 by default ⇒ unchanged
+        shadow  = _fs_stroke or (0, 0, 0, 255)  # Font Studio stroke-color override (else unchanged)
         # Slightly more breathing room between lines than native captions'
         # tightest spacing — keeps multi-line blocks from reading as a dense
         # slab of text the way the generated output previously did.
@@ -2159,6 +2255,14 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
                 x = cx - block_w // 2
 
             x = max(margin, min(x, wa - tw - margin))
+
+            # ── Font Studio (optional) drop shadow — OFF by default, so
+            # this block is fully skipped in the default path. When on,
+            # draws the line offset behind the stroke/fill in soft black. ──
+            if _fs_shadow in _FS_SHADOW_CFG:
+                _soff, _salpha = _FS_SHADOW_CFG[_fs_shadow]
+                _sdraw = ImageDraw.Draw(overlay)
+                _sdraw.text((x + _soff, y + _soff), line, font=font, fill=(0, 0, 0, _salpha))
 
             # NOTE (emoji-loss fix): the fallback used to flip the shared
             # `use_pilmoji` flag to False on ANY exception, which silently
@@ -2954,7 +3058,7 @@ def process():
                     # Render EACH caption alone on its own transparent layer
                     # using the exact same render_text_overlay function/logic
                     # as every other mode — only the time window differs.
-                    op = render_text_overlay([line], wa, ha, wb, hb)
+                    op = render_text_overlay([line], wa, ha, wb, hb, style=_caption_style_from_request())
                     overlay_paths.append(op)
                     overlay_specs.append((op, start, end))
 
@@ -2965,7 +3069,7 @@ def process():
             else:
                 # ── Original single-overlay path (simple mode + batch
                 # fallback when timing wasn't available) — unchanged. ──
-                overlay_path = render_text_overlay(lines, wa, ha, wb, hb)
+                overlay_path = render_text_overlay(lines, wa, ha, wb, hb, style=_caption_style_from_request())
                 overlay_paths.append(overlay_path)
 
                 cmd = [
@@ -3329,7 +3433,7 @@ def batch_render():
                         end   = max(start + 0.05, float(line.get("end_time", start + 0.05)))
                     except Exception:
                         continue
-                    op = render_text_overlay([line], wa, ha, wb, hb)
+                    op = render_text_overlay([line], wa, ha, wb, hb, style=_caption_style_from_request())
                     overlay_paths.append(op)
                     overlay_specs.append((op, start, end))
                     if CAPTION_VISUAL_DEBUG and debug_capture is None and _caption_debug_log:
@@ -3341,7 +3445,7 @@ def batch_render():
 
                 cmd = _build_timed_overlay_cmd(path_a, path_b, overlay_specs, path_out)
             else:
-                overlay_path = render_text_overlay(lines, wa, ha, wb, hb)
+                overlay_path = render_text_overlay(lines, wa, ha, wb, hb, style=_caption_style_from_request())
                 overlay_paths.append(overlay_path)
                 if CAPTION_VISUAL_DEBUG and _caption_debug_log:
                     debug_capture = (dict(_caption_debug_log[0]), 0.5)

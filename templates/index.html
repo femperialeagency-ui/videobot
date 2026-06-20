@@ -1104,6 +1104,17 @@ SIMPLE MODE
 <input type="hidden" id="linesJson" />
 </div>
 
+<details class="card" id="fsS_panel">
+<summary style="cursor:pointer;font-weight:700;list-style:revert;">🎨 Style des captions <span style="font-weight:500;opacity:.7;font-size:.85rem">(optionnel — défaut = rendu actuel)</span></summary>
+<div style="font-size:0.78rem;color:var(--muted);margin:8px 0 12px;">Tout reste sur « Défaut » : la vidéo C sort exactement comme aujourd'hui. Changez une option seulement si vous le souhaitez.</div>
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;">Police</label><select id="fsS_font"><option value="default">Défaut</option><option value="tiktok_bold">TikTok Bold</option><option value="clean_sans">Clean Sans</option><option value="rounded">Rounded</option><option value="serif">Serif</option><option value="handwritten">Handwritten</option></select></div>
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;cursor:pointer;"><input type="checkbox" id="fsS_sizeOn"> Taille</label><input type="range" id="fsS_size" min="0.7" max="1.5" step="0.05" value="1.0"><span class="v-slider-val" id="fsS_sizeVal">1.0×</span></div>
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;">Contour</label><select id="fsS_contour"><option value="default">Défaut</option><option value="fin">Fin</option><option value="moyen">Moyen</option><option value="epais">Épais</option></select></div>
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;">Ombre</label><select id="fsS_shadow"><option value="off">Off</option><option value="legere">Légère</option><option value="forte">Forte</option></select></div>
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;cursor:pointer;"><input type="checkbox" id="fsS_txtOn"> Couleur texte</label><input type="color" id="fsS_txtColor" value="#ffffff"></div>
+<div style="display:flex;align-items:center;gap:10px;"><label style="min-width:130px;cursor:pointer;"><input type="checkbox" id="fsS_strokeOn"> Couleur contour</label><input type="color" id="fsS_strokeColor" value="#000000"></div>
+</details>
+
 <button id="submitBtn" class="primary-btn" onclick="submitForm()" disabled><svg class="ico-svg sm" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 2 L4.5 10.5 H8.3 L7.4 16 L13.5 7 H9.5 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="currentColor" fill-opacity=".18"/></svg> Générer la Vidéo C</button>
 
 <div class="card" id="progressCard">
@@ -1189,6 +1200,17 @@ BATCH MODE
 {% endif %}
 </div>
 {% endif %}
+
+<details class="card" id="fsB_panel">
+<summary style="cursor:pointer;font-weight:700;list-style:revert;">🎨 Style des captions <span style="font-weight:500;opacity:.7;font-size:.85rem">(optionnel — défaut = rendu actuel)</span></summary>
+<div style="font-size:0.78rem;color:var(--muted);margin:8px 0 12px;">Appliqué à toutes les vidéos du batch. Tout sur « Défaut » = sortie identique à aujourd'hui.</div>
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;">Police</label><select id="fsB_font"><option value="default">Défaut</option><option value="tiktok_bold">TikTok Bold</option><option value="clean_sans">Clean Sans</option><option value="rounded">Rounded</option><option value="serif">Serif</option><option value="handwritten">Handwritten</option></select></div>
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;cursor:pointer;"><input type="checkbox" id="fsB_sizeOn"> Taille</label><input type="range" id="fsB_size" min="0.7" max="1.5" step="0.05" value="1.0"><span class="v-slider-val" id="fsB_sizeVal">1.0×</span></div>
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;">Contour</label><select id="fsB_contour"><option value="default">Défaut</option><option value="fin">Fin</option><option value="moyen">Moyen</option><option value="epais">Épais</option></select></div>
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;">Ombre</label><select id="fsB_shadow"><option value="off">Off</option><option value="legere">Légère</option><option value="forte">Forte</option></select></div>
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;cursor:pointer;"><input type="checkbox" id="fsB_txtOn"> Couleur texte</label><input type="color" id="fsB_txtColor" value="#ffffff"></div>
+<div style="display:flex;align-items:center;gap:10px;"><label style="min-width:130px;cursor:pointer;"><input type="checkbox" id="fsB_strokeOn"> Couleur contour</label><input type="color" id="fsB_strokeColor" value="#000000"></div>
+</details>
 
 <button id="bLaunchBtn" class="primary-btn" onclick="runBatch()" disabled><svg class="ico-svg sm" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 2 L4.5 10.5 H8.3 L7.4 16 L13.5 7 H9.5 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="currentColor" fill-opacity=".18"/></svg> Lancer le Batch</button>
 
@@ -1784,6 +1806,7 @@ const fd = new FormData();
 fd.append("video_a", vaFile);
 fd.append("video_b", vbFile);
 fd.append("lines_json", JSON.stringify(linesData));
+const _csS = buildCaptionStyle("fsS_"); if (_csS) fd.append("caption_style", JSON.stringify(_csS));
 
 try {
 const res = await fetch("/process", { method: "POST", body: fd });
@@ -1905,6 +1928,9 @@ document.getElementById("bLaunchBtn").disabled =
 // staging files (/batch_cleanup).
 async function runBatch() {
 if (bFilesA.length === 0 || bFilesB.length === 0 || bRunning) return;
+// Font Studio (optional): computed ONCE, applied to every combo. null
+// when all-default ⇒ caption_style is never sent ⇒ render unchanged.
+const _bCaptionStyle = buildCaptionStyle("fsB_");
 const totalCombos = bFilesA.length * bFilesB.length;
 if (totalCombos > MAX_BATCH_COMBOS) {
 alert(`Maximum autorisé : ${MAX_BATCH_COMBOS} vidéos générées.`);
@@ -1976,6 +2002,7 @@ fd.append("b_index", b);
 fd.append("num_a", bFilesA.length);
 fd.append("num_b", bFilesB.length);
 fd.append("lines_json", JSON.stringify(linesByB[b]));
+if (_bCaptionStyle) fd.append("caption_style", JSON.stringify(_bCaptionStyle));
 const r = await fetch("/batch_render", { method: "POST", body: fd });
 const d = await r.json();
 if (!r.ok || d.error) throw new Error(d.error || r.statusText);
@@ -3256,6 +3283,31 @@ fetch("/photo_cleanup", { method: "POST", headers: { "Content-Type": "applicatio
 finally { btn.disabled = false; btn.textContent = orig; }
 }
 document.getElementById("phModeHint").textContent = PH_MODE_HINTS["rapide"];
+
+// ══════════════════════════════════════════
+// FONT STUDIO (optional) — captions style, Simple + Batch.
+// Builds a caption_style object ONLY from non-default selections; if the
+// user leaves everything on "Défaut"/Off, returns null and NOTHING is
+// sent, so /process & /batch_render render exactly as today.
+// ══════════════════════════════════════════
+function buildCaptionStyle(p) {
+const g = id => document.getElementById(p + id);
+const st = {};
+const font = g("font") ? g("font").value : "default";
+if (font && font !== "default") st.font = font;
+if (g("sizeOn") && g("sizeOn").checked) st.size_factor = parseFloat(g("size").value);
+const contour = g("contour") ? g("contour").value : "default";
+if (contour && contour !== "default") st.contour = contour;
+const shadow = g("shadow") ? g("shadow").value : "off";
+if (shadow && shadow !== "off") st.shadow = shadow;
+if (g("txtOn") && g("txtOn").checked) st.text_color = g("txtColor").value;
+if (g("strokeOn") && g("strokeOn").checked) st.stroke_color = g("strokeColor").value;
+return Object.keys(st).length ? st : null;
+}
+["fsS_", "fsB_"].forEach(p => {
+const sl = document.getElementById(p + "size"), val = document.getElementById(p + "sizeVal");
+if (sl && val) sl.addEventListener("input", () => { val.textContent = parseFloat(sl.value).toFixed(2).replace(/0$/, "") + "×"; });
+});
 </script>
 </body>
 </html>
