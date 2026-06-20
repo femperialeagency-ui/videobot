@@ -2319,28 +2319,39 @@ def _get_local_twemoji_source():
     if _LOCAL_TWEMOJI_BUILT:
         return _LOCAL_TWEMOJI
     _LOCAL_TWEMOJI_BUILT = True
+    import sys as _sys
+    _dbg = (os.environ.get("OCR_EMOJI_DEBUG", "") == "1")
     try:
         from io import BytesIO
         from pilmoji.source import BaseSource
 
         class LocalTwemojiSource(BaseSource):
             """Serves Twemoji 72x72 PNGs from disk; None for any missing
-            emoji (→ fallback handles it). No network, never raises."""
+            emoji (→ fallback handles it). No network, never raises.
+            Logs: MISS + source/mode always (diagnostic), HIT only when
+            OCR_EMOJI_DEBUG=1 (avoids per-emoji spam in prod)."""
             def get_emoji(self, emoji, /):
                 try:
-                    p = _TWEMOJI_DIR / (_twemoji_codepoints(emoji) + ".png")
+                    name = _twemoji_codepoints(emoji) + ".png"
+                    p = _TWEMOJI_DIR / name
                     if p.exists():
+                        if _dbg:
+                            print(f"[TWEMOJI] HIT emoji={emoji!r} file={name}", file=_sys.stderr)
                         return BytesIO(p.read_bytes())
-                except Exception:
-                    pass
+                    print(f"[TWEMOJI] MISS emoji={emoji!r} file={name}", file=_sys.stderr)
+                except Exception as e:
+                    print(f"[TWEMOJI] MISS emoji={emoji!r} (error: {e})", file=_sys.stderr)
                 return None
 
             def get_discord_emoji(self, id, /):
                 return None
 
         _LOCAL_TWEMOJI = LocalTwemojiSource()
-    except Exception:
+        print(f"[TWEMOJI] source locale construite, dir={_TWEMOJI_DIR}, "
+              f"exists={_TWEMOJI_DIR.exists()}", file=_sys.stderr)
+    except Exception as e:
         _LOCAL_TWEMOJI = None
+        print(f"[TWEMOJI] source locale NON construite (source=None) : {e}", file=_sys.stderr)
     return _LOCAL_TWEMOJI
 
 
@@ -2390,6 +2401,8 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, style:
     # (passing source=None would raise inside Pilmoji.__init__).
     _src = _get_local_twemoji_source() if use_pilmoji else None
     _emoji_kw = {"source": _src} if _src is not None else {}
+    import sys as _sys_tw
+    print(f"[TWEMOJI] mode={'local' if _src is not None else 'fallback'}", file=_sys_tw.stderr)
 
     for block in blocks:
         text = block.get("text", "").strip()
