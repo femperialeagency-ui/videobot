@@ -1166,6 +1166,29 @@ BATCH MODE
 </div>
 {% endif %}
 
+<!-- Batch Variation (optional, V1, additive) — off by default -->
+<div class="card">
+<h2><span class="num">3</span> Variantes <span style="font-weight:500;opacity:.7;font-size:.85rem">(optionnel)</span></h2>
+<div style="font-size:0.8rem;color:var(--muted);margin:-6px 0 14px;">Génère, pour chaque vidéo produite, des copies techniquement distinctes mais visuellement identiques (métadonnées, bitrate, micro-réglages) — utile pour republier sur plusieurs comptes.</div>
+<label style="display:flex;align-items:center;gap:9px;cursor:pointer;font-weight:600;">
+<input type="checkbox" id="bvEnable" onchange="onBatchVariationToggle()"> Activer la génération de variantes
+</label>
+<div id="bvOptions" style="display:none;margin-top:14px;gap:18px;flex-wrap:wrap;align-items:flex-end;">
+<div>
+<label for="bvCount" style="display:block;font-size:.8rem;color:var(--muted);margin-bottom:5px;">Variantes par vidéo</label>
+<select id="bvCount" onchange="updateComboPreview()">
+<option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option>
+</select>
+</div>
+<div>
+<label for="bvStrength" style="display:block;font-size:.8rem;color:var(--muted);margin-bottom:5px;">Intensité</label>
+<select id="bvStrength">
+<option value="light">Light</option><option value="medium">Medium</option><option value="strong">Strong</option>
+</select>
+</div>
+</div>
+</div>
+
 <button id="bLaunchBtn" class="primary-btn" onclick="runBatch()" disabled><svg class="ico-svg sm" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 2 L4.5 10.5 H8.3 L7.4 16 L13.5 7 H9.5 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="currentColor" fill-opacity=".18"/></svg> Lancer le Batch</button>
 
 <!-- Progress + per-video results -->
@@ -1518,6 +1541,30 @@ const MAX_BATCH_A = 10;
 const MAX_BATCH_B = 10;
 const MAX_BATCH_COMBOS = 100;
 
+// ── Batch Variation (V1, additive). Mirror of the server-side caps in
+// app.py. The whole feature is gated behind the #bvEnable checkbox,
+// which is unchecked by default — when off, every line below is a no-op
+// and runBatch behaves exactly as before this feature existed.
+const MAX_BATCH_TOTAL_OUTPUTS = 200;
+function batchVariationEnabled() {
+const el = document.getElementById("bvEnable");
+return !!(el && el.checked);
+}
+function batchVariationCount() {
+const el = document.getElementById("bvCount");
+return el ? (parseInt(el.value, 10) || 1) : 1;
+}
+function batchVariationStrength() {
+const el = document.getElementById("bvStrength");
+return el ? el.value : "light";
+}
+function onBatchVariationToggle() {
+const opts = document.getElementById("bvOptions");
+if (opts) opts.style.display = batchVariationEnabled() ? "flex" : "none";
+updateComboPreview();
+checkBatchReady();
+}
+
 let bFilesA = [];
 let bFilesB = [];
 let bResults = []; // {filename, status, statusText, batch_id}
@@ -1582,15 +1629,29 @@ if (nA === 0 || nB === 0) { el.textContent = ""; return; }
 const total = nA * nB;
 if (total > MAX_BATCH_COMBOS) {
 el.innerHTML = `<span style="color:var(--error)">⚠️ ${nA} × ${nB} = ${total} vidéos dépasse la limite de ${MAX_BATCH_COMBOS}.</span>`;
-} else {
-el.textContent = `→ ${nA} source${nA > 1 ? "s" : ""} A × ${nB} cible${nB > 1 ? "s" : ""} B = ${total} vidéo${total > 1 ? "s" : ""} générée${total > 1 ? "s" : ""}`;
+return;
 }
+// Batch Variation (additive): factor in variants only when enabled.
+if (batchVariationEnabled()) {
+const vc = batchVariationCount();
+const grandTotal = total + total * vc;
+if (total * vc > MAX_BATCH_TOTAL_OUTPUTS) {
+el.innerHTML = `<span style="color:var(--error)">⚠️ ${total} × ${vc} variantes = ${total * vc} dépasse la limite de ${MAX_BATCH_TOTAL_OUTPUTS} variantes.</span>`;
+} else {
+el.textContent = `→ ${total} vidéo${total > 1 ? "s" : ""} + ${total * vc} variante${total * vc > 1 ? "s" : ""} = ${grandTotal} fichier${grandTotal > 1 ? "s" : ""} au total`;
+}
+return;
+}
+el.textContent = `→ ${nA} source${nA > 1 ? "s" : ""} A × ${nB} cible${nB > 1 ? "s" : ""} B = ${total} vidéo${total > 1 ? "s" : ""} générée${total > 1 ? "s" : ""}`;
 }
 
 function checkBatchReady() {
 const total = bFilesA.length * bFilesB.length;
+// Batch Variation (additive): also block when the requested variant
+// volume exceeds the hard cap. No-op when the feature is disabled.
+const variantOverflow = batchVariationEnabled() && (total * batchVariationCount() > MAX_BATCH_TOTAL_OUTPUTS);
 document.getElementById("bLaunchBtn").disabled =
-!(bFilesA.length > 0 && bFilesB.length > 0) || total > MAX_BATCH_COMBOS || bRunning;
+!(bFilesA.length > 0 && bFilesB.length > 0) || total > MAX_BATCH_COMBOS || variantOverflow || bRunning;
 }
 
 // ── Run batch (A×B combination matrix) ──
@@ -1690,6 +1751,42 @@ bResults[i].statusText = "❌ " + e.message;
 
 renderBatchResults();
 updateBatchProgress(i + 1, combos.length);
+}
+
+// ── Step 5 (optional, additive): generate variants of each produced
+// video. Runs ONLY when the checkbox is on; otherwise this whole block
+// is skipped and batch behaves exactly as before. Sequential, one
+// FFmpeg per /batch_variation_run call, awaited — same discipline as
+// the combo loop. Per-variant failures are non-fatal. ──
+if (batchVariationEnabled()) {
+const vCount = batchVariationCount();
+const vStrength = batchVariationStrength();
+const produced = bResults.filter(r => r.status === "done");
+const totalVariants = produced.length * vCount;
+if (totalVariants > 0) {
+document.getElementById("bProgressTitle").textContent = "🎲 Génération des variantes…";
+updateBatchProgress(0, totalVariants);
+let vDone = 0;
+for (const combo of produced) {
+for (let v = 0; v < vCount; v++) {
+try {
+const fd = new FormData();
+fd.append("batch_id", bBatchId);
+fd.append("combo_name", combo.filename);
+fd.append("var_index", v);
+fd.append("var_count", vCount);
+fd.append("strength", vStrength);
+const r = await fetch("/batch_variation_run", { method: "POST", body: fd });
+const d = await r.json();
+if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+} catch(e) {
+// Non-fatal: a failed variant is skipped; the rest continue.
+}
+vDone++;
+updateBatchProgress(vDone, totalVariants);
+}
+}
+}
 }
 
 document.getElementById("bProgressTitle").textContent = "✅ Batch terminé";
