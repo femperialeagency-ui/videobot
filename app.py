@@ -1219,6 +1219,208 @@ def _build_variation_ffmpeg_cmd(path_in: str, path_out: str, params: dict,
     return cmd
 
 
+# ══════════════════════════════════════════════════════════════════
+# BATCH VARIATION STUDIO — hardened, anti-gray FFmpeg builders (V2)
+#
+# Fully separate, additive siblings of the Variation Studio builders
+# above. They REUSE the read-only param pickers (_pick_variation_params,
+# _pick_advanced_variation_params, _pick_metadata_profile,
+# _pick_advanced_metadata_profile) but NEVER modify them, and they are
+# never called by /variation_run, /batch_render, /analyze, /process, or
+# any caption code. Their only reason to exist separately from the
+# Variation Studio builders is three hardening fixes that address the
+# gray-canvas bug seen when applying variation to already-rendered batch
+# outputs (re-encoded composites, phone-portrait rotation metadata, odd
+# coded dimensions):
+#   1. output pinned to EVEN display dimensions (rotation-aware), so
+#      yuv420p (which requires even dims) never silently falls back to
+#      yuv444p / a player-incompatible "gray" frame.
+#   2. trailing `format=yuv420p` in the filter chain AND `-pix_fmt
+#      yuv420p` on the encoder — double guarantee of a clean, universally
+#      playable pixel format.
+#   3. rotate uses opaque `fillcolor=black` (not the transparent
+#      `black@0`), zoom/crop are expressed via iw/ih (never trusting a
+#      possibly-wrong probed coded size), and `setsar=1` forces square
+#      pixels so the aspect ratio can never break.
+# Variation Studio's own builders are left byte-identical.
+# ══════════════════════════════════════════════════════════════════
+
+MAX_BATCH_VSTUDIO_PER_COMBO = 25   # hard cap: variants per produced batch video
+MAX_BATCH_VSTUDIO_TOTAL     = 300  # hard cap: produced_videos × variants_per_video
+
+
+def _probe_even_display_dims(path: str):
+    """
+    Return (width, height) DISPLAY dimensions, rotation-aware and forced
+    to even numbers. FFmpeg auto-rotates on decode, so the frame entering
+    -vf is already in display orientation; pinning the final scale to
+    these dims keeps orientation and aspect correct AND guarantees even
+    dimensions (a hard requirement for yuv420p). Never raises — falls back
+    to a sane portrait default."""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json",
+             "-show_streams", path],
+            capture_output=True, text=True, timeout=30
+        )
+        for s in json.loads(r.stdout).get("streams", []):
+            if s.get("codec_type") != "video":
+                continue
+            w = int(s["width"]); h = int(s["height"])
+            rot = 0
+            try:
+                rot = int(float(s.get("tags", {}).get("rotate", 0)))
+            except Exception:
+                rot = 0
+            for sd in (s.get("side_data_list") or []):
+                if "rotation" in sd:
+                    try:
+                        rot = int(float(sd["rotation"]))
+                    except Exception:
+                        pass
+            if abs(rot) % 180 == 90:   # 90 / 270 / -90 → portrait/landscape swap
+                w, h = h, w
+            w = max(2, w - (w % 2))    # force EVEN (round down) — yuv420p needs it
+            h = max(2, h - (h % 2))
+            return w, h
+    except Exception:
+        pass
+    return 720, 1280
+
+
+def _build_batch_variation_filter_graph(params: dict, out_w: int, out_h: int):
+    """
+    Hardened sibling of _build_variation_filter_graph. Same allowed
+    transformations and the same already-sampled params dict, but every
+    dimension reference uses iw/ih expressions (never a probed coded
+    size), the final stage pins to EVEN display dims + square pixels +
+    yuv420p, and rotate fills with opaque black. Returns (vf, af, out_fps).
+    Pure string construction — runs nothing.
+    """
+    out_w = max(2, int(out_w or 720)); out_w -= out_w % 2
+    out_h = max(2, int(out_h or 1280)); out_h -= out_h % 2
+
+    vf_parts = []
+
+    # Zoom then crop back to the same frame size — expressed purely via
+    # iw/ih so it works regardless of the source's real dimensions.
+    zoom = max(1.0, float(params.get("zoom", 1.0)))
+    if zoom > 1.0005:
+        vf_parts.append(f"scale=iw*{zoom:.5f}:ih*{zoom:.5f}")
+        vf_parts.append(f"crop=iw/{zoom:.5f}:ih/{zoom:.5f}")
+
+    # Independent fractional re-frame.
+    crop_pct = max(0.0, min(0.08, float(params.get("crop_pct", 0.0))))
+    if crop_pct > 0.0005:
+        vf_parts.append(f"crop=iw*{1 - crop_pct:.4f}:ih*{1 - crop_pct:.4f}")
+
+    rot = float(params.get("rotation_deg", 0.0))
+    if abs(rot) > 0.01:
+        # OPAQUE black fill (not black@0): on a non-alpha yuv output a
+        # transparent fill flattens to an undefined gray; opaque black is
+        # deterministic, and the tiny corner wedges vanish under the
+        # final scale-back below.
+        vf_parts.append(f"rotate={rot:.3f}*PI/180:fillcolor=black:ow=rotw(iw):oh=roth(ih)")
+
+    brightness = max(-0.15, min(0.15, float(params.get("brightness", 0.0))))
+    contrast   = max(0.5,  min(1.5,  float(params.get("contrast", 1.0))))
+    saturation = max(0.5,  min(1.5,  float(params.get("saturation", 1.0))))
+    _gamma_override = params.get("gamma")
+    if _gamma_override is not None:
+        gamma = max(0.85, min(1.15, float(_gamma_override)))
+    else:
+        gamma = max(0.85, min(1.15, 1.0 + brightness * 0.3))
+    vf_parts.append(f"eq=brightness={brightness:.4f}:contrast={contrast:.4f}:saturation={saturation:.4f}:gamma={gamma:.4f}")
+
+    noise = max(0.0, min(10.0, float(params.get("noise_strength", 0.0))))
+    if noise > 0.05:
+        vf_parts.append(f"noise=alls={noise:.2f}:allf=t+u")
+
+    sharpen = max(0.0, min(0.5, float(params.get("sharpen_amount", 0.0))))
+    if sharpen > 0.02:
+        vf_parts.append(f"unsharp=5:5:{sharpen:.3f}:5:5:0.0")
+
+    blur_sigma = max(0.0, min(2.0, float(params.get("blur_sigma", 0.0))))
+    if blur_sigma > 0.05:
+        vf_parts.append(f"gblur=sigma={blur_sigma:.3f}")
+
+    speed = max(0.9, min(1.1, float(params.get("speed", 1.0))))
+    if abs(speed - 1.0) > 0.0005:
+        vf_parts.append(f"setpts=PTS/{speed:.5f}")
+
+    # ── Anti-gray finish: pin to EVEN display dims, square pixels, and an
+    # explicit yuv420p so the output is always a clean, universally
+    # playable frame (no yuv444p fallback, no broken aspect, no borders).
+    fps_delta = int(params.get("fps_delta", 0))
+    out_fps = None
+    vf_parts.append(f"scale={out_w}:{out_h}:flags=bicubic")
+    vf_parts.append("setsar=1")
+    if fps_delta:
+        out_fps = max(15, 24 + fps_delta)
+        vf_parts.append(f"fps={out_fps}")
+    vf_parts.append("format=yuv420p")
+
+    vf = ",".join(vf_parts)
+
+    # ── Audio chain — identical logic to Variation Studio. ──
+    af_parts = []
+    pitch = max(0.95, min(1.05, float(params.get("pitch", 1.0))))
+    if abs(pitch - 1.0) > 0.0005:
+        base_rate = 44100
+        af_parts.append(f"asetrate={int(base_rate * pitch)}")
+        af_parts.append(f"aresample={base_rate}")
+        af_parts.append(f"atempo={1.0 / pitch:.5f}")
+    if abs(speed - 1.0) > 0.0005:
+        af_parts.append(f"atempo={speed:.5f}")
+    volume = max(0.85, min(1.15, float(params.get("volume", 1.0))))
+    if abs(volume - 1.0) > 0.0005:
+        af_parts.append(f"volume={volume:.4f}")
+    af = ",".join(af_parts) if af_parts else None
+
+    return vf, af, out_fps
+
+
+def _build_batch_variation_ffmpeg_cmd(path_in: str, path_out: str, params: dict,
+                                      profile: dict, out_w: int, out_h: int,
+                                      src_bitrate_kbps: int = 2500) -> list:
+    """
+    Hardened sibling of _build_variation_ffmpeg_cmd. Same encoder/bitrate/
+    metadata strategy, but forces `-pix_fmt yuv420p` on output (belt-and-
+    suspenders with the filter chain's trailing format=yuv420p) so a batch
+    output can never be re-encoded into a player-incompatible pixel format.
+    """
+    vf, af, _out_fps = _build_batch_variation_filter_graph(params, out_w, out_h)
+
+    bitrate_mult = max(0.7, min(1.4, float(params.get("bitrate_mult", 1.0))))
+    target_kbps  = max(400, int(src_bitrate_kbps * bitrate_mult))
+
+    jitter_seconds = random.randint(0, 30 * 86400)
+    creation_time  = time.strftime("%Y-%m-%dT%H:%M:%S.000000Z", time.gmtime(time.time() - jitter_seconds))
+
+    cmd = ["ffmpeg", "-y", "-i", str(path_in)]
+    if vf:
+        cmd += ["-vf", vf]
+    if af:
+        cmd += ["-af", af]
+    cmd += [
+        "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+        "-b:v", f"{target_kbps}k", "-maxrate", f"{int(target_kbps * 1.2)}k", "-bufsize", f"{target_kbps * 2}k",
+        "-c:a", "aac", "-b:a", "128k",
+        "-metadata", f"creation_time={creation_time}",
+        "-metadata", f"encoder={profile.get('encoder', '')}",
+    ]
+    if profile.get("software"):
+        cmd += ["-metadata", f"com.apple.quicktime.software={profile['software']}"]
+    cmd += [
+        "-metadata", f"title={profile.get('label', '')}",
+        "-metadata", f"comment={profile.get('comment', '')}",
+        "-movflags", "+faststart",
+        "-loglevel", "error",
+        str(path_out),
+    ]
+    return cmd
+
+
 FONT_BOLD = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
 FONT_REG  = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
 
@@ -3055,6 +3257,12 @@ def batch_zip():
 
             out_dir = BATCH_DIR / batch_id / "out"
             files = sorted(out_dir.glob("*.mp4")) if out_dir.exists() else []
+            # Batch Variation Studio (additive): also include any hardened
+            # variants produced by /batch_vstudio_run. Guarded by exists()
+            # so the variant-free path is byte-identical to before.
+            var_dir = BATCH_DIR / batch_id / "variations"
+            if var_dir.exists():
+                files = files + sorted(var_dir.glob("*.mp4"))
             if not files:
                 return jsonify({"error": "Aucun fichier valide trouvé"}), 400
 
@@ -3430,6 +3638,136 @@ def batch_cleanup():
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+# BATCH VARIATION STUDIO — one additive route (V2)
+#
+# Generates exactly ONE hardened variant of one already-rendered batch
+# output (a video C in BATCH_DIR/<batch_id>/out/). Reuses Variation
+# Studio's read-only param pickers but runs them through the HARDENED
+# anti-gray builders (_build_batch_variation_ffmpeg_cmd → yuv420p, even
+# display dims, square pixels). It never calls or modifies /variation_run,
+# /batch_render, /analyze, /process or any caption code. Preset + Advanced
+# modes both supported, mirroring /variation_run's contract. One file per
+# call; the client loops sequentially with `await` (≤1 ffmpeg in flight).
+# Per-variant ffmpeg failure → per-item error (HTTP 200), never a crash.
+# Logged under the distinct analytics mode "batch_variation"
+# (claude_requests=0 — no Vision is ever involved). Variants land in
+# BATCH_DIR/<batch_id>/variations/ and ride the existing /batch_zip and
+# /batch_cleanup (rmtree of the whole batch dir) with no extra plumbing.
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/batch_vstudio_run", methods=["POST"])
+def batch_vstudio_run():
+    try:
+        batch_id   = (request.form.get("batch_id") or "").strip()
+        combo_name = (request.form.get("combo_name") or "").strip()
+        if not batch_id or ".." in batch_id or "/" in batch_id:
+            return jsonify({"error": "batch_id invalide"}), 400
+        if not combo_name or ".." in combo_name or "/" in combo_name:
+            return jsonify({"error": "combo_name invalide"}), 400
+
+        try:
+            var_index = int(request.form.get("var_index", "-1"))
+        except Exception:
+            var_index = -1
+        try:
+            var_count = int(request.form.get("var_count", "0"))
+        except Exception:
+            var_count = 0
+        if var_count < 1 or var_count > MAX_BATCH_VSTUDIO_PER_COMBO:
+            return jsonify({"error": f"Nombre de variantes invalide (1..{MAX_BATCH_VSTUDIO_PER_COMBO})."}), 400
+        if var_index < 0 or var_index >= var_count:
+            return jsonify({"error": "Index de variante invalide."}), 400
+
+        strength = (request.form.get("strength") or VARIATION_DEFAULT_STRENGTH).strip().lower()
+        if strength not in VARIATION_STRENGTH_PRESETS:
+            strength = VARIATION_DEFAULT_STRENGTH
+
+        # Advanced Mode (opt-in) — identical gating to /variation_run: only
+        # taken when config_mode=advanced AND a parsable non-empty object
+        # is sent; anything else falls through to Preset Mode.
+        config_mode = (request.form.get("config_mode") or "preset").strip().lower()
+        advanced_config = None
+        if config_mode == "advanced":
+            try:
+                _raw_cfg = json.loads(request.form.get("advanced_config") or "{}")
+                if isinstance(_raw_cfg, dict) and _raw_cfg:
+                    advanced_config = _raw_cfg
+            except Exception:
+                advanced_config = None
+
+        bdir    = BATCH_DIR / batch_id
+        path_in = bdir / "out" / combo_name
+        if not path_in.exists():
+            return jsonify({"error": "Vidéo batch source introuvable (rendu A×B manquant)"}), 404
+
+        var_dir = bdir / "variations"
+        var_dir.mkdir(parents=True, exist_ok=True)
+        stem     = combo_name[:-4] if combo_name.lower().endswith(".mp4") else combo_name
+        filename = f"{stem}_v{var_index + 1:03d}.mp4"
+        path_out = var_dir / filename
+
+        # Hardened, rotation-aware EVEN display dims (anti-gray fix #1).
+        out_w, out_h = _probe_even_display_dims(str(path_in))
+        src_seconds  = _get_video_duration_seconds(str(path_in))
+
+        rng = random.Random(f"{batch_id}:{combo_name}:{var_index}")
+        if advanced_config is not None:
+            params         = _pick_advanced_variation_params(advanced_config, rng)
+            metadata_level = max(0.0, min(1.0, float(advanced_config.get("metadata", ADVANCED_SLIDER_DEFAULT)) / 100.0))
+            profile        = _pick_advanced_metadata_profile(metadata_level, rng)
+        else:
+            params  = _pick_variation_params(strength, rng)
+            profile = _pick_metadata_profile(rng)
+
+        cmd = _build_batch_variation_ffmpeg_cmd(str(path_in), str(path_out), params, profile, out_w, out_h)
+
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        except subprocess.TimeoutExpired:
+            return jsonify({"error": "Timeout (>3 min)", "filename": filename}), 200
+        finally:
+            gc.collect()
+
+        ok = (proc.returncode == 0 and path_out.exists())
+
+        try:
+            log_usage_event(
+                request.current_user, "batch_variation",
+                source_seconds=src_seconds,
+                output_seconds=(src_seconds if ok else None),
+                source_count=1, output_count=(1 if ok else 0),
+                success=ok, claude_requests=0,
+            )
+        except Exception as e:
+            print(f"[batch_vstudio] WARNING: usage log failed batch={batch_id}: {e}")
+
+        if not ok:
+            err = (proc.stderr or "ffmpeg a échoué")[-500:]
+            try:
+                path_out.unlink(missing_ok=True)
+            except Exception:
+                pass
+            return jsonify({"error": err, "filename": filename}), 200
+
+        return jsonify({"filename": filename, "ok": True, "out_w": out_w, "out_h": out_h})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 200
+
+
+@app.route("/batch_vstudio_file/<batch_id>/<filename>")
+def batch_vstudio_file(batch_id, filename):
+    """Download a single hardened batch variant from the variations/ folder.
+    Isolated sibling of /batch_file (which only serves out/) — additive,
+    leaves /batch_file untouched."""
+    if ".." in batch_id or "/" in batch_id or ".." in filename or "/" in filename:
+        return jsonify({"error": "Invalid"}), 400
+    path = BATCH_DIR / batch_id / "variations" / filename
+    if path.exists():
+        return send_file(str(path), as_attachment=True, download_name=filename, mimetype="video/mp4")
+    return jsonify({"error": "Not found"}), 404
 
 
 # ══════════════════════════════════════════════════════════════════

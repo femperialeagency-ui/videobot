@@ -1178,6 +1178,127 @@ BATCH MODE
 <button class="zip-btn" id="bZipBtn" onclick="downloadZip()"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span> Télécharger tout en ZIP</button>
 </div>
 
+<!-- ══════════════════════════════════════════
+BATCH VARIATION STUDIO — fully isolated, additive (V2).
+Applies the hardened (anti-gray) variation pipeline to every video
+produced by the A×B batch above. Same UI as Variation Studio,
+namespaced bvs*. No Claude Vision, no captions.
+══════════════════════════════════════════ -->
+<div class="card" id="bvsIntroCard">
+<h2><span class="ico-svg" style="vertical-align:-3px"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span> Batch Variation Studio <span style="font-weight:500;opacity:.7;font-size:.85rem">— variantes propres de chaque vidéo produite</span></h2>
+<div style="font-size:0.82rem;color:var(--muted);margin:-4px 0 10px;">Après le batch, génère pour chaque vidéo produite plusieurs copies techniquement distinctes mais visuellement identiques (pipeline FFmpeg durci anti-zone-grise : yuv420p, dimensions paires, ratio préservé). Idéal pour republier la même matrice sur plusieurs comptes.</div>
+<div id="bvsBatchState" style="font-size:0.82rem;font-weight:600;color:var(--warn);">⏳ Lance d'abord un batch A×B ci-dessus — les variantes s'appliqueront aux vidéos produites.</div>
+</div>
+
+<!-- Settings -->
+<div class="card" id="bvsSettingsCard">
+<h2><span class="num">⚙</span> Réglages des variantes</h2>
+
+<div style="margin-bottom:16px;">
+<div style="font-size:0.84rem;font-weight:600;margin-bottom:8px;color:var(--text)">Variantes par vidéo produite</div>
+<div class="v-count-row">
+<input type="number" id="bvsCountNum" class="v-count-num" min="1" max="25" value="3">
+<input type="range" id="bvsCountSlider" min="1" max="25" value="3">
+<button type="button" class="v-quick-btn" data-bvscount="1">1</button>
+<button type="button" class="v-quick-btn" data-bvscount="3">3</button>
+<button type="button" class="v-quick-btn" data-bvscount="5">5</button>
+<button type="button" class="v-quick-btn" data-bvscount="10">10</button>
+</div>
+<div id="bvsCountWarning" style="display:none;color:var(--error);font-size:0.8rem;margin-top:8px;"></div>
+</div>
+
+<div class="v-section-label"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.5 5.5 H14.5 M3.5 9 H14.5 M3.5 12.5 H14.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="5.5" r="1.5" fill="currentColor"/><circle cx="11.5" cy="9" r="1.5" fill="currentColor"/><circle cx="6" cy="12.5" r="1.5" fill="currentColor"/></svg></span> Contrôles de variation</div>
+<div class="v-modeswitch">
+<label><input type="radio" name="bvsConfigMode" value="preset" checked> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 15 L11 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M14.5 2.6 L15 3.8 L16.2 4.3 L15 4.8 L14.5 6 L14 4.8 L12.8 4.3 L14 3.8 Z" fill="currentColor"/></svg></span> Mode Préréglages <span style="font-weight:500;opacity:.8">(débutant)</span></label>
+<label><input type="radio" name="bvsConfigMode" value="advanced"> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3.4 a3 3 0 0 0-4 3.7 L4 11.2 a1.5 1.5 0 0 0 2.1 2.1 l4.1-4.1 a3 3 0 0 0 3.7-4 l-2 2-1.4-.4-.4-1.4 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span> Mode Avancé <span style="font-weight:500;opacity:.8">(16 réglages)</span></label>
+</div>
+
+<!-- Preset panel -->
+<div id="bvsPresetPanel">
+<div style="font-size:0.84rem;font-weight:600;margin-bottom:8px;color:var(--text)">Intensité des variations</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;">
+<label class="v-opt"><input type="radio" name="bvsStrength" value="light" checked> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="3" height="4" rx="1" fill="currentColor"/><rect x="7.5" y="7" width="3" height="8" rx="1" fill="currentColor" opacity=".22"/><rect x="12" y="3" width="3" height="12" rx="1" fill="currentColor" opacity=".22"/></svg></span> Légère</label>
+<label class="v-opt"><input type="radio" name="bvsStrength" value="medium"> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="3" height="4" rx="1" fill="currentColor"/><rect x="7.5" y="7" width="3" height="8" rx="1" fill="currentColor"/><rect x="12" y="3" width="3" height="12" rx="1" fill="currentColor" opacity=".22"/></svg></span> Moyenne</label>
+<label class="v-opt"><input type="radio" name="bvsStrength" value="strong"> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="3" height="4" rx="1" fill="currentColor"/><rect x="7.5" y="7" width="3" height="8" rx="1" fill="currentColor"/><rect x="12" y="3" width="3" height="12" rx="1" fill="currentColor"/></svg></span> Forte</label>
+</div>
+<div style="font-size:0.78rem;color:var(--muted);margin-top:8px;">Légère = changements discrets (recommandé). Plus l'intensité augmente, plus chaque variante diffère visuellement de la vidéo produite.</div>
+</div>
+
+<!-- Advanced panel -->
+<div id="bvsAdvancedPanel" style="display:none;">
+<div class="v-section-label"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3.4 a3 3 0 0 0-4 3.7 L4 11.2 a1.5 1.5 0 0 0 2.1 2.1 l4.1-4.1 a3 3 0 0 0 3.7-4 l-2 2-1.4-.4-.4-1.4 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span> Contrôles avancés</div>
+<div style="font-size:0.78rem;color:var(--muted);margin-bottom:10px;">0 = désactivé · 50 = recommandé · 100 = variation maximale (les vidéos restent toujours visuellement propres).</div>
+
+<div class="v-group-title"><span class="v-dot" style="background:var(--accent);color:var(--accent)"></span> Visuel</div>
+<div class="v-slider-row"><label for="bvsAdv_brightness">Luminosité</label><input type="range" id="bvsAdv_brightness" min="0" max="100" value="50" data-bvsadv="brightness"><span class="v-slider-val" id="bvsAdv_brightness_val">50</span></div>
+<div class="v-slider-row"><label for="bvsAdv_contrast">Contraste</label><input type="range" id="bvsAdv_contrast" min="0" max="100" value="50" data-bvsadv="contrast"><span class="v-slider-val" id="bvsAdv_contrast_val">50</span></div>
+<div class="v-slider-row"><label for="bvsAdv_saturation">Saturation</label><input type="range" id="bvsAdv_saturation" min="0" max="100" value="50" data-bvsadv="saturation"><span class="v-slider-val" id="bvsAdv_saturation_val">50</span></div>
+<div class="v-slider-row"><label for="bvsAdv_gamma">Gamma</label><input type="range" id="bvsAdv_gamma" min="0" max="100" value="50" data-bvsadv="gamma"><span class="v-slider-val" id="bvsAdv_gamma_val">50</span></div>
+<div class="v-slider-row"><label for="bvsAdv_noise">Bruit / Grain</label><input type="range" id="bvsAdv_noise" min="0" max="100" value="50" data-bvsadv="noise"><span class="v-slider-val" id="bvsAdv_noise_val">50</span></div>
+<div class="v-slider-row"><label for="bvsAdv_sharpness">Netteté</label><input type="range" id="bvsAdv_sharpness" min="0" max="100" value="50" data-bvsadv="sharpness"><span class="v-slider-val" id="bvsAdv_sharpness_val">50</span></div>
+<div class="v-slider-row"><label for="bvsAdv_blur">Flou</label><input type="range" id="bvsAdv_blur" min="0" max="100" value="50" data-bvsadv="blur"><span class="v-slider-val" id="bvsAdv_blur_val">50</span></div>
+<div class="v-slider-row"><label for="bvsAdv_zoom">Zoom</label><input type="range" id="bvsAdv_zoom" min="0" max="100" value="50" data-bvsadv="zoom"><span class="v-slider-val" id="bvsAdv_zoom_val">50</span></div>
+<div class="v-slider-row"><label for="bvsAdv_crop">Recadrage</label><input type="range" id="bvsAdv_crop" min="0" max="100" value="50" data-bvsadv="crop"><span class="v-slider-val" id="bvsAdv_crop_val">50</span></div>
+<div class="v-slider-row"><label for="bvsAdv_rotation">Rotation</label><input type="range" id="bvsAdv_rotation" min="0" max="100" value="50" data-bvsadv="rotation"><span class="v-slider-val" id="bvsAdv_rotation_val">50</span></div>
+
+<div class="v-group-title"><span class="v-dot" style="background:var(--accent2);color:var(--accent2)"></span> Mouvement</div>
+<div class="v-slider-row"><label for="bvsAdv_speed">Vitesse vidéo</label><input type="range" id="bvsAdv_speed" min="0" max="100" value="50" data-bvsadv="speed"><span class="v-slider-val" id="bvsAdv_speed_val">50</span></div>
+
+<div class="v-group-title"><span class="v-dot" style="background:var(--accent3);color:var(--accent3)"></span> Audio</div>
+<div class="v-slider-row"><label for="bvsAdv_volume">Volume audio</label><input type="range" id="bvsAdv_volume" min="0" max="100" value="50" data-bvsadv="volume"><span class="v-slider-val" id="bvsAdv_volume_val">50</span></div>
+<div class="v-slider-row"><label for="bvsAdv_pitch">Tonalité audio</label><input type="range" id="bvsAdv_pitch" min="0" max="100" value="50" data-bvsadv="pitch"><span class="v-slider-val" id="bvsAdv_pitch_val">50</span></div>
+
+<div class="v-group-title"><span class="v-dot" style="background:var(--info);color:var(--info)"></span> Encodage</div>
+<div class="v-slider-row"><label for="bvsAdv_fps">Variation FPS</label><input type="range" id="bvsAdv_fps" min="0" max="100" value="50" data-bvsadv="fps"><span class="v-slider-val" id="bvsAdv_fps_val">50</span></div>
+<div class="v-slider-row"><label for="bvsAdv_bitrate">Variation bitrate</label><input type="range" id="bvsAdv_bitrate" min="0" max="100" value="50" data-bvsadv="bitrate"><span class="v-slider-val" id="bvsAdv_bitrate_val">50</span></div>
+
+<div class="v-group-title"><span class="v-dot" style="background:var(--warn);color:var(--warn)"></span> Métadonnées</div>
+<div class="v-slider-row"><label for="bvsAdv_metadata">Aléatoire métadonnées</label><input type="range" id="bvsAdv_metadata" min="0" max="100" value="50" data-bvsadv="metadata"><span class="v-slider-val" id="bvsAdv_metadata_val">50</span></div>
+
+<div class="v-adv-actions">
+<button type="button" class="v-ghost-btn" id="bvsRandomizeBtn"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span> Randomiser la configuration</button>
+<button type="button" class="v-ghost-btn" id="bvsResetAdvBtn"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.5 7 H10.5 a3.3 3.3 0 0 1 0 6.6 H7.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 4.5 L4.5 7 L7 9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Réinitialiser (50)</button>
+</div>
+
+<div class="v-preset-row">
+<input type="text" id="bvsPresetName" placeholder="Nom du préréglage (ex: Batch V1)" maxlength="80">
+<button type="button" class="v-ghost-btn" id="bvsSavePresetBtn"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.4 3 H12 L14.6 5.6 V14.2 a.6.6 0 0 1-.6.6 H3.4 a.6.6 0 0 1-.6-.6 V3.6 a.6.6 0 0 1 .6-.6 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><rect x="5.6" y="3" width="4.8" height="3.2" rx=".4" stroke="currentColor" stroke-width="1.2"/></svg></span> Sauvegarder</button>
+</div>
+<div class="v-preset-row">
+<select id="bvsPresetSelect"><option value="">— Charger un préréglage —</option></select>
+<button type="button" class="v-ghost-btn" id="bvsLoadPresetBtn">Charger</button>
+<button type="button" class="v-ghost-btn" id="bvsDeletePresetBtn">Supprimer</button>
+</div>
+<div id="bvsPresetMsg" style="font-size:0.78rem;color:var(--muted);margin-top:8px;"></div>
+</div>
+</div>
+
+<!-- Estimation -->
+<div class="card" id="bvsEstCard">
+<h2><span class="num">∑</span> Estimation</h2>
+<div class="v-est-grid">
+<div class="v-est-item"><div class="v-est-label">Variantes / vidéo</div><div class="v-est-value" id="bvsEstPer">3</div></div>
+<div class="v-est-item"><div class="v-est-label">Vidéos produites</div><div class="v-est-value" id="bvsEstProduced">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Total fichiers</div><div class="v-est-value" id="bvsEstTotal">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Temps estimé</div><div class="v-est-value" id="bvsEstTime">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Coût estimé</div><div class="v-est-value" id="bvsEstCost">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Score d'unicité</div><div class="v-est-value" id="bvsEstUniqueness">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Score de sécurité</div><div class="v-est-value" id="bvsEstSafety">—</div></div>
+</div>
+<div style="font-size:0.74rem;color:var(--muted);margin-top:10px;">Scores estimés côté navigateur à partir de vos réglages, donnés à titre indicatif. Plafond : {{ '' }}300 fichiers générés au total par batch.</div>
+</div>
+
+<button id="bvsLaunchBtn" class="primary-btn" onclick="runBatchVStudio()" disabled><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span> Générer les variantes Batch</button>
+
+<!-- Progress -->
+<div class="card" id="bvsProgressCard" style="display:none;">
+<h2 id="bvsProgressTitle"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Génération des variantes…</h2>
+<div class="pbar"><div class="pbar-fill" id="bvsGlobalFill"></div></div>
+<div id="bvsGlobalStatus" style="font-size:.85rem;color:var(--muted);margin-bottom:14px"></div>
+<div id="bvsResultsList"></div>
+<button class="zip-btn" id="bvsZipBtn" onclick="downloadBatchVStudioZip()" style="display:none;"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span> Télécharger tout (vidéos + variantes) en ZIP</button>
+</div>
+
 </div><!-- /batchTab -->
 
 <!-- ══════════════════════════════════════════
@@ -2252,6 +2373,366 @@ btn.textContent = origText;
 
 // Initial sync: numeric input ↔ slider ↔ warning ↔ estimation panel.
 setVariationCount(10);
+
+// ══════════════════════════════════════════
+// BATCH VARIATION STUDIO (V2) — fully isolated, additive.
+// Applies the hardened anti-gray variation pipeline to the videos
+// produced by the A×B batch. Reads bBatchId / bResults from the batch
+// scope (read-only) but NEVER modifies runBatch or any batch function.
+// Reuses the /variation_presets endpoints for preset storage.
+// ══════════════════════════════════════════
+const MAX_BVS_PER_COMBO = 25;     // mirrors MAX_BATCH_VSTUDIO_PER_COMBO
+const MAX_BVS_TOTAL     = 300;    // mirrors MAX_BATCH_VSTUDIO_TOTAL
+const BVS_SLIDER_KEYS = [
+"brightness","contrast","saturation","gamma","noise","sharpness",
+"blur","zoom","crop","rotation","speed","volume","pitch",
+"fps","bitrate","metadata",
+];
+const BVS_SLIDER_DEFAULT = 50;
+const BVS_COST_PER_SECOND_PER_VARIANT = 0.002;
+
+let bvsRunning = false;
+let bvsResults = [];
+let bvsSourceDuration = null;   // probed from the first produced video
+let bvsProbedFor = null;        // filename we probed, to avoid re-probing
+
+// ── Count control (numeric ↔ slider ↔ quick buttons) ──
+const bvsCountNum = document.getElementById("bvsCountNum");
+const bvsCountSlider = document.getElementById("bvsCountSlider");
+function setBvsCount(n) {
+n = Math.max(1, Math.min(MAX_BVS_PER_COMBO, parseInt(n, 10) || 1));
+bvsCountNum.value = n;
+bvsCountSlider.value = n;
+updateBvsEstimate();
+}
+bvsCountNum.addEventListener("input", () => setBvsCount(bvsCountNum.value));
+bvsCountSlider.addEventListener("input", () => setBvsCount(bvsCountSlider.value));
+document.querySelectorAll(".v-quick-btn[data-bvscount]").forEach(btn => {
+btn.addEventListener("click", () => setBvsCount(btn.dataset.bvscount));
+});
+function getBvsCount() {
+return Math.max(1, Math.min(MAX_BVS_PER_COMBO, parseInt(bvsCountNum.value, 10) || 1));
+}
+function getBvsStrength() {
+const s = document.querySelector('input[name="bvsStrength"]:checked');
+return s ? s.value : "light";
+}
+function getBvsConfigMode() {
+const s = document.querySelector('input[name="bvsConfigMode"]:checked');
+return s ? s.value : "preset";
+}
+document.querySelectorAll('input[name="bvsStrength"]').forEach(r => r.addEventListener("change", updateBvsEstimate));
+
+// ── Preset / Advanced toggle ──
+const bvsPresetPanel = document.getElementById("bvsPresetPanel");
+const bvsAdvancedPanel = document.getElementById("bvsAdvancedPanel");
+document.querySelectorAll('input[name="bvsConfigMode"]').forEach(r => {
+r.addEventListener("change", () => {
+const adv = getBvsConfigMode() === "advanced";
+bvsPresetPanel.style.display = adv ? "none" : "block";
+bvsAdvancedPanel.style.display = adv ? "block" : "none";
+updateBvsEstimate();
+});
+});
+
+// ── Advanced sliders ──
+function getBvsAdvancedConfig() {
+const cfg = {};
+BVS_SLIDER_KEYS.forEach(k => {
+const el = document.getElementById("bvsAdv_" + k);
+cfg[k] = el ? Math.max(0, Math.min(100, parseInt(el.value, 10) || 0)) : BVS_SLIDER_DEFAULT;
+});
+return cfg;
+}
+function setBvsAdvancedConfig(cfg) {
+BVS_SLIDER_KEYS.forEach(k => {
+const el = document.getElementById("bvsAdv_" + k);
+const val = document.getElementById("bvsAdv_" + k + "_val");
+if (!el) return;
+const raw = (cfg && cfg[k] != null) ? cfg[k] : BVS_SLIDER_DEFAULT;
+const v = Math.max(0, Math.min(100, parseInt(raw, 10) || BVS_SLIDER_DEFAULT));
+el.value = v;
+if (val) val.textContent = v;
+});
+updateBvsEstimate();
+}
+BVS_SLIDER_KEYS.forEach(k => {
+const el = document.getElementById("bvsAdv_" + k);
+const val = document.getElementById("bvsAdv_" + k + "_val");
+if (!el) return;
+el.addEventListener("input", () => { if (val) val.textContent = el.value; updateBvsEstimate(); });
+});
+document.getElementById("bvsRandomizeBtn").addEventListener("click", () => {
+const cfg = {}; BVS_SLIDER_KEYS.forEach(k => { cfg[k] = Math.floor(Math.random() * 101); });
+setBvsAdvancedConfig(cfg);
+const m = document.getElementById("bvsPresetMsg");
+m.textContent = "🎲 Configuration aléatoire générée."; m.style.color = "var(--muted)";
+});
+document.getElementById("bvsResetAdvBtn").addEventListener("click", () => {
+const cfg = {}; BVS_SLIDER_KEYS.forEach(k => { cfg[k] = BVS_SLIDER_DEFAULT; });
+setBvsAdvancedConfig(cfg);
+});
+
+// ── Presets (reuse the per-user /variation_presets endpoints) ──
+async function refreshBvsPresets() {
+const sel = document.getElementById("bvsPresetSelect");
+try {
+const r = await fetch("/variation_presets");
+const d = await r.json();
+const presets = (d && d.presets) || [];
+sel.innerHTML = '<option value="">— Charger un préréglage —</option>' +
+presets.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
+sel.dataset.presets = JSON.stringify(presets);
+} catch(e) { /* optional UX */ }
+}
+refreshBvsPresets();
+document.getElementById("bvsSavePresetBtn").addEventListener("click", async () => {
+const nameEl = document.getElementById("bvsPresetName");
+const msg = document.getElementById("bvsPresetMsg");
+const name = (nameEl.value || "").trim();
+if (!name) { msg.textContent = "Donnez un nom au préréglage."; msg.style.color = "var(--error)"; return; }
+msg.textContent = "Sauvegarde…"; msg.style.color = "var(--muted)";
+try {
+const fd = new FormData();
+fd.append("name", name);
+fd.append("config_json", JSON.stringify(getBvsAdvancedConfig()));
+const r = await fetch("/variation_preset_save", { method: "POST", body: fd });
+const d = await r.json();
+if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+msg.textContent = `✅ Préréglage "${name}" sauvegardé.`; msg.style.color = "var(--success)";
+nameEl.value = ""; refreshBvsPresets();
+} catch(e) { msg.textContent = "❌ " + e.message; msg.style.color = "var(--error)"; }
+});
+document.getElementById("bvsLoadPresetBtn").addEventListener("click", () => {
+const sel = document.getElementById("bvsPresetSelect");
+const msg = document.getElementById("bvsPresetMsg");
+const presets = JSON.parse(sel.dataset.presets || "[]");
+const picked = presets.find(p => String(p.id) === sel.value);
+if (!picked) { msg.textContent = "Sélectionnez un préréglage."; msg.style.color = "var(--error)"; return; }
+try { setBvsAdvancedConfig(JSON.parse(picked.config_json)); msg.textContent = `📂 "${picked.name}" chargé.`; msg.style.color = "var(--success)"; }
+catch(e) { msg.textContent = "❌ Préréglage invalide."; msg.style.color = "var(--error)"; }
+});
+document.getElementById("bvsDeletePresetBtn").addEventListener("click", async () => {
+const sel = document.getElementById("bvsPresetSelect");
+const msg = document.getElementById("bvsPresetMsg");
+if (!sel.value) { msg.textContent = "Sélectionnez un préréglage."; msg.style.color = "var(--error)"; return; }
+try {
+const fd = new FormData(); fd.append("id", sel.value);
+const r = await fetch("/variation_preset_delete", { method: "POST", body: fd });
+const d = await r.json();
+if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+msg.textContent = "🗑️ Supprimé."; msg.style.color = "var(--success)"; refreshBvsPresets();
+} catch(e) { msg.textContent = "❌ " + e.message; msg.style.color = "var(--error)"; }
+});
+
+// ── Estimation + scores (frontend-only, never sent to server) ──
+function bvsProducedList() {
+return (typeof bResults !== "undefined" && bResults) ? bResults.filter(r => r.status === "done") : [];
+}
+function bvsLoadFactor() {
+if (getBvsConfigMode() === "advanced") {
+const cfg = getBvsAdvancedConfig();
+const avg = BVS_SLIDER_KEYS.reduce((s, k) => s + cfg[k], 0) / BVS_SLIDER_KEYS.length;
+return 0.35 + (avg / 100) * 0.55;
+}
+const s = getBvsStrength();
+return s === "strong" ? 0.7 : s === "medium" ? 0.55 : 0.4;
+}
+function bvsFmtDuration(t) {
+if (!isFinite(t) || t <= 0) return "—";
+const s = Math.round(t);
+if (s < 60) return `${s} s`;
+const m = Math.floor(s / 60), r = s % 60;
+if (m < 60) return `${m} min ${r}s`;
+const h = Math.floor(m / 60), rm = m % 60;
+return `${h} h ${rm} min`;
+}
+function probeBvsDuration() {
+const produced = bvsProducedList();
+if (!produced.length || !(typeof bBatchId !== "undefined" && bBatchId)) return;
+const first = produced[0].filename;
+if (bvsProbedFor === first) return;
+bvsProbedFor = first;
+try {
+const probe = document.createElement("video");
+probe.preload = "metadata";
+probe.src = `/batch_file/${bBatchId}/${encodeURIComponent(first)}`;
+probe.onloadedmetadata = () => { if (isFinite(probe.duration) && probe.duration > 0) { bvsSourceDuration = probe.duration; updateBvsEstimate(); } };
+probe.onerror = () => {};
+} catch(e) { /* best-effort */ }
+}
+function updateBvsScores(avgIntensity) {
+const uEl = document.getElementById("bvsEstUniqueness");
+const sEl = document.getElementById("bvsEstSafety");
+if (!uEl || !sEl) return;
+const uniqueness = Math.round(Math.min(100, Math.max(5, avgIntensity * 0.95 + 8)));
+const safety = Math.round(Math.min(100, Math.max(60, 100 - avgIntensity * 0.22)));
+uEl.textContent = uniqueness + "%"; sEl.textContent = safety + "%";
+uEl.style.color = uniqueness >= 60 ? "var(--success)" : "var(--text)";
+sEl.style.color = safety >= 80 ? "var(--success)" : "var(--text)";
+}
+function updateBvsEstimate() {
+const perEl = document.getElementById("bvsEstPer");
+if (!perEl) return;
+const count = getBvsCount();
+const produced = bvsProducedList().length;
+const total = produced * count;
+perEl.textContent = count;
+document.getElementById("bvsEstProduced").textContent = produced > 0 ? produced : "—";
+document.getElementById("bvsEstTotal").textContent = produced > 0 ? total : "—";
+
+const warn = document.getElementById("bvsCountWarning");
+if (produced > 0 && total > MAX_BVS_TOTAL) {
+warn.style.display = "block";
+warn.textContent = `${produced} vidéos × ${count} = ${total} dépasse la limite de ${MAX_BVS_TOTAL} variantes.`;
+} else { warn.style.display = "none"; warn.textContent = ""; }
+
+if (bvsSourceDuration && produced > 0) {
+const perVariant = bvsSourceDuration * bvsLoadFactor();
+document.getElementById("bvsEstTime").textContent = bvsFmtDuration(perVariant * total);
+document.getElementById("bvsEstCost").textContent = "$" + (BVS_COST_PER_SECOND_PER_VARIANT * bvsSourceDuration * total).toFixed(2);
+} else {
+document.getElementById("bvsEstTime").textContent = "—";
+document.getElementById("bvsEstCost").textContent = "—";
+}
+
+let avgIntensity;
+if (getBvsConfigMode() === "advanced") {
+const cfg = getBvsAdvancedConfig();
+avgIntensity = BVS_SLIDER_KEYS.reduce((a, k) => a + cfg[k], 0) / BVS_SLIDER_KEYS.length;
+} else {
+const s = getBvsStrength();
+avgIntensity = s === "strong" ? 75 : s === "medium" ? 50 : 25;
+}
+updateBvsScores(avgIntensity);
+}
+
+// ── Live sync with the batch state (no edit to runBatch): poll the
+// shared bResults/bBatchId and reflect readiness in the panel. ──
+function bvsSyncBatchState() {
+const stateEl = document.getElementById("bvsBatchState");
+const launch = document.getElementById("bvsLaunchBtn");
+const produced = bvsProducedList().length;
+const batchBusy = (typeof bRunning !== "undefined" && bRunning);
+if (produced > 0 && !batchBusy) {
+stateEl.textContent = `✅ ${produced} vidéo${produced > 1 ? "s" : ""} produite${produced > 1 ? "s" : ""} — prêtes à varier.`;
+stateEl.style.color = "var(--success)";
+probeBvsDuration();
+} else if (batchBusy) {
+stateEl.textContent = "⏳ Batch en cours… les variantes seront disponibles à la fin.";
+stateEl.style.color = "var(--warn)";
+} else {
+stateEl.textContent = "⏳ Lance d'abord un batch A×B ci-dessus — les variantes s'appliqueront aux vidéos produites.";
+stateEl.style.color = "var(--warn)";
+}
+const total = produced * getBvsCount();
+launch.disabled = bvsRunning || produced === 0 || batchBusy || total > MAX_BVS_TOTAL;
+updateBvsEstimate();
+}
+setInterval(bvsSyncBatchState, 900);
+
+// ── Run: generate variants of every produced video, sequentially ──
+async function runBatchVStudio() {
+if (bvsRunning) return;
+const produced = bvsProducedList();
+if (!(typeof bBatchId !== "undefined" && bBatchId) || produced.length === 0) {
+alert("Lance d'abord un batch A×B et attends qu'il se termine."); return;
+}
+const count = getBvsCount();
+const total = produced.length * count;
+if (total > MAX_BVS_TOTAL) { alert(`${produced.length} × ${count} = ${total} dépasse la limite de ${MAX_BVS_TOTAL}.`); return; }
+const configMode = getBvsConfigMode();
+const strength = getBvsStrength();
+const advancedConfig = (configMode === "advanced") ? getBvsAdvancedConfig() : null;
+
+bvsRunning = true;
+document.getElementById("bvsLaunchBtn").disabled = true;
+
+bvsResults = [];
+produced.forEach(c => {
+const stem = c.filename.replace(/\.mp4$/i, "");
+for (let v = 0; v < count; v++) {
+bvsResults.push({ filename: `${stem}_v${String(v + 1).padStart(3, "0")}.mp4`, combo: c.filename, vindex: v, status: "pending", statusText: "⏳ En attente" });
+}
+});
+
+const card = document.getElementById("bvsProgressCard"); card.style.display = "block";
+document.getElementById("bvsProgressTitle").textContent = "🎲 Génération des variantes…";
+document.getElementById("bvsZipBtn").style.display = "none";
+renderBvsResults(); updateBvsProgress(0, bvsResults.length);
+
+let done = 0;
+try {
+for (let i = 0; i < bvsResults.length; i++) {
+const row = bvsResults[i];
+row.status = "processing"; row.statusText = "⚙️ Génération…"; renderBvsResults();
+try {
+const fd = new FormData();
+fd.append("batch_id", bBatchId);
+fd.append("combo_name", row.combo);
+fd.append("var_index", row.vindex);
+fd.append("var_count", count);
+fd.append("strength", strength);
+fd.append("config_mode", configMode);
+if (configMode === "advanced" && advancedConfig) fd.append("advanced_config", JSON.stringify(advancedConfig));
+const r = await fetch("/batch_vstudio_run", { method: "POST", body: fd });
+const d = await r.json();
+if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+row.status = "done"; row.statusText = "✅ Terminé"; row.filename = d.filename || row.filename;
+} catch(e) {
+row.status = "error"; row.statusText = "❌ " + e.message;
+}
+done++; renderBvsResults(); updateBvsProgress(done, bvsResults.length);
+}
+document.getElementById("bvsProgressTitle").textContent = "✅ Variantes terminées";
+} catch(e) {
+document.getElementById("bvsProgressTitle").textContent = "❌ Erreur";
+alert("Erreur variantes batch : " + e.message);
+}
+
+bvsRunning = false;
+document.getElementById("bvsLaunchBtn").disabled = false;
+const ok = bvsResults.filter(r => r.status === "done");
+if (ok.length > 0) {
+const b = document.getElementById("bvsZipBtn");
+b.style.display = "inline-flex";
+b.textContent = `📦 Télécharger tout (vidéos + ${ok.length} variante${ok.length > 1 ? "s" : ""}) en ZIP`;
+}
+}
+
+function renderBvsResults() {
+const colorMap = { pending: "var(--muted)", processing: "var(--accent2)", done: "var(--success)", error: "var(--error)" };
+document.getElementById("bvsResultsList").innerHTML = bvsResults.map((r, i) => {
+const color = colorMap[r.status] || "var(--muted)";
+const dl = (r.status === "done" && typeof bBatchId !== "undefined" && bBatchId)
+? `<a class="dl-link" href="/batch_vstudio_file/${bBatchId}/${encodeURIComponent(r.filename)}" download title="Télécharger">⬇️</a>`
+: `<span style="width:1.1rem;display:inline-block"></span>`;
+return `<div class="batch-row"><span class="batch-idx">${i + 1}</span><span class="batch-fname" title="${escapeHtml(r.filename)}">${escapeHtml(r.filename)}</span><span class="batch-st" style="color:${color}">${escapeHtml(r.statusText)}</span>${dl}</div>`;
+}).join("");
+}
+function updateBvsProgress(done, total) {
+const pct = total > 0 ? Math.round(done / total * 100) : 0;
+document.getElementById("bvsGlobalFill").style.width = pct + "%";
+document.getElementById("bvsGlobalStatus").textContent = `${done} / ${total} variante${total > 1 ? "s" : ""} générée${done > 1 ? "s" : ""}`;
+}
+async function downloadBatchVStudioZip() {
+if (!(typeof bBatchId !== "undefined" && bBatchId)) return;
+const btn = document.getElementById("bvsZipBtn");
+btn.disabled = true; const orig = btn.textContent; btn.textContent = "⏳ Préparation du ZIP…";
+try {
+const res = await fetch("/batch_zip", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ batch_id: bBatchId }) });
+if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || res.statusText); }
+const blob = await res.blob();
+const url = URL.createObjectURL(blob);
+const a = document.createElement("a"); a.href = url; a.download = "videos_C.zip"; a.click();
+URL.revokeObjectURL(url);
+} catch(e) { alert("Erreur ZIP : " + e.message); }
+finally { btn.disabled = false; btn.textContent = orig; }
+}
+
+// Initial sync of the batch-variation-studio panel.
+setBvsCount(3);
+bvsSyncBatchState();
 </script>
 </body>
 </html>
