@@ -1097,8 +1097,8 @@ SIMPLE MODE
 
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px;font-size:.82rem;font-weight:600;">
 <span>OCR :</span>
-<label class="v-opt"><input type="radio" name="ocrModeS" value="rapide" checked> Rapide</label>
-<label class="v-opt"><input type="radio" name="ocrModeS" value="precis"> Précis <span style="font-weight:500;opacity:.7">(16 frames · 1080p · texte difficile)</span></label>
+<label class="v-opt"><input type="radio" name="ocrModeS" value="sonnet" checked> Sonnet ⭐ <span style="font-weight:500;opacity:.7">(Recommandé)</span></label>
+<label class="v-opt"><input type="radio" name="ocrModeS" value="opus"> Opus 👑 <span style="font-weight:500;opacity:.7">(Qualité maximale)</span></label>
 <button type="button" class="v-ghost-btn" onclick="reanalyzeNoCache()" title="Force une nouvelle analyse Vision en ignorant le cache OCR">🔄 Réanalyser sans cache</button>
 <span style="font-weight:500;opacity:.6;font-size:.74rem">— à choisir avant d'uploader la vidéo B</span>
 </div>
@@ -1207,8 +1207,8 @@ BATCH MODE
 </div>
 <div style="margin-top:10px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:.82rem;font-weight:700;">
 <span>OCR :</span>
-<label class="v-opt"><input type="radio" name="ocrModeB" value="rapide" checked> Rapide</label>
-<label class="v-opt"><input type="radio" name="ocrModeB" value="precis"> Précis <span style="font-weight:500;opacity:.7">(16 frames · 1080p · texte difficile)</span></label>
+<label class="v-opt"><input type="radio" name="ocrModeB" value="sonnet" checked> Sonnet ⭐ <span style="font-weight:500;opacity:.7">(Recommandé)</span></label>
+<label class="v-opt"><input type="radio" name="ocrModeB" value="opus"> Opus 👑 <span style="font-weight:500;opacity:.7">(Qualité maximale)</span></label>
 </div>
 <div id="bPairingOpts" style="display:none;margin-top:10px;display:none;align-items:center;gap:10px;flex-wrap:wrap;">
 <span style="font-size:.82rem;font-weight:600;">Appariement :</span>
@@ -1740,12 +1740,12 @@ return (s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
 .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 }
 
-// OCR Pro: read the Rapide/Précis choice for a scope ("S"=Simple, "B"=Batch).
-// Default "rapide" ⇒ exact current detection. Sent as ocr_mode to /analyze
-// and /batch_detect; absent/rapide keeps engine_version v1.
+// OCR: read the Sonnet/Opus choice for a scope ("S"=Simple, "B"=Batch).
+// Default "sonnet" (recommended). Sent as ocr_mode to /analyze and
+// /batch_detect; selects the Vision model + cache (v1-sonnet / v1-opus).
 function getOcrMode(scope) {
 const el = document.querySelector('input[name="ocrMode' + scope + '"]:checked');
-return (el && el.value === "precis") ? "precis" : "rapide";
+return (el && el.value === "opus") ? "opus" : "sonnet";
 }
 
 // ══════════════════════════════════════════
@@ -1830,7 +1830,7 @@ renderLines();
 status.style.background = "rgba(32,217,138,0.12)";
 status.style.color = "var(--success)";
 const _src = data.source || (data.mode === "vision" ? "vision" : "tesseract");
-const _modeLbl = (data.ocr_mode === "precis") ? "Précis" : "Rapide";
+const _modeLbl = (data.ocr_mode === "opus") ? "Opus 👑" : "Sonnet ⭐";
 const srcLabel = _src === "cache" ? `⚡ Cache OCR (${_modeLbl})`
                : _src === "tesseract" ? "🔍 Fallback Tesseract"
                : `🤖 Analyse Vision (${_modeLbl})`;

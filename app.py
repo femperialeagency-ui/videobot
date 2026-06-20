@@ -476,6 +476,14 @@ def _migrate_variation_presets_table():
 
 OCR_CACHE_VERSION = "v1"   # bump to invalidate all cached OCR when detection changes
 
+# OCR model selection. Two user-facing modes — Sonnet (recommended) and Opus
+# (max quality) — differ ONLY by the Vision model. Both use 20 frames, 1080p
+# and VISION_PROMPT_TIMED_PRECISE. Snapshot strings are env-overridable so they
+# can be changed on Render without a code edit. Caches are strictly separate:
+# Sonnet ⇒ 'v1-sonnet', Opus ⇒ 'v1-opus' (never mixed).
+OCR_MODEL_SONNET = os.environ.get("OCR_MODEL_SONNET", "claude-sonnet-4-5-20250929")
+OCR_MODEL_OPUS   = os.environ.get("OCR_MODEL_OPUS",   "claude-opus-4-5-20251101")
+
 
 def _migrate_ocr_cache_table():
     """Idempotent CREATE TABLE IF NOT EXISTS for the OCR caption cache —
@@ -1599,8 +1607,9 @@ def extract_frames(video_path: str, count: int = 4, scale: str = "scale=720:-1")
     return frames
 
 
-def analyze_with_claude_vision(frame_paths: list) -> list:
-    """Use Claude Vision to detect text blocks with emojis and positions."""
+def analyze_with_claude_vision(frame_paths: list, model: str = OCR_MODEL_SONNET) -> list:
+    """Use Claude Vision to detect text blocks with emojis and positions.
+    `model` follows the user's OCR mode choice (Sonnet/Opus); defaults to Sonnet."""
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
         return []
@@ -1626,7 +1635,7 @@ def analyze_with_claude_vision(frame_paths: list) -> list:
 
     client = anthropic.Anthropic(api_key=api_key)
     response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model=model,
         max_tokens=2048,
         messages=[{"role": "user", "content": content}]
     )
@@ -1861,12 +1870,12 @@ def _merge_timed_captions(detections: list, frame_times: list, duration: float) 
     return captions
 
 
-def analyze_with_claude_vision_timed(video_path: str, precise: bool = False):
+def analyze_with_claude_vision_timed(video_path: str, model: str = OCR_MODEL_SONNET):
     """
-    OCR Pro: `precise=False` (default) is the EXACT current path — 8 frames,
-    720p, VISION_PROMPT_TIMED, Haiku. `precise=True` (opt-in) uses 16 frames,
-    1080p and the relaxed VISION_PROMPT_TIMED_PRECISE (still Haiku — no Sonnet
-    in V1). Everything else (merging, schema, fallbacks) is identical.
+    OCR: both user modes (Sonnet/Opus) use 20 frames, 1080p and the relaxed
+    VISION_PROMPT_TIMED_PRECISE — they differ ONLY by `model` (Sonnet or Opus,
+    resolved by the caller from the chosen OCR mode). Everything else (merging,
+    schema, fallbacks) is identical.
 
     Batch-mode-only detection path: samples several frames spread across
     the video's timeline (instead of the simple-mode path's 4 frames
@@ -1897,13 +1906,12 @@ def analyze_with_claude_vision_timed(video_path: str, precise: bool = False):
     if duration <= 0:
         duration = 3.0
 
-    # Frame count + resolution depend on the OCR mode. Rapide (default):
-    # 8 frames, 720p (byte-identical to before). Précis: 16 frames, 1080p.
-    count  = 16 if precise else 8
-    _scale = "scale=1080:-2" if precise else "scale=720:-1"
+    # Both OCR modes (Sonnet/Opus) use the same sampling — 20 frames, 1080p.
+    # Only the Vision model differs (passed in as `model`).
+    count  = 20
+    _scale = "scale=1080:-2"
     import sys as _sys_vm
-    print(f"[VISION_MODE] mode={'precis' if precise else 'rapide'} frames={count} "
-          f"scale={'1080' if precise else '720'} prompt={'precise' if precise else 'standard'}",
+    print(f"[VISION_MODE] model={model} frames={count} scale=1080 prompt=precise",
           file=_sys_vm.stderr)
     step  = max(0.35, duration / count)
     frame_times, frame_paths = [], []
@@ -1939,13 +1947,12 @@ def analyze_with_claude_vision_timed(video_path: str, precise: bool = False):
             return [], duration
 
         timestamps_str = "\n".join(f"frame {i+1}: {t}s" for i, t in enumerate(frame_times))
-        _prompt_tpl = VISION_PROMPT_TIMED_PRECISE if precise else VISION_PROMPT_TIMED
-        prompt = _prompt_tpl.format(n=len(frame_times), timestamps=timestamps_str)
+        prompt = VISION_PROMPT_TIMED_PRECISE.format(n=len(frame_times), timestamps=timestamps_str)
         content.append({"type": "text", "text": prompt})
 
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=model,
             max_tokens=4096,
             messages=[{"role": "user", "content": content}]
         )
@@ -3209,18 +3216,20 @@ def analyze():
         ui_mode = (request.form.get("mode") or "simple").strip().lower()
         has_key = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
 
-        # OCR Pro: Rapide (default) = exact current path + cache 'v1'.
-        # Précis (opt-in) = 16 frames, 1080p, relaxed prompt, cache
-        # 'v1-precise' (kept strictly separate so the two never mix).
-        ocr_mode   = (request.form.get("ocr_mode") or "rapide").strip().lower()
-        _precise   = (ocr_mode == "precis")
-        _cache_ver = "v1-precise" if _precise else OCR_CACHE_VERSION
-        _fallback_scale = "scale=1080:-2" if _precise else "scale=720:-1"
+        # OCR: two modes that differ ONLY by model — Sonnet (default,
+        # recommended, cache 'v1-sonnet') and Opus (max quality, cache
+        # 'v1-opus'). Both 20 frames, 1080p, relaxed prompt. Strictly separate
+        # cache namespaces (never mixed).
+        ocr_mode   = (request.form.get("ocr_mode") or "sonnet").strip().lower()
+        _is_opus   = (ocr_mode == "opus")
+        _model     = OCR_MODEL_OPUS if _is_opus else OCR_MODEL_SONNET
+        _cache_ver = "v1-opus" if _is_opus else "v1-sonnet"
+        _fallback_scale = "scale=1080:-2"
         # "Réanalyser sans cache" : saute le lookup et force une analyse Vision
         # fraîche (le résultat est tout de même re-stocké pour les fois suivantes).
         _ignore_cache = (request.form.get("ignore_cache", "0") or "0").strip().lower() in ("1", "true", "on", "yes")
         import sys as _sys_ocr
-        print(f"[OCR_MODE] route=/analyze mode={ocr_mode} engine={_cache_ver} ignore_cache={_ignore_cache}", file=_sys_ocr.stderr)
+        print(f"[OCR_MODE] route=/analyze mode={ocr_mode} model={_model} engine={_cache_ver} ignore_cache={_ignore_cache}", file=_sys_ocr.stderr)
 
         # ── OCR cache lookup (Chantier 1) — before any Vision call. On a
         # hit we return the EXACT cached detection (same lines format),
@@ -3252,7 +3261,7 @@ def analyze():
             # Timed detection for ALL modes: sample frames across the timeline
             # and detect WHEN each caption appears/disappears (start_time/end_time).
             try:
-                lines, _ = analyze_with_claude_vision_timed(path_b, precise=_precise)
+                lines, _ = analyze_with_claude_vision_timed(path_b, model=_model)
             except Exception:
                 lines = []
             if lines:
@@ -3263,7 +3272,7 @@ def analyze():
             # pre-existing behavior; produces lines WITHOUT timing info).
             frames = extract_frames(path_b, count=4, scale=_fallback_scale)
             if has_key:
-                lines = analyze_with_claude_vision(frames)
+                lines = analyze_with_claude_vision(frames, model=_model)
                 if lines:
                     source = "vision"
             else:
@@ -3611,17 +3620,18 @@ def batch_detect():
 
         has_key = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
 
-        # OCR Pro: Rapide (default) = exact current path + cache 'v1' ;
-        # Précis (opt-in) = 16 frames, 1080p, relaxed prompt, cache
-        # 'v1-precise'. Applies to Batch Matrice AND Pairing (both call
-        # this route). Strictly separate cache namespaces.
-        ocr_mode   = (request.form.get("ocr_mode") or "rapide").strip().lower()
-        _precise   = (ocr_mode == "precis")
-        _cache_ver = "v1-precise" if _precise else OCR_CACHE_VERSION
-        _fallback_scale = "scale=1080:-2" if _precise else "scale=720:-1"
+        # OCR: two modes that differ ONLY by model — Sonnet (default, cache
+        # 'v1-sonnet') and Opus (cache 'v1-opus'). Both 20 frames, 1080p,
+        # relaxed prompt. Applies to Batch Matrice AND Pairing (both call this
+        # route). Strictly separate cache namespaces.
+        ocr_mode   = (request.form.get("ocr_mode") or "sonnet").strip().lower()
+        _is_opus   = (ocr_mode == "opus")
+        _model     = OCR_MODEL_OPUS if _is_opus else OCR_MODEL_SONNET
+        _cache_ver = "v1-opus" if _is_opus else "v1-sonnet"
+        _fallback_scale = "scale=1080:-2"
         _ignore_cache = (request.form.get("ignore_cache", "0") or "0").strip().lower() in ("1", "true", "on", "yes")
         import sys as _sys_ocr
-        print(f"[OCR_MODE] route=/batch_detect mode={ocr_mode} engine={_cache_ver} ignore_cache={_ignore_cache}", file=_sys_ocr.stderr)
+        print(f"[OCR_MODE] route=/batch_detect mode={ocr_mode} model={_model} engine={_cache_ver} ignore_cache={_ignore_cache}", file=_sys_ocr.stderr)
 
         # ── OCR cache lookup (Chantier 1) — before any Vision call. ──
         b_hash = None
@@ -3649,7 +3659,7 @@ def batch_detect():
         # back to the original single-pass detection if it finds nothing.
         source = None
         try:
-            lines, _ = analyze_with_claude_vision_timed(path_b, precise=_precise)
+            lines, _ = analyze_with_claude_vision_timed(path_b, model=_model)
         except Exception:
             lines = []
         if lines:
@@ -3659,7 +3669,7 @@ def batch_detect():
         if not lines:
             frames = extract_frames(path_b, count=4, scale=_fallback_scale)
             if has_key:
-                lines = analyze_with_claude_vision(frames)
+                lines = analyze_with_claude_vision(frames, model=_model)
                 if lines:
                     source = "vision"
             else:
