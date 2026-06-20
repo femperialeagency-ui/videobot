@@ -2436,7 +2436,15 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, style:
 
         # ── Parse lines (respect existing \n) ─────────────────────────
         orig_lines = text.replace("\\n", "\n").split("\n")
-        orig_lines = [l.strip() for l in orig_lines if l.strip()]
+        # Keep INTERNAL blank lines (they preserve the vertical spacing Vision
+        # sent between paragraphs). Strip whitespace on each line, but only
+        # drop LEADING/TRAILING blanks so the block isn't padded above/below.
+        # Non-empty lines are unchanged.
+        orig_lines = [l.strip() for l in orig_lines]
+        while orig_lines and not orig_lines[0]:
+            orig_lines.pop(0)
+        while orig_lines and not orig_lines[-1]:
+            orig_lines.pop()
         if not orig_lines:
             continue
 
@@ -2496,6 +2504,8 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, style:
         # ── Draw ──────────────────────────────────────────────────────
         for i, line in enumerate(lines):
             y  = y_start + i * line_h
+            if not line:
+                continue   # blank line: draw nothing; its line_h slot is still reserved (index-based y)
             tw = line_widths[i]
 
             if align == "center":
