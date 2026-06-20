@@ -1185,7 +1185,21 @@ BATCH MODE
 </div>
 </div>
 </div>
-<div id="bComboPreview" class="batch-combo-preview"></div>
+<div style="margin-top:14px;display:flex;gap:14px;flex-wrap:wrap;align-items:center;">
+<span style="font-size:.82rem;font-weight:700;">Mode :</span>
+<label class="v-opt"><input type="radio" name="bStrategy" value="matrix" checked onchange="onBatchStrategyChange()"> Matrice (A × B)</label>
+<label class="v-opt"><input type="radio" name="bStrategy" value="pairing" onchange="onBatchStrategyChange()"> Pairing / Shuffle</label>
+</div>
+<div id="bPairingOpts" style="display:none;margin-top:10px;display:none;align-items:center;gap:10px;flex-wrap:wrap;">
+<span style="font-size:.82rem;font-weight:600;">Appariement :</span>
+<select id="bPairMode" onchange="updateComboPreview()">
+<option value="random">Aléatoire sans répétition</option>
+<option value="closest">Durée la plus proche</option>
+<option value="bgea">Durée B ≥ A si possible</option>
+</select>
+<span style="font-size:.74rem;color:var(--muted);">min(A, B) sorties · jamais A × B</span>
+</div>
+<div id="bComboPreview" class="batch-combo-preview" style="margin-top:12px;"></div>
 </div>
 
 {% if current_user %}
@@ -1855,6 +1869,24 @@ btn.disabled = false;
 const MAX_BATCH_A = 50;
 const MAX_BATCH_B = 50;
 const MAX_BATCH_COMBOS = 300;
+// ── Batch Pairing / Shuffle (additive). MATRIX behaviour is the default
+// and stays untouched; pairing only kicks in when its radio is selected.
+const MAX_BATCH_PAIR = 300;          // per-axis cap in Pairing mode
+const MAX_BATCH_PAIR_OUTPUTS = 300;  // outputs cap = min(#A,#B) ≤ 300
+function getBatchStrategy() { const s = document.querySelector('input[name="bStrategy"]:checked'); return s ? s.value : "matrix"; }
+function batchAxisCap() { return getBatchStrategy() === "pairing" ? MAX_BATCH_PAIR : MAX_BATCH_A; }
+function onBatchStrategyChange() {
+const pairing = getBatchStrategy() === "pairing";
+const opts = document.getElementById("bPairingOpts");
+if (opts) opts.style.display = pairing ? "flex" : "none";
+// Re-clamp current selections to the new cap (e.g. pairing→matrix with 200 files).
+const cap = batchAxisCap();
+if (bFilesA.length > cap) bFilesA = bFilesA.slice(0, cap);
+if (bFilesB.length > cap) bFilesB = bFilesB.slice(0, cap);
+document.getElementById("bNameA").textContent = bFilesA.length ? `✓ ${bFilesA.length} fichier${bFilesA.length > 1 ? "s" : ""} sélectionné${bFilesA.length > 1 ? "s" : ""}` : "";
+document.getElementById("bNameB").textContent = bFilesB.length ? `✓ ${bFilesB.length} fichier${bFilesB.length > 1 ? "s" : ""} sélectionné${bFilesB.length > 1 ? "s" : ""}` : "";
+updateComboPreview(); checkBatchReady();
+}
 
 let bFilesA = [];
 let bFilesB = [];
@@ -1891,10 +1923,11 @@ return f.type.startsWith("video/") || /\.(mp4|mov|avi|mkv|webm)$/i.test(f.name);
 
 function handleBatchAFiles(files) {
 const videos = files.filter(isVideoFile);
-if (videos.length > MAX_BATCH_A) {
-alert(`Maximum ${MAX_BATCH_A} vidéos sources A autorisées. Seules les ${MAX_BATCH_A} premières seront utilisées.`);
+const cap = batchAxisCap();
+if (videos.length > cap) {
+alert(`Maximum ${cap} vidéos sources A autorisées. Seules les ${cap} premières seront utilisées.`);
 }
-bFilesA = videos.slice(0, MAX_BATCH_A);
+bFilesA = videos.slice(0, cap);
 const n = bFilesA.length;
 document.getElementById("bNameA").textContent = n > 0 ? `✓ ${n} fichier${n > 1 ? "s" : ""} sélectionné${n > 1 ? "s" : ""}` : "";
 updateComboPreview();
@@ -1903,10 +1936,11 @@ checkBatchReady();
 
 function handleBatchBFiles(files) {
 const videos = files.filter(isVideoFile);
-if (videos.length > MAX_BATCH_B) {
-alert(`Maximum ${MAX_BATCH_B} vidéos cibles B autorisées. Seules les ${MAX_BATCH_B} premières seront utilisées.`);
+const cap = batchAxisCap();
+if (videos.length > cap) {
+alert(`Maximum ${cap} vidéos cibles B autorisées. Seules les ${cap} premières seront utilisées.`);
 }
-bFilesB = videos.slice(0, MAX_BATCH_B);
+bFilesB = videos.slice(0, cap);
 const n = bFilesB.length;
 document.getElementById("bNameB").textContent = n > 0 ? `✓ ${n} fichier${n > 1 ? "s" : ""} sélectionné${n > 1 ? "s" : ""}` : "";
 updateComboPreview();
@@ -1916,6 +1950,18 @@ checkBatchReady();
 function updateComboPreview() {
 const el = document.getElementById("bComboPreview");
 const nA = bFilesA.length, nB = bFilesB.length;
+if (getBatchStrategy() === "pairing") {
+const outputs = Math.min(nA, nB);
+const over = outputs > MAX_BATCH_PAIR_OUTPUTS;
+let html = `<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:.85rem;font-weight:600;">`
++ `<span>Vidéos A : <b>${nA}</b> / ${MAX_BATCH_PAIR}</span>`
++ `<span>Vidéos B : <b>${nB}</b> / ${MAX_BATCH_PAIR}</span>`
++ `<span style="color:${over ? 'var(--error)' : 'var(--text)'}">Sorties prévues : <b>${outputs}</b> / ${MAX_BATCH_PAIR_OUTPUTS} (min A,B)</span>`
++ `</div>`;
+if (outputs > 100) html += `<div style="color:var(--warn,#f59e0b);font-size:.82rem;font-weight:600;margin-top:6px;">⚠️ Lot lourd : la génération peut être longue sur Render.</div>`;
+el.innerHTML = html;
+return;
+}
 const total = nA * nB;
 const over = total > MAX_BATCH_COMBOS;
 const outColor = over ? "var(--error)" : "var(--text)";
@@ -1931,9 +1977,14 @@ el.innerHTML = html;
 }
 
 function checkBatchReady() {
-const total = bFilesA.length * bFilesB.length;
-document.getElementById("bLaunchBtn").disabled =
-!(bFilesA.length > 0 && bFilesB.length > 0) || total > MAX_BATCH_COMBOS || bRunning;
+const nA = bFilesA.length, nB = bFilesB.length;
+let ok;
+if (getBatchStrategy() === "pairing") {
+ok = nA > 0 && nB > 0 && nA <= MAX_BATCH_PAIR && nB <= MAX_BATCH_PAIR && Math.min(nA, nB) <= MAX_BATCH_PAIR_OUTPUTS;
+} else {
+ok = nA > 0 && nB > 0 && (nA * nB) <= MAX_BATCH_COMBOS;
+}
+document.getElementById("bLaunchBtn").disabled = !ok || bRunning;
 }
 
 // ── Run batch (A×B combination matrix) ──
@@ -1949,7 +2000,10 @@ document.getElementById("bLaunchBtn").disabled =
 // 4. Download everything as one ZIP (/batch_zip) and clean up server-side
 // staging files (/batch_cleanup).
 async function runBatch() {
-if (bFilesA.length === 0 || bFilesB.length === 0 || bRunning) return;
+if (bRunning) return;
+// Pairing / Shuffle mode → dedicated flow; MATRIX code below is untouched.
+if (getBatchStrategy() === "pairing") return runBatchPairing();
+if (bFilesA.length === 0 || bFilesB.length === 0) return;
 // Font Studio (optional): computed ONCE, applied to every combo. null
 // when all-default ⇒ caption_style is never sent ⇒ render unchanged.
 const _bCaptionStyle = buildCaptionStyle("fsB_");
@@ -2063,16 +2117,144 @@ btn.textContent = `📦 Télécharger les ${successes.length} vidéo${successes.
 
 // Stages one file with the server; returns the batch_id (assigned by the
 // server on the very first call, then reused for every subsequent call).
-async function stageFile(file, kind, index, batchId) {
+async function stageFile(file, kind, index, batchId, pairing) {
 const fd = new FormData();
 fd.append("file", file);
 fd.append("kind", kind);
 fd.append("index", index);
+if (pairing) fd.append("pairing", "1");   // Pairing mode raises the 50→300 staging cap
 if (batchId) fd.append("batch_id", batchId);
 const r = await fetch("/batch_stage", { method: "POST", body: fd });
 const d = await r.json();
 if (!r.ok || d.error) throw new Error(d.error || r.statusText);
 return d.batch_id;
+}
+
+// ══════════════════════════════════════════
+// BATCH PAIRING / SHUFFLE — dedicated flow (NOT a matrix).
+// outputs = min(#A,#B) ≤ 300. Each A paired to one B; each B used once.
+// Reuses /batch_stage (pairing flag), /batch_detect (cache), /batch_render
+// (pairing flag), /batch_zip — the A+B→C pipeline is untouched.
+// ══════════════════════════════════════════
+function probeBatchDurations(files) {
+return Promise.all(files.map(f => new Promise(res => {
+try {
+const url = URL.createObjectURL(f);
+const v = document.createElement("video");
+v.preload = "metadata"; v.src = url;
+v.onloadedmetadata = () => { const d = (isFinite(v.duration) && v.duration > 0) ? v.duration : 0; URL.revokeObjectURL(url); res(d); };
+v.onerror = () => { URL.revokeObjectURL(url); res(0); };
+} catch (e) { res(0); }
+})));
+}
+function buildPairs(mode, durA, durB) {
+const nA = bFilesA.length, nB = bFilesB.length, outputs = Math.min(nA, nB);
+const aIdx = [...Array(nA).keys()], bIdx = [...Array(nB).keys()];
+const shuffle = arr => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+const pairs = [];
+if (mode === "random") {
+shuffle(aIdx); shuffle(bIdx);
+for (let k = 0; k < outputs; k++) pairs.push({ a: aIdx[k], b: bIdx[k] });
+return pairs;
+}
+// Duration-based: drive by `outputs` A's, greedily pick the best unused B.
+const usedB = new Set();
+for (const ai of aIdx.slice(0, outputs)) {
+const ta = durA[ai] || 0;
+let best = -1, bestScore = Infinity;
+for (const bi of bIdx) {
+if (usedB.has(bi)) continue;
+const tb = durB[bi] || 0;
+// "bgea" prefers B ≥ A (smallest such); otherwise closest duration.
+const score = (mode === "bgea") ? (tb >= ta ? (tb - ta) : (1e6 + Math.abs(tb - ta))) : Math.abs(tb - ta);
+if (score < bestScore) { bestScore = score; best = bi; }
+}
+if (best >= 0) { usedB.add(best); pairs.push({ a: ai, b: best }); }
+}
+return pairs;
+}
+async function runBatchPairing() {
+const nA = bFilesA.length, nB = bFilesB.length;
+if (nA === 0 || nB === 0 || bRunning) return;
+if (nA > MAX_BATCH_PAIR || nB > MAX_BATCH_PAIR) { alert(`Maximum ${MAX_BATCH_PAIR} vidéos A et B.`); return; }
+const outputs = Math.min(nA, nB);
+if (outputs > MAX_BATCH_PAIR_OUTPUTS) { alert(`Maximum autorisé : ${MAX_BATCH_PAIR_OUTPUTS} vidéos générées.`); return; }
+const _bCaptionStyle = buildCaptionStyle("fsB_");
+const mode = document.getElementById("bPairMode").value;
+
+bRunning = true; bBatchId = null;
+document.getElementById("bLaunchBtn").disabled = true;
+const card = document.getElementById("bProgressCard"); card.style.display = "block";
+document.getElementById("bZipBtn").style.display = "none";
+
+try {
+let durA = [], durB = [];
+if (mode !== "random") {
+document.getElementById("bProgressTitle").textContent = "⏱️ Analyse des durées…";
+[durA, durB] = await Promise.all([probeBatchDurations(bFilesA), probeBatchDurations(bFilesB)]);
+}
+const pairs = buildPairs(mode, durA, durB);
+// Only the paired files get staged (distinct A/B → sequential staged indices).
+const usedA = [...new Set(pairs.map(p => p.a))];
+const usedB = [...new Set(pairs.map(p => p.b))];
+const aStage = new Map(usedA.map((orig, i) => [orig, i]));
+const bStage = new Map(usedB.map((orig, j) => [orig, j]));
+
+bResults = pairs.map(p => ({ filename: `A${pad2(aStage.get(p.a) + 1)}_B${pad2(bStage.get(p.b) + 1)}_output.mp4`, status: "pending", statusText: "⏳ En attente" }));
+renderBatchResults(); updateBatchProgress(0, pairs.length);
+
+document.getElementById("bProgressTitle").textContent = "📤 Envoi des vidéos A (appariées)…";
+for (let i = 0; i < usedA.length; i++) bBatchId = await stageFile(bFilesA[usedA[i]], "a", i, bBatchId, true);
+document.getElementById("bProgressTitle").textContent = "📤 Envoi des vidéos B (appariées)…";
+for (let j = 0; j < usedB.length; j++) bBatchId = await stageFile(bFilesB[usedB[j]], "b", j, bBatchId, true);
+
+// Detect once per unique staged B (reuses /batch_detect + OCR cache).
+document.getElementById("bProgressTitle").textContent = "🔍 Analyse des cibles B…";
+const linesByStagedB = {}; let ch = 0, vr = 0;
+for (let j = 0; j < usedB.length; j++) {
+const fd = new FormData(); fd.append("batch_id", bBatchId); fd.append("b_index", j);
+const r = await fetch("/batch_detect", { method: "POST", body: fd });
+const d = await r.json();
+if (d.error) throw new Error(`Analyse B${j + 1} : ${d.error}`);
+if (d.source === "cache") ch++; else if (d.source === "vision") vr++;
+document.getElementById("bProgressTitle").textContent = `🔍 Analyse des cibles B… (${j + 1}/${usedB.length} · ⚡${ch} cache · 🤖${vr} Vision)`;
+const lines = (d.lines || []).filter(l => l.text);
+if (!lines.length) throw new Error(`Aucun texte détecté dans une vidéo B appariée`);
+linesByStagedB[j] = lines;
+}
+
+document.getElementById("bProgressTitle").textContent = "⚙️ Génération des paires…";
+for (let i = 0; i < pairs.length; i++) {
+const sa = aStage.get(pairs[i].a), sb = bStage.get(pairs[i].b);
+bResults[i].status = "processing"; bResults[i].statusText = "⚙️ Génération…"; renderBatchResults();
+try {
+const fd = new FormData();
+fd.append("batch_id", bBatchId);
+fd.append("a_index", sa); fd.append("b_index", sb);
+fd.append("pairing", "1");
+fd.append("num_a", nA); fd.append("num_b", nB);
+fd.append("lines_json", JSON.stringify(linesByStagedB[sb]));
+if (_bCaptionStyle) fd.append("caption_style", JSON.stringify(_bCaptionStyle));
+const r = await fetch("/batch_render", { method: "POST", body: fd });
+const d = await r.json();
+if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+bResults[i].status = "done"; bResults[i].statusText = "✅ Terminé"; bResults[i].batch_id = bBatchId;
+} catch (e) { bResults[i].status = "error"; bResults[i].statusText = "❌ " + e.message; }
+renderBatchResults(); updateBatchProgress(i + 1, pairs.length);
+}
+document.getElementById("bProgressTitle").textContent = "✅ Pairing terminé";
+} catch (e) {
+document.getElementById("bProgressTitle").textContent = "❌ Erreur";
+alert("Erreur pairing : " + e.message);
+}
+
+bRunning = false; document.getElementById("bLaunchBtn").disabled = false;
+const successes = bResults.filter(r => r.status === "done");
+if (successes.length > 0) {
+const btn = document.getElementById("bZipBtn");
+btn.style.display = "inline-flex";
+btn.textContent = `📦 Télécharger les ${successes.length} vidéo${successes.length > 1 ? "s" : ""} en ZIP`;
+}
 }
 
 function renderBatchResults() {
