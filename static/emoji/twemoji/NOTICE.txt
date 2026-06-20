@@ -1,0 +1,15 @@
+Twemoji
+=======
+
+The emoji graphics in this directory (static/emoji/twemoji/72x72/*.png)
+are from the Twemoji project.
+
+Copyright: Twemoji © Twitter, Inc and other contributors.
+Graphics licensed under CC-BY 4.0:
+https://creativecommons.org/licenses/by/4.0/
+
+Source (maintained fork): https://github.com/jdecked/twemoji
+Original (archived):       https://github.com/twitter/twemoji
+
+Only the 72x72 PNG raster set is bundled, read locally at render time
+(no CDN, no network). No Apple emoji, no Apple assets, no Apple CDN.

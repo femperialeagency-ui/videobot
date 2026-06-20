@@ -2215,6 +2215,72 @@ def _load_caption_font(fontsize: int, bold: bool, font_key: str = "default"):
 # adds such a step by mistake. (The [EMOJI_DEBUG] log below proves this
 # at runtime: raw_text_from_vision == text_sent_to_renderer ==
 # text_after_cleanup for any caption containing emojis.)
+# ══════════════════════════════════════════════════════════════════
+# LOCAL TWEMOJI EMOJI SOURCE — offline, no CDN, no Apple assets.
+#
+# pilmoji's default (TwitterEmojiSource) fetches each emoji from a CDN at
+# render time; when the CDN is unreachable on Render it returns None and
+# the renderer falls back to the system Noto Color Emoji font (Android
+# look). This local source reads bundled Twemoji 72x72 PNGs from disk
+# instead — deterministic, identical on Render and locally, zero network.
+# If a PNG is missing (or the assets aren't deployed yet) it returns None,
+# so the existing fallback (and Noto as the ultimate net) still applies —
+# never a crash. It ONLY affects emoji glyphs; captions WITHOUT emojis are
+# byte-identical regardless of the source (pilmoji never queries the source
+# for plain text). Graphics: Twemoji, CC-BY 4.0 (see static/emoji/twemoji/
+# NOTICE.txt). No Apple emoji, no Apple CDN, no Apple files.
+# ══════════════════════════════════════════════════════════════════
+
+_TWEMOJI_DIR  = Path(__file__).parent / "static" / "emoji" / "twemoji" / "72x72"
+_LOCAL_TWEMOJI = None              # cached source instance (lazy)
+_LOCAL_TWEMOJI_BUILT = False       # whether we've attempted to build it
+
+
+def _twemoji_codepoints(emoji_str: str) -> str:
+    """Map an emoji string to Twemoji's filename codepoints, replicating
+    Twemoji's `grabTheRightIcon` rule: if there is NO ZWJ (U+200D), strip
+    every variation selector U+FE0F; otherwise keep them. Then join the
+    lowercase hex code points with '-'. e.g. 😭→'1f62d', ❤️→'2764',
+    👍🏽→'1f44d-1f3fd', 👨‍👩‍👧→'1f468-200d-1f469-200d-1f467'."""
+    s = emoji_str
+    if "\u200d" not in s:          # no ZWJ -> drop VS16 (U+FE0F)
+        s = s.replace("\ufe0f", "")
+    return "-".join(f"{ord(ch):x}" for ch in s)
+
+
+def _get_local_twemoji_source():
+    """Return a cached LocalTwemojiSource instance, or None if pilmoji
+    isn't importable. Never raises. When None is returned, callers pass
+    source=None to Pilmoji, which keeps pilmoji's current default."""
+    global _LOCAL_TWEMOJI, _LOCAL_TWEMOJI_BUILT
+    if _LOCAL_TWEMOJI_BUILT:
+        return _LOCAL_TWEMOJI
+    _LOCAL_TWEMOJI_BUILT = True
+    try:
+        from io import BytesIO
+        from pilmoji.source import BaseSource
+
+        class LocalTwemojiSource(BaseSource):
+            """Serves Twemoji 72x72 PNGs from disk; None for any missing
+            emoji (→ fallback handles it). No network, never raises."""
+            def get_emoji(self, emoji, /):
+                try:
+                    p = _TWEMOJI_DIR / (_twemoji_codepoints(emoji) + ".png")
+                    if p.exists():
+                        return BytesIO(p.read_bytes())
+                except Exception:
+                    pass
+                return None
+
+            def get_discord_emoji(self, id, /):
+                return None
+
+        _LOCAL_TWEMOJI = LocalTwemojiSource()
+    except Exception:
+        _LOCAL_TWEMOJI = None
+    return _LOCAL_TWEMOJI
+
+
 def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, style: dict = None) -> str:
     """
     Render all text objects onto a transparent RGBA image.
@@ -2256,6 +2322,11 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, style:
         from pilmoji import Pilmoji
     except ImportError:
         use_pilmoji = False
+    # Local Twemoji source (offline). When unavailable we pass NO source
+    # kwarg so Pilmoji keeps its current default — never worse than before
+    # (passing source=None would raise inside Pilmoji.__init__).
+    _src = _get_local_twemoji_source() if use_pilmoji else None
+    _emoji_kw = {"source": _src} if _src is not None else {}
 
     for block in blocks:
         text = block.get("text", "").strip()
@@ -2383,7 +2454,7 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, style:
             line_rendered_with_emoji = False
             if use_pilmoji:
                 try:
-                    with Pilmoji(overlay) as pm:
+                    with Pilmoji(overlay, **_emoji_kw) as pm:
                         for dx in range(-border, border + 1):
                             for dy in range(-border, border + 1):
                                 if abs(dx) + abs(dy) <= border + 1 and (dx or dy):
