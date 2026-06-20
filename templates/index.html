@@ -1095,6 +1095,13 @@ SIMPLE MODE
 </div>
 </div>
 
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px;font-size:.82rem;font-weight:600;">
+<span>OCR :</span>
+<label class="v-opt"><input type="radio" name="ocrModeS" value="rapide" checked> Rapide</label>
+<label class="v-opt"><input type="radio" name="ocrModeS" value="precis"> Précis <span style="font-weight:500;opacity:.7">(16 frames · 1080p · texte difficile)</span></label>
+<span style="font-weight:500;opacity:.6;font-size:.74rem">— à choisir avant d'uploader la vidéo B</span>
+</div>
+
 <!-- Detected lines -->
 <div class="card">
 <h2><span class="num">2</span> Texte détecté <span id="lineCount" style="color:var(--muted);font-weight:400;font-size:0.8rem;margin-left:4px"></span></h2>
@@ -1196,6 +1203,11 @@ BATCH MODE
 <span style="font-size:.82rem;font-weight:700;">Mode :</span>
 <label class="v-opt"><input type="radio" name="bStrategy" value="matrix" checked onchange="onBatchStrategyChange()"> Matrice (A × B)</label>
 <label class="v-opt"><input type="radio" name="bStrategy" value="pairing" onchange="onBatchStrategyChange()"> Pairing / Shuffle</label>
+</div>
+<div style="margin-top:10px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:.82rem;font-weight:700;">
+<span>OCR :</span>
+<label class="v-opt"><input type="radio" name="ocrModeB" value="rapide" checked> Rapide</label>
+<label class="v-opt"><input type="radio" name="ocrModeB" value="precis"> Précis <span style="font-weight:500;opacity:.7">(16 frames · 1080p · texte difficile)</span></label>
 </div>
 <div id="bPairingOpts" style="display:none;margin-top:10px;display:none;align-items:center;gap:10px;flex-wrap:wrap;">
 <span style="font-size:.82rem;font-weight:600;">Appariement :</span>
@@ -1727,6 +1739,14 @@ return (s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
 .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 }
 
+// OCR Pro: read the Rapide/Précis choice for a scope ("S"=Simple, "B"=Batch).
+// Default "rapide" ⇒ exact current detection. Sent as ocr_mode to /analyze
+// and /batch_detect; absent/rapide keeps engine_version v1.
+function getOcrMode(scope) {
+const el = document.querySelector('input[name="ocrMode' + scope + '"]:checked');
+return (el && el.value === "precis") ? "precis" : "rapide";
+}
+
 // ══════════════════════════════════════════
 // SIMPLE MODE (unchanged)
 // ══════════════════════════════════════════
@@ -1794,6 +1814,7 @@ renderLines();
 try {
 const fd = new FormData();
 fd.append("video_b", file);
+fd.append("ocr_mode", getOcrMode("S"));
 const res = await fetch("/analyze", { method: "POST", body: fd });
 const data = await res.json();
 
@@ -2068,6 +2089,7 @@ for (let j = 0; j < bFilesB.length; j++) {
 const fd = new FormData();
 fd.append("batch_id", bBatchId);
 fd.append("b_index", j);
+fd.append("ocr_mode", getOcrMode("B"));
 const r = await fetch("/batch_detect", { method: "POST", body: fd });
 const d = await r.json();
 if (d.error) throw new Error(`Analyse B${pad2(j + 1)} : ${d.error}`);
@@ -2226,7 +2248,7 @@ for (let j = 0; j < usedB.length; j++) bBatchId = await stageFile(bFilesB[usedB[
 document.getElementById("bProgressTitle").textContent = "🔍 Analyse des cibles B…";
 const linesByStagedB = {}; let ch = 0, vr = 0;
 for (let j = 0; j < usedB.length; j++) {
-const fd = new FormData(); fd.append("batch_id", bBatchId); fd.append("b_index", j);
+const fd = new FormData(); fd.append("batch_id", bBatchId); fd.append("b_index", j); fd.append("ocr_mode", getOcrMode("B"));
 const r = await fetch("/batch_detect", { method: "POST", body: fd });
 const d = await r.json();
 if (d.error) throw new Error(`Analyse B${j + 1} : ${d.error}`);
@@ -3577,12 +3599,12 @@ updateFsPreview(p);
 // identique à aujourd'hui. Les contrôles restent modifiables après clic.
 // Aucun nouveau backend : on ne fait que positionner des champs UI.
 const FS_PRESETS = {
-default:   { font: "default",     size: null, contour: "default", shadow: "off",    txt: null,      stroke: null },
-tiktok:    { font: "tiktok_bold", size: null, contour: "moyen",   shadow: "off",    txt: null,      stroke: null },
-instagram: { font: "clean_sans",  size: null, contour: "fin",     shadow: "legere", txt: null,      stroke: null },
-reddit:    { font: "clean_sans",  size: 0.95, contour: "fin",     shadow: "off",    txt: null,      stroke: null },
-ofm:       { font: "rounded",     size: null, contour: "moyen",   shadow: "legere", txt: null,      stroke: null },
-viral:     { font: "tiktok_bold", size: 1.15, contour: "epais",   shadow: "forte",  txt: null,      stroke: null },
+default:   { font: "default",     size: null, contour: "default", shadow: "off",    txt: null, stroke: null },
+tiktok:    { font: "tiktok_bold", size: 1.25, contour: "epais",   shadow: "forte",  txt: null, stroke: null },
+instagram: { font: "clean_sans",  size: 1.00, contour: "fin",     shadow: "legere", txt: null, stroke: null },
+reddit:    { font: "clean_sans",  size: 1.00, contour: "fin",     shadow: "off",    txt: null, stroke: null },
+ofm:       { font: "rounded",     size: 1.10, contour: "moyen",   shadow: "legere", txt: null, stroke: null },
+viral:     { font: "tiktok_bold", size: 1.45, contour: "epais",   shadow: "forte",  txt: null, stroke: null },
 };
 function applyPreset(prefix, name) {
 const p = FS_PRESETS[name] || FS_PRESETS.default;

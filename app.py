@@ -509,15 +509,18 @@ def _sha256_file(path: str) -> str:
     return h.hexdigest()
 
 
-def _ocr_cache_get(file_hash: str):
+def _ocr_cache_get(file_hash: str, cache_version: str = None):
     """Return {'lines','video_b_height','mode'} for a cache hit, else None.
+    `cache_version` defaults to OCR_CACHE_VERSION ('v1', Rapide); Précis
+    passes 'v1-precise' so the two modes never share cache entries.
     Never raises; a non-list/empty cached value is treated as a miss."""
+    cv = cache_version or OCR_CACHE_VERSION
     try:
         with _users_db() as conn:
             row = conn.execute(
                 "SELECT captions_json, video_b_height, mode FROM ocr_cache "
                 "WHERE hash = ? AND engine_version = ?",
-                (file_hash, OCR_CACHE_VERSION),
+                (file_hash, cv),
             ).fetchone()
         if not row:
             return None
@@ -529,9 +532,11 @@ def _ocr_cache_get(file_hash: str):
         return None
 
 
-def _ocr_cache_put(file_hash: str, lines: list, video_b_height, mode: str):
+def _ocr_cache_put(file_hash: str, lines: list, video_b_height, mode: str, cache_version: str = None):
     """Store ONLY a non-empty list (caller guarantees it's a Vision result).
-    Never raises — a cache write must never break detection."""
+    `cache_version` defaults to OCR_CACHE_VERSION ('v1', Rapide); Précis
+    passes 'v1-precise'. Never raises — a cache write must never break detection."""
+    cv = cache_version or OCR_CACHE_VERSION
     try:
         if not file_hash or not isinstance(lines, list) or not lines:
             return
@@ -540,7 +545,7 @@ def _ocr_cache_put(file_hash: str, lines: list, video_b_height, mode: str):
                 "INSERT OR REPLACE INTO ocr_cache "
                 "(hash, engine_version, captions_json, video_b_height, mode, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                (file_hash, OCR_CACHE_VERSION,
+                (file_hash, cv,
                  json.dumps(lines, ensure_ascii=False),
                  int(video_b_height or 0), mode,
                  time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())),
@@ -1487,6 +1492,56 @@ CRITICAL RULES:
 8. Return ONLY a valid JSON array. No markdown, no explanation."""
 
 
+# OCR Pro "Précis" — same schema/position rules as VISION_PROMPT_TIMED,
+# but the caption filter is RELAXED to recover hard cases: small text,
+# low-contrast text, text in corners or at the very bottom of the frame,
+# and very short captions visible in only one frame. Watermarks/usernames/
+# app-UI/stickers are still excluded to avoid noise. Used only in Précis
+# mode (16 frames, 1080p); Rapide keeps VISION_PROMPT_TIMED unchanged.
+VISION_PROMPT_TIMED_PRECISE = """These are {n} frames sampled from the SAME TikTok/Reel video, in chronological order. Each frame's capture time (seconds) is:
+{timestamps}
+
+For EACH frame, detect ALL real overlay CAPTIONS visible IN THAT SPECIFIC
+FRAME — the meme-style / commentary text the creator typed on top of the
+video to be read (e.g. "volume up ❗❗", "\\"we're just friends\\" / also us:").
+
+PRECISE MODE — be THOROUGH. Capture captions even when they are:
+- SMALL or thin
+- LOW-CONTRAST (white-on-light, dark-on-dark, faint)
+- in a CORNER or near the EDGES
+- at the VERY BOTTOM of the screen
+- VERY SHORT or visible in only ONE frame (fast / brief captions)
+- partially overlapping the subject
+If text reads like a deliberate caption a viewer is meant to read, INCLUDE it.
+
+STILL DO NOT DETECT (noise, never captions):
+- Watermarks, app logos, brand marks (TikTok/CapCut/InShot badges)
+- Usernames, handles, @ tags
+- Stickers / emoji-stickers / decorative graphics that aren't typed text
+- App UI chrome (progress bars, icons, buttons, timestamps, view counts)
+- Text rotated sideways / running top-to-bottom (vertical labels)
+- Text on clothing, objects, or the scene itself
+
+Return a JSON array. Each object = ONE caption visible in ONE frame:
+- "frame_index": 1-based index of the frame (1 to {n})
+- "text": exact text with ALL emojis. Use \\n between visual lines exactly as displayed.
+- "cx_pct": ACTUAL visual CENTER x of THIS caption in THIS frame, fraction of width (0=left, 1=right).
+- "cy_pct": ACTUAL visual CENTER y of THIS caption in THIS frame, fraction of height (0=top, 1=bottom).
+- "width_pct": width of the text block as fraction of frame width (0.3-0.9)
+- "fontsize_pct": font height as fraction of frame height (typical 0.030-0.055; large titles 0.055-0.075; small captions may be 0.020-0.030)
+- "align": "left" | "center" | "right"
+- "bold": true | false
+- "color": "white" | "black"
+
+CRITICAL RULES:
+1. If the SAME caption is visible across several consecutive frames, output ONE object per frame it appears in (same text/position/style, change only frame_index).
+2. If a caption is replaced by a DIFFERENT caption at the same position, treat them as separate texts.
+3. Only report captions ACTUALLY visible in that frame — never guess or carry text into frames where it isn't shown.
+4. Multi-line text = use \\n for every visual line break.
+5. POSITION = MEASUREMENT, NOT A GUESS. Report the CENTER of the caption's exact box in THIS frame; do not round to a generic zone, do not assume the usual TikTok position. A caption at chest height with empty space below must be near cy_pct ≈ 0.5–0.6, NOT 0.8+.
+6. Return ONLY a valid JSON array. No markdown, no explanation."""
+
+
 # ── Global JSON error handler ─────────────────────────────────────
 @app.errorhandler(Exception)
 def handle_exception(e):
@@ -1514,8 +1569,10 @@ def get_video_dims(path):
     return 576, 1024
 
 
-def extract_frames(video_path: str, count: int = 4) -> list:
-    """Extract evenly-spaced frames from video."""
+def extract_frames(video_path: str, count: int = 4, scale: str = "scale=720:-1") -> list:
+    """Extract evenly-spaced frames from video. `scale` defaults to the
+    current 720-wide downscale (Rapide); OCR Pro Précis passes a 1080p
+    scale. Default call is byte-identical to before."""
     # Get duration
     r = subprocess.run(
         ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
@@ -1534,7 +1591,7 @@ def extract_frames(video_path: str, count: int = 4) -> list:
         out = f"/tmp/frame_{uuid.uuid4().hex}.png"
         subprocess.run(
             ["ffmpeg", "-ss", str(t), "-i", video_path,
-             "-vframes", "1", "-vf", "scale=720:-1", "-y", out],
+             "-vframes", "1", "-vf", scale, "-y", out],
             capture_output=True, timeout=15
         )
         if Path(out).exists():
@@ -1804,8 +1861,13 @@ def _merge_timed_captions(detections: list, frame_times: list, duration: float) 
     return captions
 
 
-def analyze_with_claude_vision_timed(video_path: str):
+def analyze_with_claude_vision_timed(video_path: str, precise: bool = False):
     """
+    OCR Pro: `precise=False` (default) is the EXACT current path — 8 frames,
+    720p, VISION_PROMPT_TIMED, Haiku. `precise=True` (opt-in) uses 16 frames,
+    1080p and the relaxed VISION_PROMPT_TIMED_PRECISE (still Haiku — no Sonnet
+    in V1). Everything else (merging, schema, fallbacks) is identical.
+
     Batch-mode-only detection path: samples several frames spread across
     the video's timeline (instead of the simple-mode path's 4 frames
     covering the whole clip), asks Vision which captions are visible in
@@ -1835,10 +1897,10 @@ def analyze_with_claude_vision_timed(video_path: str):
     if duration <= 0:
         duration = 3.0
 
-    # Sample more frames than the static-overlay path (8 vs 4), spread
-    # evenly across the whole timeline, so caption appear/disappear
-    # boundaries can be localized to roughly duration/8 precision.
-    count = 8
+    # Frame count + resolution depend on the OCR mode. Rapide (default):
+    # 8 frames, 720p (byte-identical to before). Précis: 16 frames, 1080p.
+    count  = 16 if precise else 8
+    _scale = "scale=1080:-2" if precise else "scale=720:-1"
     step  = max(0.35, duration / count)
     frame_times, frame_paths = [], []
     for i in range(count):
@@ -1846,7 +1908,7 @@ def analyze_with_claude_vision_timed(video_path: str):
         out = f"/tmp/tframe_{uuid.uuid4().hex}.png"
         subprocess.run(
             ["ffmpeg", "-ss", str(t), "-i", video_path,
-             "-vframes", "1", "-vf", "scale=720:-1", "-y", out],
+             "-vframes", "1", "-vf", _scale, "-y", out],
             capture_output=True, timeout=15
         )
         if Path(out).exists():
@@ -1873,7 +1935,8 @@ def analyze_with_claude_vision_timed(video_path: str):
             return [], duration
 
         timestamps_str = "\n".join(f"frame {i+1}: {t}s" for i, t in enumerate(frame_times))
-        prompt = VISION_PROMPT_TIMED.format(n=len(frame_times), timestamps=timestamps_str)
+        _prompt_tpl = VISION_PROMPT_TIMED_PRECISE if precise else VISION_PROMPT_TIMED
+        prompt = _prompt_tpl.format(n=len(frame_times), timestamps=timestamps_str)
         content.append({"type": "text", "text": prompt})
 
         client = anthropic.Anthropic(api_key=api_key)
@@ -3119,6 +3182,14 @@ def analyze():
         ui_mode = (request.form.get("mode") or "simple").strip().lower()
         has_key = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
 
+        # OCR Pro: Rapide (default) = exact current path + cache 'v1'.
+        # Précis (opt-in) = 16 frames, 1080p, relaxed prompt, cache
+        # 'v1-precise' (kept strictly separate so the two never mix).
+        ocr_mode   = (request.form.get("ocr_mode") or "rapide").strip().lower()
+        _precise   = (ocr_mode == "precis")
+        _cache_ver = "v1-precise" if _precise else OCR_CACHE_VERSION
+        _fallback_scale = "scale=1080:-2" if _precise else "scale=720:-1"
+
         # ── OCR cache lookup (Chantier 1) — before any Vision call. On a
         # hit we return the EXACT cached detection (same lines format),
         # skipping Vision + frame extraction entirely. ──
@@ -3129,7 +3200,7 @@ def analyze():
             except Exception:
                 b_hash = None
             if b_hash:
-                cached = _ocr_cache_get(b_hash)
+                cached = _ocr_cache_get(b_hash, _cache_ver)
                 if cached is not None:
                     return jsonify({
                         "lines":          cached["lines"],
@@ -3145,7 +3216,7 @@ def analyze():
             # Timed detection for ALL modes: sample frames across the timeline
             # and detect WHEN each caption appears/disappears (start_time/end_time).
             try:
-                lines, _ = analyze_with_claude_vision_timed(path_b)
+                lines, _ = analyze_with_claude_vision_timed(path_b, precise=_precise)
             except Exception:
                 lines = []
             if lines:
@@ -3154,7 +3225,7 @@ def analyze():
         if not lines:
             # Fall back to the original single-pass flow (identical to the
             # pre-existing behavior; produces lines WITHOUT timing info).
-            frames = extract_frames(path_b, count=4)
+            frames = extract_frames(path_b, count=4, scale=_fallback_scale)
             if has_key:
                 lines = analyze_with_claude_vision(frames)
                 if lines:
@@ -3176,7 +3247,7 @@ def analyze():
         # ── Store ONLY a non-empty Vision result (never empty, never
         # Tesseract). Defensive: a cache write can never break detection. ──
         if has_key and source == "vision" and lines and b_hash:
-            _ocr_cache_put(b_hash, lines, hb, "vision")
+            _ocr_cache_put(b_hash, lines, hb, "vision", _cache_ver)
 
         return jsonify({
             "lines":          lines,
@@ -3503,6 +3574,15 @@ def batch_detect():
 
         has_key = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
 
+        # OCR Pro: Rapide (default) = exact current path + cache 'v1' ;
+        # Précis (opt-in) = 16 frames, 1080p, relaxed prompt, cache
+        # 'v1-precise'. Applies to Batch Matrice AND Pairing (both call
+        # this route). Strictly separate cache namespaces.
+        ocr_mode   = (request.form.get("ocr_mode") or "rapide").strip().lower()
+        _precise   = (ocr_mode == "precis")
+        _cache_ver = "v1-precise" if _precise else OCR_CACHE_VERSION
+        _fallback_scale = "scale=1080:-2" if _precise else "scale=720:-1"
+
         # ── OCR cache lookup (Chantier 1) — before any Vision call. ──
         b_hash = None
         if has_key:
@@ -3511,7 +3591,7 @@ def batch_detect():
             except Exception:
                 b_hash = None
             if b_hash:
-                cached = _ocr_cache_get(b_hash)
+                cached = _ocr_cache_get(b_hash, _cache_ver)
                 if cached is not None:
                     return jsonify({
                         "lines":          cached["lines"],
@@ -3525,7 +3605,7 @@ def batch_detect():
         # back to the original single-pass detection if it finds nothing.
         source = None
         try:
-            lines, _ = analyze_with_claude_vision_timed(path_b)
+            lines, _ = analyze_with_claude_vision_timed(path_b, precise=_precise)
         except Exception:
             lines = []
         if lines:
@@ -3533,7 +3613,7 @@ def batch_detect():
 
         frames = []
         if not lines:
-            frames = extract_frames(path_b, count=4)
+            frames = extract_frames(path_b, count=4, scale=_fallback_scale)
             if has_key:
                 lines = analyze_with_claude_vision(frames)
                 if lines:
@@ -3555,7 +3635,7 @@ def batch_detect():
 
         # ── Store ONLY a non-empty Vision result (never empty, never Tesseract). ──
         if has_key and source == "vision" and lines and b_hash:
-            _ocr_cache_put(b_hash, lines, hb, "vision")
+            _ocr_cache_put(b_hash, lines, hb, "vision", _cache_ver)
 
         return jsonify({
             "lines":          lines,
