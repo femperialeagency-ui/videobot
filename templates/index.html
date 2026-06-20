@@ -1759,8 +1759,11 @@ renderLines();
 
 status.style.background = "rgba(32,217,138,0.12)";
 status.style.color = "var(--success)";
-const modeLabel = data.mode === "vision" ? "🤖 Claude Vision" : "🔍 OCR basique";
-status.textContent = `✅ ${linesData.length} ligne(s) détectée(s) via ${modeLabel} — corrige si besoin, puis génère.`;
+const _src = data.source || (data.mode === "vision" ? "vision" : "tesseract");
+const srcLabel = _src === "cache" ? "⚡ Cache OCR utilisé"
+               : _src === "tesseract" ? "🔍 Fallback Tesseract"
+               : "🤖 Analyse Vision";
+status.textContent = `✅ ${linesData.length} ligne(s) détectée(s) — ${srcLabel} — corrige si besoin, puis génère.`;
 
 } catch(e) {
 status.style.background = "rgba(248,113,113,0.1)";
@@ -1973,6 +1976,7 @@ bBatchId = await stageFile(bFilesB[j], "b", j, bBatchId);
 // ── Step 3: detect captions once per B file, reused across all A's ──
 document.getElementById("bProgressTitle").textContent = "🔍 Analyse des cibles B…";
 const linesByB = [];
+let _bCacheHits = 0, _bVisionRuns = 0;
 for (let j = 0; j < bFilesB.length; j++) {
 const fd = new FormData();
 fd.append("batch_id", bBatchId);
@@ -1980,6 +1984,8 @@ fd.append("b_index", j);
 const r = await fetch("/batch_detect", { method: "POST", body: fd });
 const d = await r.json();
 if (d.error) throw new Error(`Analyse B${pad2(j + 1)} : ${d.error}`);
+if (d.source === "cache") _bCacheHits++; else if (d.source === "vision") _bVisionRuns++;
+document.getElementById("bProgressTitle").textContent = `🔍 Analyse des cibles B… (${j + 1}/${bFilesB.length} · ⚡${_bCacheHits} cache · 🤖${_bVisionRuns} Vision)`;
 const lines = (d.lines || []).filter(l => l.text);
 if (!lines.length) throw new Error(`Aucun texte détecté dans
 la vidéo B${pad2(j + 1)}`);

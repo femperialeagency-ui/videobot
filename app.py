@@ -462,6 +462,95 @@ def _migrate_variation_presets_table():
         conn.commit()
 
 
+# ══════════════════════════════════════════════════════════════════
+# OCR CACHE (Chantier 1) — cache the caption-detection result per B-file
+# content so the same video B is never re-analyzed by Claude Vision.
+#
+# Global by content (not user-scoped): same bytes ⇒ same captions. Keyed
+# by (sha256(file), OCR_CACHE_VERSION) so bumping the version invalidates
+# everything when the detection engine changes. Stores ONLY non-empty
+# Vision results — never empty, never Tesseract. Purely additive: it
+# changes nothing about detection, captions format, rendering, or A+B→C —
+# only whether the (identical) detection result is recomputed or reused.
+# ══════════════════════════════════════════════════════════════════
+
+OCR_CACHE_VERSION = "v1"   # bump to invalidate all cached OCR when detection changes
+
+
+def _migrate_ocr_cache_table():
+    """Idempotent CREATE TABLE IF NOT EXISTS for the OCR caption cache —
+    isolated table in the same DB; nothing else references it. Safe no-op
+    on every redeploy."""
+    with _users_db() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ocr_cache (
+                hash            TEXT NOT NULL,
+                engine_version  TEXT NOT NULL,
+                captions_json   TEXT NOT NULL,
+                video_b_height  INTEGER,
+                mode            TEXT,
+                created_at      TEXT NOT NULL,
+                PRIMARY KEY (hash, engine_version)
+            )
+            """
+        )
+        conn.commit()
+
+
+def _sha256_file(path: str) -> str:
+    """Streaming sha256 of a file's content (1 MB chunks). Raises on I/O
+    error so the caller can simply skip caching."""
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _ocr_cache_get(file_hash: str):
+    """Return {'lines','video_b_height','mode'} for a cache hit, else None.
+    Never raises; a non-list/empty cached value is treated as a miss."""
+    try:
+        with _users_db() as conn:
+            row = conn.execute(
+                "SELECT captions_json, video_b_height, mode FROM ocr_cache "
+                "WHERE hash = ? AND engine_version = ?",
+                (file_hash, OCR_CACHE_VERSION),
+            ).fetchone()
+        if not row:
+            return None
+        lines = json.loads(row["captions_json"])
+        if not isinstance(lines, list) or not lines:
+            return None
+        return {"lines": lines, "video_b_height": row["video_b_height"], "mode": row["mode"]}
+    except Exception:
+        return None
+
+
+def _ocr_cache_put(file_hash: str, lines: list, video_b_height, mode: str):
+    """Store ONLY a non-empty list (caller guarantees it's a Vision result).
+    Never raises — a cache write must never break detection."""
+    try:
+        if not file_hash or not isinstance(lines, list) or not lines:
+            return
+        with _users_db() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO ocr_cache "
+                "(hash, engine_version, captions_json, video_b_height, mode, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (file_hash, OCR_CACHE_VERSION,
+                 json.dumps(lines, ensure_ascii=False),
+                 int(video_b_height or 0), mode,
+                 time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())),
+            )
+            conn.commit()
+    except Exception as e:
+        import sys
+        print(f"[ocr_cache] WARNING: store failed: {e}", file=sys.stderr)
+
+
 def _get_video_duration_seconds(path):
     """Read-only helper: a video's duration in seconds via ffprobe, or
     None on any failure. Mirrors the exact ffprobe invocation already
@@ -852,6 +941,7 @@ _init_usage_db()
 _migrate_user_plan_columns()
 _migrate_usage_logs_variation_columns()
 _migrate_variation_presets_table()
+_migrate_ocr_cache_table()
 
 UPLOAD_DIR = Path("/tmp/videobot_jobs")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -2944,6 +3034,27 @@ def analyze():
         ui_mode = (request.form.get("mode") or "simple").strip().lower()
         has_key = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
 
+        # ── OCR cache lookup (Chantier 1) — before any Vision call. On a
+        # hit we return the EXACT cached detection (same lines format),
+        # skipping Vision + frame extraction entirely. ──
+        b_hash = None
+        if has_key:
+            try:
+                b_hash = _sha256_file(path_b)
+            except Exception:
+                b_hash = None
+            if b_hash:
+                cached = _ocr_cache_get(b_hash)
+                if cached is not None:
+                    return jsonify({
+                        "lines":          cached["lines"],
+                        "video_b_height": cached["video_b_height"],
+                        "mode":           cached["mode"] or "vision",
+                        "cached":         True,
+                        "source":         "cache",
+                    })
+
+        source = None
         lines = []
         if has_key:
             # Timed detection for ALL modes: sample frames across the timeline
@@ -2952,22 +3063,23 @@ def analyze():
                 lines, _ = analyze_with_claude_vision_timed(path_b)
             except Exception:
                 lines = []
+            if lines:
+                source = "vision"
 
-        if lines:
-            # Timed detection succeeded — use it as-is (already includes
-            # start_time/end_time alongside the usual position/style keys).
-            pass
-        else:
-            # Either simple mode, or batch timed-detection found nothing —
-            # fall back to the original single-pass flow (identical to the
+        if not lines:
+            # Fall back to the original single-pass flow (identical to the
             # pre-existing behavior; produces lines WITHOUT timing info).
             frames = extract_frames(path_b, count=4)
             if has_key:
                 lines = analyze_with_claude_vision(frames)
+                if lines:
+                    source = "vision"
             else:
                 lines = []
             if not lines:
                 lines = analyze_with_tesseract_fallback(frames)
+                if lines:
+                    source = "tesseract"
             for f in frames:
                 try:
                     Path(f).unlink(missing_ok=True)
@@ -2975,10 +3087,18 @@ def analyze():
                     pass
 
         _, hb = get_video_dims(path_b)
+
+        # ── Store ONLY a non-empty Vision result (never empty, never
+        # Tesseract). Defensive: a cache write can never break detection. ──
+        if has_key and source == "vision" and lines and b_hash:
+            _ocr_cache_put(b_hash, lines, hb, "vision")
+
         return jsonify({
             "lines":          lines,
             "video_b_height": hb,
-            "mode":           "vision" if has_key else "tesseract"
+            "mode":           "vision" if has_key else "tesseract",
+            "cached":         False,
+            "source":         source or "tesseract",
         })
 
     except Exception as e:
@@ -3294,23 +3414,47 @@ def batch_detect():
 
         has_key = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
 
-        # Identical sequence to /analyze's ui_mode == "batch" branch:
-        # timed detection first, falling back to the original single-pass
-        # detection (Vision or Tesseract) if it finds nothing.
+        # ── OCR cache lookup (Chantier 1) — before any Vision call. ──
+        b_hash = None
+        if has_key:
+            try:
+                b_hash = _sha256_file(path_b)
+            except Exception:
+                b_hash = None
+            if b_hash:
+                cached = _ocr_cache_get(b_hash)
+                if cached is not None:
+                    return jsonify({
+                        "lines":          cached["lines"],
+                        "video_b_height": cached["video_b_height"],
+                        "mode":           cached["mode"] or "vision",
+                        "cached":         True,
+                        "source":         "cache",
+                    })
+
+        # Identical sequence to /analyze: timed detection first, falling
+        # back to the original single-pass detection if it finds nothing.
+        source = None
         try:
             lines, _ = analyze_with_claude_vision_timed(path_b)
         except Exception:
             lines = []
+        if lines:
+            source = "vision"
 
         frames = []
         if not lines:
             frames = extract_frames(path_b, count=4)
             if has_key:
                 lines = analyze_with_claude_vision(frames)
+                if lines:
+                    source = "vision"
             else:
                 lines = []
             if not lines:
                 lines = analyze_with_tesseract_fallback(frames)
+                if lines:
+                    source = "tesseract"
 
         for f in frames:
             try:
@@ -3319,10 +3463,17 @@ def batch_detect():
                 pass
 
         _, hb = get_video_dims(path_b)
+
+        # ── Store ONLY a non-empty Vision result (never empty, never Tesseract). ──
+        if has_key and source == "vision" and lines and b_hash:
+            _ocr_cache_put(b_hash, lines, hb, "vision")
+
         return jsonify({
             "lines":          lines,
             "video_b_height": hb,
-            "mode":           "vision" if has_key else "tesseract"
+            "mode":           "vision" if has_key else "tesseract",
+            "cached":         False,
+            "source":         source or "tesseract",
         })
 
     except Exception as e:
