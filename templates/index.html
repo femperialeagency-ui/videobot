@@ -435,6 +435,7 @@ transition: border-color .15s, background .15s; }
 .v-quick-btn { padding: 6px 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2);
 color: var(--muted); font-size: 0.76rem; font-weight: 600; cursor: pointer; transition: all .15s; }
 .v-quick-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft, rgba(67,105,255,.12)); }
+.fs-preset-btn.fs-active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft, rgba(67,105,255,.16)); font-weight: 700; }
 
 /* ── Variation mode: config-mode toggle ── */
 .v-modeswitch { display: flex; gap: 7px; margin-bottom: 14px; }
@@ -1107,6 +1108,15 @@ SIMPLE MODE
 <details class="card" id="fsS_panel">
 <summary style="cursor:pointer;font-weight:700;list-style:revert;">🎨 Style des captions <span style="font-weight:500;opacity:.7;font-size:.85rem">(optionnel — défaut = rendu actuel)</span></summary>
 <div style="font-size:0.78rem;color:var(--muted);margin:8px 0 12px;">Tout reste sur « Défaut » : la vidéo C sort exactement comme aujourd'hui. Changez une option seulement si vous le souhaitez.</div>
+<div style="font-size:0.74rem;color:var(--muted);margin-bottom:6px;">Presets rapides (pré-remplissent les contrôles ci-dessous — ajustables ensuite) :</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
+<button type="button" class="v-quick-btn fs-preset-btn fs-active" data-fsprefix="fsS_" data-fspreset="default" onclick="applyPreset('fsS_','default')">Défaut</button>
+<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsS_" data-fspreset="tiktok" onclick="applyPreset('fsS_','tiktok')">TikTok</button>
+<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsS_" data-fspreset="instagram" onclick="applyPreset('fsS_','instagram')">Instagram</button>
+<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsS_" data-fspreset="reddit" onclick="applyPreset('fsS_','reddit')">Reddit</button>
+<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsS_" data-fspreset="ofm" onclick="applyPreset('fsS_','ofm')">OFM</button>
+<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsS_" data-fspreset="viral" onclick="applyPreset('fsS_','viral')">Viral</button>
+</div>
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;">Police</label><select id="fsS_font"><option value="default">Défaut</option><option value="tiktok_bold">TikTok Bold</option><option value="clean_sans">Clean Sans</option><option value="rounded">Rounded</option><option value="serif">Serif</option><option value="handwritten">Handwritten</option></select></div>
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;cursor:pointer;"><input type="checkbox" id="fsS_sizeOn"> Taille</label><input type="range" id="fsS_size" min="0.7" max="1.5" step="0.05" value="1.0"><span class="v-slider-val" id="fsS_sizeVal">1.0×</span></div>
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;">Contour</label><select id="fsS_contour"><option value="default">Défaut</option><option value="fin">Fin</option><option value="moyen">Moyen</option><option value="epais">Épais</option></select></div>
@@ -1204,6 +1214,15 @@ BATCH MODE
 <details class="card" id="fsB_panel">
 <summary style="cursor:pointer;font-weight:700;list-style:revert;">🎨 Style des captions <span style="font-weight:500;opacity:.7;font-size:.85rem">(optionnel — défaut = rendu actuel)</span></summary>
 <div style="font-size:0.78rem;color:var(--muted);margin:8px 0 12px;">Appliqué à toutes les vidéos du batch. Tout sur « Défaut » = sortie identique à aujourd'hui.</div>
+<div style="font-size:0.74rem;color:var(--muted);margin-bottom:6px;">Presets rapides (pré-remplissent les contrôles ci-dessous — ajustables ensuite) :</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
+<button type="button" class="v-quick-btn fs-preset-btn fs-active" data-fsprefix="fsB_" data-fspreset="default" onclick="applyPreset('fsB_','default')">Défaut</button>
+<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsB_" data-fspreset="tiktok" onclick="applyPreset('fsB_','tiktok')">TikTok</button>
+<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsB_" data-fspreset="instagram" onclick="applyPreset('fsB_','instagram')">Instagram</button>
+<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsB_" data-fspreset="reddit" onclick="applyPreset('fsB_','reddit')">Reddit</button>
+<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsB_" data-fspreset="ofm" onclick="applyPreset('fsB_','ofm')">OFM</button>
+<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsB_" data-fspreset="viral" onclick="applyPreset('fsB_','viral')">Viral</button>
+</div>
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;">Police</label><select id="fsB_font"><option value="default">Défaut</option><option value="tiktok_bold">TikTok Bold</option><option value="clean_sans">Clean Sans</option><option value="rounded">Rounded</option><option value="serif">Serif</option><option value="handwritten">Handwritten</option></select></div>
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;cursor:pointer;"><input type="checkbox" id="fsB_sizeOn"> Taille</label><input type="range" id="fsB_size" min="0.7" max="1.5" step="0.05" value="1.0"><span class="v-slider-val" id="fsB_sizeVal">1.0×</span></div>
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;">Contour</label><select id="fsB_contour"><option value="default">Défaut</option><option value="fin">Fin</option><option value="moyen">Moyen</option><option value="epais">Épais</option></select></div>
@@ -3314,6 +3333,46 @@ return Object.keys(st).length ? st : null;
 const sl = document.getElementById(p + "size"), val = document.getElementById(p + "sizeVal");
 if (sl && val) sl.addEventListener("input", () => { val.textContent = parseFloat(sl.value).toFixed(2).replace(/0$/, "") + "×"; });
 });
+
+// ── Style Presets (Chantier B) — pré-remplissent les contrôles Font
+// Studio existants, puis le flux inchangé prend le relais. "default"
+// remet TOUT sur Défaut/Off ⇒ buildCaptionStyle renvoie null ⇒ rendu
+// identique à aujourd'hui. Les contrôles restent modifiables après clic.
+// Aucun nouveau backend : on ne fait que positionner des champs UI.
+const FS_PRESETS = {
+default:   { font: "default",     size: null, contour: "default", shadow: "off",    txt: null,      stroke: null },
+tiktok:    { font: "tiktok_bold", size: null, contour: "moyen",   shadow: "off",    txt: null,      stroke: null },
+instagram: { font: "clean_sans",  size: null, contour: "fin",     shadow: "legere", txt: null,      stroke: null },
+reddit:    { font: "clean_sans",  size: 0.95, contour: "fin",     shadow: "off",    txt: null,      stroke: null },
+ofm:       { font: "rounded",     size: null, contour: "moyen",   shadow: "legere", txt: null,      stroke: null },
+viral:     { font: "tiktok_bold", size: 1.15, contour: "epais",   shadow: "forte",  txt: null,      stroke: null },
+};
+function applyPreset(prefix, name) {
+const p = FS_PRESETS[name] || FS_PRESETS.default;
+const g = id => document.getElementById(prefix + id);
+if (g("font")) g("font").value = p.font;
+// Taille : activée seulement si le preset fixe un facteur, sinon Défaut (off, 1.0)
+if (g("sizeOn") && g("size")) {
+if (p.size != null) { g("sizeOn").checked = true; g("size").value = p.size; }
+else { g("sizeOn").checked = false; g("size").value = "1.0"; }
+const sv = g("sizeVal"); if (sv) sv.textContent = parseFloat(g("size").value).toFixed(2).replace(/0$/, "") + "×";
+}
+if (g("contour")) g("contour").value = p.contour;
+if (g("shadow")) g("shadow").value = p.shadow;
+// Couleurs : activées seulement si le preset en fournit une, sinon Défaut (off)
+if (g("txtOn") && g("txtColor")) {
+if (p.txt) { g("txtOn").checked = true; g("txtColor").value = p.txt; }
+else { g("txtOn").checked = false; g("txtColor").value = "#ffffff"; }
+}
+if (g("strokeOn") && g("strokeColor")) {
+if (p.stroke) { g("strokeOn").checked = true; g("strokeColor").value = p.stroke; }
+else { g("strokeOn").checked = false; g("strokeColor").value = "#000000"; }
+}
+const det = g("panel"); if (det && det.open === false) det.open = true;
+document.querySelectorAll('.fs-preset-btn[data-fsprefix="' + prefix + '"]').forEach(b => {
+b.classList.toggle("fs-active", b.dataset.fspreset === name);
+});
+}
 </script>
 </body>
 </html>
