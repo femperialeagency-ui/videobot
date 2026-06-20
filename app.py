@@ -2334,7 +2334,13 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, style:
         y_start = cy - total_h // 2
 
         margin  = border + 4
-        y_start = max(margin, min(y_start, ha - total_h - margin))
+        # Bottom clamp uses the REAL visual block height (last line's glyphs)
+        # instead of total_h, which includes the trailing 1.34 line-spacing
+        # pad below the text. That pad was over-reserved at the bottom and
+        # pushed low captions upward by tens of px. Centering (y_start above)
+        # and the top clamp (max(margin, …)) are unchanged.
+        visual_h = (len(lines) - 1) * line_h + fontsize
+        y_start = max(margin, min(y_start, ha - visual_h - margin))
 
         # Pre-compute widths for alignment
         line_widths = [_measure_text(font, ln) for ln in lines]
