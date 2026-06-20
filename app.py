@@ -3830,7 +3830,7 @@ def variation_cleanup():
 # Cleanup reuses the existing /variation_cleanup (one call per job_id).
 # ══════════════════════════════════════════════════════════════════
 
-MAX_MULTI_VIDEOS = 10                       # max source videos per multi run
+MAX_MULTI_VIDEOS = 100                      # max source videos per multi run
 MAX_MULTI_TOTAL  = 300                      # hard cap: videos × variants-per-video
 
 
@@ -3842,6 +3842,8 @@ def variation_multi_run():
     "variation_multi". Same params (job_id, index, count, strength,
     config_mode, advanced_config); same deterministic per-(job,index)
     RNG; same hard 100-cap per video; same per-item-error contract.
+    Additionally enforces the multi TOTAL cap (num_videos × count ≤
+    MAX_MULTI_TOTAL) server-side, independent of the client.
     """
     try:
         job_id = (request.form.get("job_id") or "").strip()
@@ -3858,6 +3860,20 @@ def variation_multi_run():
             count = 0
         if index < 0 or count <= 0 or count > MAX_VARIATIONS or index >= count:
             return jsonify({"error": "Paramètres de variation invalides (max 100)."}), 400
+
+        # ── Server-side TOTAL cap (videos × variants-per-video) ──
+        # The client sends num_videos on every call so the server can
+        # independently enforce the same hard limit shown in the UI —
+        # never trusting the client. 100 videos × 3 = 300 is allowed;
+        # 10 × 31 = 310 is rejected here regardless of what the client did.
+        try:
+            num_videos = int(request.form.get("num_videos", "1"))
+        except Exception:
+            num_videos = 1
+        if num_videos < 1 or num_videos > MAX_MULTI_VIDEOS:
+            return jsonify({"error": f"Nombre de vidéos invalide (1..{MAX_MULTI_VIDEOS})."}), 400
+        if num_videos * count > MAX_MULTI_TOTAL:
+            return jsonify({"error": f"Total {num_videos}×{count} dépasse la limite de {MAX_MULTI_TOTAL} variantes."}), 400
 
         strength = (request.form.get("strength") or VARIATION_DEFAULT_STRENGTH).strip().lower()
         if strength not in VARIATION_STRENGTH_PRESETS:

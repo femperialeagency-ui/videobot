@@ -1339,13 +1339,13 @@ Vision, no captions, no Batch, no A+B→C.
 
 <!-- Upload (multi) -->
 <div class="card">
-<h2><span class="num">1</span> Vidéos sources <span style="font-weight:500;opacity:.7;font-size:.85rem">(1 à 10)</span></h2>
+<h2><span class="num">1</span> Vidéos sources <span style="font-weight:500;opacity:.7;font-size:.85rem">(1 à 100)</span></h2>
 <div class="drop-zone upcard" id="vmZone" style="max-width:420px;margin:0 auto;">
 <input type="file" id="vmInput" accept="video/*" multiple />
 <span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="3.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.6"/><rect x="6.5" y="6.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.6"/><circle cx="11" cy="11" r="1" fill="currentColor"/></svg></span>
 <div class="meta">
 <div class="lbl">Vidéos sources</div>
-<div class="sub">1 à 10 fichiers</div>
+<div class="sub">1 à 100 fichiers</div>
 <div class="fn" id="vmName"></div>
 </div>
 </div>
@@ -2408,9 +2408,9 @@ setVariationCount(10);
 // (so Multi's presets actually work — the existing Variation Studio
 // client is left untouched). Nothing here touches Batch/Simple/captions.
 // ══════════════════════════════════════════
-const MAX_VM_VIDEOS = 10;
+const MAX_VM_VIDEOS = 100;           // mirrors MAX_MULTI_VIDEOS
 const MAX_VM_PER_VIDEO = 100;        // mirrors MAX_VARIATIONS
-const MAX_VM_TOTAL = 300;            // mirrors MAX_MULTI_TOTAL
+const MAX_VM_TOTAL = 300;            // mirrors MAX_MULTI_TOTAL — videos × variants
 const VM_SLIDER_KEYS = [
 "brightness","contrast","saturation","gamma","noise","sharpness",
 "blur","zoom","crop","rotation","speed","volume","pitch",
@@ -2675,6 +2675,7 @@ row.status = "processing"; row.statusText = "⚙️ Génération…"; renderVmRe
 try {
 const fd = new FormData();
 fd.append("job_id", jobId); fd.append("index", k); fd.append("count", count);
+fd.append("num_videos", vmFiles.length);
 fd.append("strength", strength); fd.append("config_mode", configMode);
 if (configMode === "advanced" && advancedConfig) fd.append("advanced_config", JSON.stringify(advancedConfig));
 const r = await fetch("/variation_multi_run", { method: "POST", body: fd });
