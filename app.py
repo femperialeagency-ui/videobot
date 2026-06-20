@@ -870,8 +870,8 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 BATCH_DIR = Path("/tmp/videobot_batches")
 BATCH_DIR.mkdir(parents=True, exist_ok=True)
 
-MAX_BATCH_FILES  = 10   # max source (A) videos AND max target (B) videos
-MAX_BATCH_COMBOS = 100  # MAX_BATCH_FILES × MAX_BATCH_FILES
+MAX_BATCH_FILES  = 50   # max source (A) videos AND max target (B) videos
+MAX_BATCH_COMBOS = 300  # hard cap on A × B outputs (A × B ≤ 300)
 
 
 def _cleanup_stale_batches(max_age_hours: float = 3.0):
@@ -3262,6 +3262,23 @@ def batch_render():
             return jsonify({"error": "Index invalide"}), 400
         if not (0 <= a_index < MAX_BATCH_FILES) or not (0 <= b_index < MAX_BATCH_FILES):
             return jsonify({"error": "Index hors limites"}), 400
+
+        # Server-side TOTAL cap (A × B ≤ MAX_BATCH_COMBOS). The client sends
+        # num_a/num_b on every render call so the server can independently
+        # enforce the same limit shown in the UI — never trusting the
+        # client. 10×30 = 300 is allowed; 25×25 = 625 and 50×50 = 2500 are
+        # rejected here. Validation only — the A+B→C render path below is
+        # unchanged.
+        try:
+            num_a = int(request.form.get("num_a", "0"))
+            num_b = int(request.form.get("num_b", "0"))
+        except Exception:
+            num_a = num_b = 0
+        if num_a > 0 and num_b > 0:
+            if num_a > MAX_BATCH_FILES or num_b > MAX_BATCH_FILES:
+                return jsonify({"error": f"Maximum {MAX_BATCH_FILES} vidéos A et {MAX_BATCH_FILES} vidéos B."}), 400
+            if num_a * num_b > MAX_BATCH_COMBOS:
+                return jsonify({"error": f"Maximum autorisé : {MAX_BATCH_COMBOS} vidéos générées."}), 400
 
         bdir   = BATCH_DIR / batch_id
         path_a = bdir / "A" / f"{a_index:02d}.mp4"
