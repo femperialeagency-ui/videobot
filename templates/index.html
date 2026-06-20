@@ -723,6 +723,10 @@ Nouvelle génération
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="3.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="6.5" y="6.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.5" fill="var(--card,#16181d)"/><circle cx="11" cy="11" r="1" fill="currentColor"/></svg></span>
 <div><div class="gen-drop-item-label">Variation Studio Multi</div><div class="gen-drop-item-desc">Plusieurs vidéos × N variantes</div></div>
 </button>
+<button type="button" class="gen-drop-item" onclick="selectGen('audio')">
+<span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2 V11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M9 2 L13.5 3.7 V6.5 L9 4.8 Z" fill="currentColor"/><circle cx="6.5" cy="11.5" r="2.6" stroke="currentColor" stroke-width="1.6"/></svg></span>
+<div><div class="gen-drop-item-label">Audio Converter</div><div class="gen-drop-item-desc">Audio (.opus…) → .mp3</div></div>
+</button>
 </div>
 </div>
 {% endif %}
@@ -759,6 +763,10 @@ Variation Studio
 <button class="tab-btn nav-item" data-tab="variation_multi" onclick="switchTab('variation_multi')">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="3.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.6"/><rect x="6.5" y="6.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.6" fill="var(--card,#16181d)"/><circle cx="11" cy="11" r="1" fill="currentColor"/></svg></span>
 Variation Studio Multi
+</button>
+<button class="tab-btn nav-item" data-tab="audio" onclick="switchTab('audio')">
+<span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2 V11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M9 2 L13.5 3.7 V6.5 L9 4.8 Z" fill="currentColor"/><circle cx="6.5" cy="11.5" r="2.6" stroke="currentColor" stroke-width="1.6"/></svg></span>
+Audio Converter
 </button>
 </div>
 
@@ -1464,6 +1472,55 @@ Vision, no captions, no Batch, no A+B→C.
 
 </div><!-- /variationMultiTab -->
 
+<!-- ══════════════════════════════════════════
+AUDIO CONVERTER — fully isolated, additive (audio only).
+Converts 1–100 audio files (.opus/.ogg/.m4a/.aac/.wav/.mp3) to MP3 via
+FFmpeg. Dedicated routes /audio_* + /tmp/videobot_audio. No AI, no
+credits, no video pipeline. IDs namespaced au*.
+══════════════════════════════════════════ -->
+<div id="audioTab" class="tab-content">
+
+<!-- Upload -->
+<div class="card">
+<h2><span class="num">1</span> Fichiers audio <span style="font-weight:500;opacity:.7;font-size:.85rem">(1 à 100)</span></h2>
+<div class="drop-zone upcard" id="auZone" style="max-width:420px;margin:0 auto;">
+<input type="file" id="auInput" accept=".opus,.ogg,.m4a,.aac,.wav,.mp3,audio/*" multiple />
+<span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2 V11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M9 2 L13.5 3.7 V6.5 L9 4.8 Z" fill="currentColor"/><circle cx="6.5" cy="11.5" r="2.6" stroke="currentColor" stroke-width="1.6"/></svg></span>
+<div class="meta">
+<div class="lbl">Fichiers audio</div>
+<div class="sub">.opus .ogg .m4a .aac .wav .mp3 — 500 Mo max</div>
+<div class="fn" id="auName"></div>
+</div>
+</div>
+<div id="auFileList" style="margin-top:12px;"></div>
+</div>
+
+<!-- Stats -->
+<div class="card">
+<h2><span class="num">2</span> Statistiques</h2>
+<div class="v-est-grid">
+<div class="v-est-item"><div class="v-est-label">Fichiers</div><div class="v-est-value" id="auEstCount">0</div></div>
+<div class="v-est-item"><div class="v-est-label">Taille totale</div><div class="v-est-value" id="auEstSize">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Durée totale</div><div class="v-est-value" id="auEstDuration">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Sortie</div><div class="v-est-value" id="auEstOut">MP3 · q2</div></div>
+</div>
+<div id="auSizeWarning" style="display:none;color:var(--error);font-size:0.8rem;margin-top:10px;"></div>
+<div style="font-size:0.74rem;color:var(--muted);margin-top:10px;">Conversion FFmpeg <code>libmp3lame -q:a 2</code> (haute qualité VBR). Aucun appel IA, aucun crédit consommé.</div>
+</div>
+
+<button id="auLaunchBtn" class="primary-btn" onclick="runAudioConvert()" disabled><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2 V11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M9 2 L13.5 3.7 V6.5 L9 4.8 Z" fill="currentColor"/><circle cx="6.5" cy="11.5" r="2.6" stroke="currentColor" stroke-width="1.6"/></svg></span> Convertir en MP3</button>
+
+<!-- Progress -->
+<div class="card" id="auProgressCard" style="display:none;">
+<h2 id="auProgressTitle"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Conversion en cours…</h2>
+<div class="pbar"><div class="pbar-fill" id="auGlobalFill"></div></div>
+<div id="auGlobalStatus" style="font-size:.85rem;color:var(--muted);margin-bottom:14px"></div>
+<div id="auResultsList"></div>
+<button class="zip-btn" id="auZipBtn" onclick="downloadAudioZip()" style="display:none;"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span> Télécharger tout (.zip)</button>
+</div>
+
+</div><!-- /audioTab -->
+
 </main>
 </div><!-- /app-main -->
 </div><!-- /app-shell -->
@@ -1482,6 +1539,7 @@ document.getElementById('simpleTab').classList.toggle('active', tab === 'simple'
 document.getElementById('batchTab').classList.toggle('active', tab === 'batch');
 document.getElementById('variationTab').classList.toggle('active', tab === 'variation');
 document.getElementById('variationMultiTab').classList.toggle('active', tab === 'variation_multi');
+document.getElementById('audioTab').classList.toggle('active', tab === 'audio');
 }
 
 function toggleGenDrop(e) {
@@ -2728,6 +2786,188 @@ finally { btn.disabled = false; btn.textContent = orig; }
 }
 
 setVmCount(5);
+
+// ══════════════════════════════════════════
+// AUDIO CONVERTER (au*) — fully isolated, additive.
+// Bulk-converts 1–100 audio files to MP3 via the dedicated /audio_*
+// routes. No video pipeline, no AI, no credits. Mirrors the visual
+// finish of Variation Studio (cards, stats, per-file progress).
+// ══════════════════════════════════════════
+const MAX_AU_FILES = 100;
+const MAX_AU_TOTAL_BYTES = 500 * 1024 * 1024;   // 500 MB
+const AU_ALLOWED_EXT = ["opus", "ogg", "m4a", "aac", "wav", "mp3"];
+
+let auFiles = [];      // [{file, name, size, duration}]
+let auJobId = null;
+let auRunning = false;
+let auResults = [];
+
+function isAudioFile(f) {
+const ext = (f.name.split(".").pop() || "").toLowerCase();
+return AU_ALLOWED_EXT.includes(ext) || (f.type && f.type.startsWith("audio/"));
+}
+function fmtBytes(b) {
+if (!b || b <= 0) return "—";
+if (b < 1024) return b + " o";
+if (b < 1024 * 1024) return (b / 1024).toFixed(0) + " Ko";
+if (b < 1024 * 1024 * 1024) return (b / 1024 / 1024).toFixed(1) + " Mo";
+return (b / 1024 / 1024 / 1024).toFixed(2) + " Go";
+}
+function auFmtDuration(t) {
+if (!isFinite(t) || t <= 0) return "—";
+const s = Math.round(t);
+if (s < 60) return `${s} s`;
+const m = Math.floor(s / 60), r = s % 60;
+if (m < 60) return `${m} min ${r}s`;
+const h = Math.floor(m / 60), rm = m % 60; return `${h} h ${rm} min`;
+}
+function probeAudioDurations(list, done) {
+let pending = list.length;
+if (!pending) { done(); return; }
+list.forEach(item => {
+try {
+const url = URL.createObjectURL(item.file);
+const a = document.createElement("audio");
+a.preload = "metadata"; a.src = url;
+a.onloadedmetadata = () => { if (isFinite(a.duration) && a.duration > 0) item.duration = a.duration; URL.revokeObjectURL(url); if (--pending === 0) done(); };
+a.onerror = () => { URL.revokeObjectURL(url); if (--pending === 0) done(); };
+} catch(e) { if (--pending === 0) done(); }
+});
+}
+
+const auInput = document.getElementById("auInput");
+const auZone = document.getElementById("auZone");
+function handleAuFiles(files) {
+const auds = files.filter(isAudioFile);
+if (auds.length > MAX_AU_FILES) alert(`Maximum ${MAX_AU_FILES} fichiers. Seuls les ${MAX_AU_FILES} premiers seront utilisés.`);
+auFiles = auds.slice(0, MAX_AU_FILES).map(f => ({ file: f, name: f.name, size: f.size, duration: null }));
+auJobId = null;
+const n = auFiles.length;
+document.getElementById("auName").textContent = n > 0 ? `✓ ${n} fichier${n > 1 ? "s" : ""}` : "";
+renderAuFileList(); updateAuStats(); checkAuReady();
+probeAudioDurations(auFiles, () => { renderAuFileList(); updateAuStats(); });
+}
+auInput.addEventListener("change", () => handleAuFiles(Array.from(auInput.files)));
+auZone.addEventListener("dragover", e => { e.preventDefault(); auZone.classList.add("drag-over"); });
+auZone.addEventListener("dragleave", () => auZone.classList.remove("drag-over"));
+auZone.addEventListener("drop", e => { e.preventDefault(); auZone.classList.remove("drag-over"); handleAuFiles(Array.from(e.dataTransfer.files)); });
+
+function renderAuFileList() {
+const el = document.getElementById("auFileList");
+if (!auFiles.length) { el.innerHTML = ""; return; }
+el.innerHTML = auFiles.map((f, i) =>
+`<div class="batch-row"><span class="batch-idx">${i + 1}</span><span class="batch-fname" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span><span class="batch-st" style="color:var(--muted)">${fmtBytes(f.size)}${f.duration ? " · " + auFmtDuration(f.duration) : ""}</span></div>`
+).join("");
+}
+function auTotalBytes() { return auFiles.reduce((s, f) => s + (f.size || 0), 0); }
+function updateAuStats() {
+const cEl = document.getElementById("auEstCount"); if (!cEl) return;
+cEl.textContent = auFiles.length;
+const total = auTotalBytes();
+document.getElementById("auEstSize").textContent = total > 0 ? fmtBytes(total) : "—";
+const dur = auFiles.reduce((s, f) => s + (f.duration || 0), 0);
+const knownAll = auFiles.length > 0 && auFiles.every(f => f.duration);
+document.getElementById("auEstDuration").textContent = (dur > 0) ? (auFmtDuration(dur) + (knownAll ? "" : " (partiel)")) : "—";
+const warn = document.getElementById("auSizeWarning");
+if (total > MAX_AU_TOTAL_BYTES) { warn.style.display = "block"; warn.textContent = `Taille totale ${fmtBytes(total)} dépasse la limite de 500 Mo.`; }
+else { warn.style.display = "none"; warn.textContent = ""; }
+}
+function checkAuReady() {
+document.getElementById("auLaunchBtn").disabled = auRunning || auFiles.length === 0 || auTotalBytes() > MAX_AU_TOTAL_BYTES;
+}
+function auOutBase(name) { return (name || "audio").replace(/\.[^.]+$/, ""); }
+
+async function runAudioConvert() {
+if (auRunning || auFiles.length === 0) return;
+if (auTotalBytes() > MAX_AU_TOTAL_BYTES) { alert("Taille totale dépasse 500 Mo."); return; }
+
+auRunning = true; auJobId = null;
+document.getElementById("auLaunchBtn").disabled = true;
+
+auResults = auFiles.map(f => ({ name: f.name, outBase: auOutBase(f.name), stored: null, status: "pending", statusText: "⏳ En attente", filename: null }));
+const card = document.getElementById("auProgressCard"); card.style.display = "block";
+document.getElementById("auProgressTitle").textContent = "📤 Envoi des fichiers…";
+document.getElementById("auZipBtn").style.display = "none";
+renderAuResults(); updateAuProgress(0, auResults.length);
+
+try {
+// ── Step 1: stage every file (one job, sequential) ──
+for (let i = 0; i < auFiles.length; i++) {
+try {
+const fd = new FormData();
+fd.append("file", auFiles[i].file);
+if (auJobId) fd.append("job_id", auJobId);
+const r = await fetch("/audio_stage", { method: "POST", body: fd });
+const d = await r.json();
+if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+auJobId = d.job_id;
+auResults[i].stored = d.stored_name;
+} catch(e) {
+auResults[i].status = "error"; auResults[i].statusText = "❌ envoi: " + e.message;
+}
+}
+
+// ── Step 2: convert each staged file sequentially ──
+document.getElementById("auProgressTitle").textContent = "🎧 Conversion en MP3…";
+const total = auResults.length;
+let done = 0;
+for (let i = 0; i < auResults.length; i++) {
+const row = auResults[i];
+if (!row.stored) { done++; updateAuProgress(done, total); continue; }
+row.status = "processing"; row.statusText = "⚙️ Conversion…"; renderAuResults();
+try {
+const fd = new FormData();
+fd.append("job_id", auJobId);
+fd.append("stored_name", row.stored);
+fd.append("out_name", row.outBase);
+fd.append("index", i);
+fd.append("count", total);
+const r = await fetch("/audio_convert", { method: "POST", body: fd });
+const d = await r.json();
+if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+row.status = "done"; row.statusText = "✅ Converti"; row.filename = d.filename;
+} catch(e) { row.status = "error"; row.statusText = "❌ " + e.message; }
+done++; renderAuResults(); updateAuProgress(done, total);
+}
+document.getElementById("auProgressTitle").textContent = "✅ Conversion terminée";
+} catch(e) {
+document.getElementById("auProgressTitle").textContent = "❌ Erreur";
+alert("Erreur conversion : " + e.message);
+}
+
+auRunning = false; checkAuReady();
+const ok = auResults.filter(r => r.status === "done");
+if (ok.length > 0) { const b = document.getElementById("auZipBtn"); b.style.display = "inline-flex"; b.textContent = `📦 Télécharger les ${ok.length} MP3 (.zip)`; }
+}
+
+function renderAuResults() {
+const colorMap = { pending: "var(--muted)", processing: "var(--accent2)", done: "var(--success)", error: "var(--error)" };
+document.getElementById("auResultsList").innerHTML = auResults.map((r, i) => {
+const color = colorMap[r.status] || "var(--muted)";
+const dl = (r.status === "done" && auJobId && r.filename)
+? `<a class="dl-link" href="/audio_file/${auJobId}/${encodeURIComponent(r.filename)}" download title="Télécharger">⬇️</a>`
+: `<span style="width:1.1rem;display:inline-block"></span>`;
+const shown = r.filename || r.name;
+return `<div class="batch-row"><span class="batch-idx">${i + 1}</span><span class="batch-fname" title="${escapeHtml(shown)}">${escapeHtml(shown)}</span><span class="batch-st" style="color:${color}">${escapeHtml(r.statusText)}</span>${dl}</div>`;
+}).join("");
+}
+function updateAuProgress(done, total) {
+const pct = total > 0 ? Math.round(done / total * 100) : 0;
+document.getElementById("auGlobalFill").style.width = pct + "%";
+document.getElementById("auGlobalStatus").textContent = `${done} / ${total} fichier${total > 1 ? "s" : ""}`;
+}
+async function downloadAudioZip() {
+if (!auJobId) return;
+const btn = document.getElementById("auZipBtn"); btn.disabled = true; const orig = btn.textContent; btn.textContent = "⏳ Préparation du ZIP…";
+try {
+const res = await fetch("/audio_zip", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: auJobId }) });
+if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || res.statusText); }
+const blob = await res.blob(); const url = URL.createObjectURL(blob);
+const a = document.createElement("a"); a.href = url; a.download = "audio_mp3.zip"; a.click(); URL.revokeObjectURL(url);
+fetch("/audio_cleanup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: auJobId }) }).catch(() => {});
+} catch(e) { alert("Erreur ZIP : " + e.message); }
+finally { btn.disabled = false; btn.textContent = orig; }
+}
 </script>
 </body>
 </html>

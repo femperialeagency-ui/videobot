@@ -2412,7 +2412,7 @@ def get_history_rows(user_id=None, period="all", mode_filter="all",
     elif period == "30d":
         where_clauses.append("l.timestamp >= ?")
         params.append(_usage_period_cutoff("30d"))
-    if mode_filter in ("simple", "batch", "variation", "variation_multi"):
+    if mode_filter in ("simple", "batch", "variation", "variation_multi", "audio_converter"):
         where_clauses.append("l.mode = ?")
         params.append(mode_filter)
     where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
@@ -2464,7 +2464,7 @@ def get_history_kpis(user_id=None, period="all", mode_filter="all", admin=False)
     elif period == "30d":
         where_clauses.append("timestamp >= ?")
         params.append(_usage_period_cutoff("30d"))
-    if mode_filter in ("simple", "batch", "variation", "variation_multi"):
+    if mode_filter in ("simple", "batch", "variation", "variation_multi", "audio_converter"):
         where_clauses.append("mode = ?")
         params.append(mode_filter)
     where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
@@ -2638,7 +2638,7 @@ def history():
     if period not in ("all", "today", "7d", "30d"):
         period = "all"
     mode_filter = request.args.get("mode", "all")
-    if mode_filter not in ("all", "simple", "batch", "variation", "variation_multi"):
+    if mode_filter not in ("all", "simple", "batch", "variation", "variation_multi", "audio_converter"):
         mode_filter = "all"
     try:
         page = max(1, int(request.args.get("page", 1)))
@@ -4027,6 +4027,243 @@ def variation_multi_zip():
             download_name="variations_multi.zip",
             mimetype="application/zip"
         )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+# AUDIO CONVERTER — fully isolated, additive (audio-only).
+#
+# Bulk-converts WhatsApp/voice audio files (.opus/.ogg/.m4a/.aac/.wav/
+# .mp3) to .mp3 via FFmpeg's libmp3lame. A COMPLETELY separate pipeline:
+# its own /tmp dir, its own 5 routes, its own cleanup. It NEVER calls or
+# is called by /process, /analyze, /batch_*, /variation_*, captions, OCR,
+# Claude Vision, or any video pipeline. No AI, no credits. The only shared
+# utilities are generic, side-effect-free ones (request.current_user via
+# the global gate, log_usage_event, gc.collect) used by every mode.
+# Logged under the distinct analytics mode "audio_converter".
+# ══════════════════════════════════════════════════════════════════
+
+AUDIO_DIR = Path("/tmp/videobot_audio")
+AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+
+MAX_AUDIO_FILES       = 100                       # max files per conversion job
+MAX_AUDIO_TOTAL_BYTES = 500 * 1024 * 1024         # 500 MB total per job
+AUDIO_ALLOWED_EXT     = {".opus", ".ogg", ".m4a", ".aac", ".wav", ".mp3"}
+
+
+def _cleanup_stale_audio_jobs(max_age_hours: float = 3.0):
+    """Opportunistic disk-space safety net: remove audio job dirs left by
+    earlier sessions. Runs only when a brand-new audio job is staged."""
+    try:
+        cutoff = time.time() - max_age_hours * 3600
+        for d in AUDIO_DIR.iterdir():
+            try:
+                if d.is_dir() and d.stat().st_mtime < cutoff:
+                    shutil.rmtree(d, ignore_errors=True)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _audio_sanitize_name(name: str) -> str:
+    """Keep a readable, path-safe basename (no dirs, no traversal)."""
+    base = os.path.basename(name or "")
+    base = base.replace("..", "").replace("/", "").replace("\\", "")
+    cleaned = "".join(c for c in base if c.isalnum() or c in (" ", ".", "-", "_", "(", ")")).strip()
+    return cleaned[:120]
+
+
+@app.route("/audio_stage", methods=["POST"])
+def audio_stage():
+    """
+    Upload ONE audio file into a conversion job. The first call (no
+    job_id) creates a fresh job; later calls reuse it. Enforces the
+    allowed-extension set, the per-job file count (≤100) and the 500 MB
+    total cap, server-side. Returns job_id + the stored input filename.
+    """
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "Fichier manquant"}), 400
+
+        f = request.files["file"]
+        orig = f.filename or "audio"
+        ext = os.path.splitext(orig)[1].lower()
+        if ext not in AUDIO_ALLOWED_EXT:
+            return jsonify({"error": f"Format non supporté ({ext or 'inconnu'})"}), 400
+
+        job_id = (request.form.get("job_id") or "").strip()
+        if job_id and (".." in job_id or "/" in job_id):
+            return jsonify({"error": "job_id invalide"}), 400
+        if not job_id:
+            _cleanup_stale_audio_jobs()
+            job_id = uuid.uuid4().hex
+        jdir = AUDIO_DIR / job_id
+        in_dir = jdir / "in"
+        in_dir.mkdir(parents=True, exist_ok=True)
+        (jdir / "out").mkdir(parents=True, exist_ok=True)
+
+        existing = sorted(in_dir.glob("*"))
+        if len(existing) >= MAX_AUDIO_FILES:
+            return jsonify({"error": f"Maximum {MAX_AUDIO_FILES} fichiers."}), 400
+
+        idx = len(existing)
+        stored_name = f"{idx:03d}_{_audio_sanitize_name(orig)}"
+        path_in = in_dir / stored_name
+        f.save(str(path_in))
+
+        # Enforce the cumulative 500 MB cap (sum of all staged inputs).
+        try:
+            total = sum(p.stat().st_size for p in in_dir.glob("*") if p.is_file())
+        except Exception:
+            total = 0
+        if total > MAX_AUDIO_TOTAL_BYTES:
+            try:
+                path_in.unlink(missing_ok=True)
+            except Exception:
+                pass
+            return jsonify({"error": "Taille totale dépasse 500 Mo."}), 400
+
+        return jsonify({
+            "job_id": job_id,
+            "stored_name": stored_name,
+            "original_name": orig[:160],
+            "size": path_in.stat().st_size,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/audio_convert", methods=["POST"])
+def audio_convert():
+    """
+    Convert ONE staged audio file to MP3 (libmp3lame -q:a 2). Designed to
+    be called sequentially, once per file, and awaited by the client.
+    Params: job_id, stored_name (input), out_name (desired mp3 base),
+    index, count. An FFmpeg failure for this ONE file is a per-item error
+    (HTTP 200), never a crash. The last call (index==count-1) logs ONE
+    usage_logs row under mode "audio_converter" (claude_requests=0).
+    """
+    try:
+        job_id = (request.form.get("job_id") or "").strip()
+        if not job_id or ".." in job_id or "/" in job_id:
+            return jsonify({"error": "job_id invalide"}), 400
+        stored_name = _audio_sanitize_name(request.form.get("stored_name") or "")
+        if not stored_name:
+            return jsonify({"error": "stored_name invalide"}), 400
+
+        try:
+            index = int(request.form.get("index", "-1"))
+        except Exception:
+            index = -1
+        try:
+            count = int(request.form.get("count", "0"))
+        except Exception:
+            count = 0
+
+        jdir = AUDIO_DIR / job_id
+        path_in = jdir / "in" / stored_name
+        if not path_in.exists():
+            return jsonify({"error": "Fichier source introuvable"}), 404
+
+        out_dir = jdir / "out"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        # Output name: keep the original basename where possible; ensure
+        # .mp3; de-dupe against existing outputs; fallback audioN.mp3.
+        base = _audio_sanitize_name(request.form.get("out_name") or os.path.splitext(stored_name)[0])
+        base = os.path.splitext(base)[0] or f"audio{index + 1}"
+        out_name = f"{base}.mp3"
+        n = 2
+        while (out_dir / out_name).exists():
+            out_name = f"{base}_{n}.mp3"; n += 1
+        path_out = out_dir / out_name
+
+        cmd = ["ffmpeg", "-y", "-i", str(path_in),
+               "-vn", "-codec:a", "libmp3lame", "-q:a", "2",
+               "-loglevel", "error", str(path_out)]
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        except subprocess.TimeoutExpired:
+            return jsonify({"error": "Timeout (>3 min)", "index": index}), 200
+        finally:
+            gc.collect()
+
+        ok = (proc.returncode == 0 and path_out.exists())
+
+        if index == count - 1:
+            try:
+                produced = [p for p in out_dir.glob("*.mp3")]
+                success_count = len(produced)
+                log_usage_event(
+                    request.current_user, "audio_converter",
+                    source_seconds=None, output_seconds=None,
+                    source_count=count, output_count=success_count,
+                    success=(success_count > 0),
+                    claude_requests=0,
+                )
+            except Exception as e:
+                print(f"[audio_converter] WARNING: usage log failed job={job_id}: {e}")
+
+        if not ok:
+            err = (proc.stderr or "ffmpeg a échoué")[-500:]
+            try:
+                path_out.unlink(missing_ok=True)
+            except Exception:
+                pass
+            return jsonify({"error": err, "index": index}), 200
+
+        return jsonify({"index": index, "filename": out_name, "ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e), "index": request.form.get("index")}), 200
+
+
+@app.route("/audio_zip", methods=["POST"])
+def audio_zip():
+    """Zip every produced MP3 for a job (flat, no subfolders)."""
+    try:
+        data = request.get_json(force=True) or {}
+        job_id = (data.get("job_id") or "").strip()
+        if not job_id or ".." in job_id or "/" in job_id:
+            return jsonify({"error": "job_id invalide"}), 400
+        out_dir = AUDIO_DIR / job_id / "out"
+        files = sorted(out_dir.glob("*.mp3")) if out_dir.exists() else []
+        if not files:
+            return jsonify({"error": "Aucun fichier valide trouvé"}), 400
+        zip_path = f"/tmp/audio_{uuid.uuid4().hex}.zip"
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as zf:
+            for p in files:
+                zf.write(str(p), p.name)
+        return send_file(zip_path, as_attachment=True, download_name="audio_mp3.zip", mimetype="application/zip")
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/audio_file/<job_id>/<filename>")
+def audio_file(job_id, filename):
+    """Download a single converted MP3."""
+    if ".." in job_id or "/" in job_id or ".." in filename or "/" in filename:
+        return jsonify({"error": "Invalid"}), 400
+    path = AUDIO_DIR / job_id / "out" / filename
+    if path.exists():
+        return send_file(str(path), as_attachment=True, download_name=filename, mimetype="audio/mpeg")
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.route("/audio_cleanup", methods=["POST"])
+def audio_cleanup():
+    """Delete all staged inputs/outputs for a finished audio job."""
+    try:
+        data = request.get_json(force=True) or {}
+        job_id = (data.get("job_id") or "").strip()
+        if not job_id or ".." in job_id or "/" in job_id:
+            return jsonify({"error": "job_id invalide"}), 400
+        jdir = AUDIO_DIR / job_id
+        if jdir.exists():
+            shutil.rmtree(jdir, ignore_errors=True)
+        gc.collect()
+        return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
