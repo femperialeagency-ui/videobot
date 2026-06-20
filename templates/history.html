@@ -157,6 +157,7 @@
     .filter-btn.mode-simple.active  { background: rgba(58,111,255,.9);  border-color: transparent; box-shadow: 0 4px 14px rgba(58,111,255,.35); }
     .filter-btn.mode-batch.active   { background: rgba(123,92,240,.9);  border-color: transparent; box-shadow: 0 4px 14px rgba(123,92,240,.35); }
     .filter-btn.mode-var.active     { background: rgba(217,70,239,.9);  border-color: transparent; box-shadow: 0 4px 14px rgba(217,70,239,.35); }
+    .filter-btn.mode-varmulti.active { background: rgba(20,184,166,.9);  border-color: transparent; box-shadow: 0 4px 14px rgba(20,184,166,.35); }
     .filter-divider { width: 1px; height: 28px; background: var(--border); }
 
     /* ── Card / table wrapper ── */
@@ -189,6 +190,7 @@
     .badge.mode-simple    { background: rgba(58,111,255,.16); color: #90AAFF; border: 1px solid rgba(58,111,255,.38); }
     .badge.mode-batch     { background: rgba(123,92,240,.16); color: #C4A8FF; border: 1px solid rgba(123,92,240,.38); }
     .badge.mode-variation { background: rgba(217,70,239,.16); color: #F0A0FF; border: 1px solid rgba(217,70,239,.38); }
+    .badge.mode-varmulti  { background: rgba(20,184,166,.16); color: #7EE7DC; border: 1px solid rgba(20,184,166,.38); }
     .badge.status-ok  { background: rgba(32,217,138,.12); color: var(--success); border: 1px solid rgba(32,217,138,.26); }
     .badge.status-err { background: rgba(248,113,113,.12); color: var(--error);   border: 1px solid rgba(248,113,113,.26); }
     .status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; box-shadow: 0 0 5px currentColor; }
@@ -420,6 +422,7 @@
             <a class="filter-btn mode-simple {% if mode_filter == 'simple' %}active{% endif %}" href="?period={{ period }}&mode=simple">Simple</a>
             <a class="filter-btn mode-batch {% if mode_filter == 'batch' %}active{% endif %}" href="?period={{ period }}&mode=batch">Batch</a>
             <a class="filter-btn mode-var {% if mode_filter == 'variation' %}active{% endif %}" href="?period={{ period }}&mode=variation">Variation</a>
+            <a class="filter-btn mode-varmulti {% if mode_filter == 'variation_multi' %}active{% endif %}" href="?period={{ period }}&mode=variation_multi">Variation Multi</a>
           </div>
         </div>
 
@@ -482,6 +485,8 @@
                       <span class="badge mode-batch">Batch</span>
                     {% elif row.mode == 'variation' %}
                       <span class="badge mode-variation">Variation</span>
+                    {% elif row.mode == 'variation_multi' %}
+                      <span class="badge mode-varmulti">Variation Multi</span>
                     {% else %}
                       <span class="badge" style="background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--muted);">{{ row.mode|capitalize if row.mode else '—' }}</span>
                     {% endif %}

@@ -719,6 +719,10 @@ Nouvelle génération
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span>
 <div><div class="gen-drop-item-label">Variation Studio</div><div class="gen-drop-item-desc">Dizaines de variantes</div></div>
 </button>
+<button type="button" class="gen-drop-item" onclick="selectGen('variation_multi')">
+<span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="3.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="6.5" y="6.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.5" fill="var(--card,#16181d)"/><circle cx="11" cy="11" r="1" fill="currentColor"/></svg></span>
+<div><div class="gen-drop-item-label">Variation Studio Multi</div><div class="gen-drop-item-desc">Plusieurs vidéos × N variantes</div></div>
+</button>
 </div>
 </div>
 {% endif %}
@@ -751,6 +755,10 @@ Mode Batch
 <button class="tab-btn nav-item" data-tab="variation" onclick="switchTab('variation')">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span>
 Variation Studio
+</button>
+<button class="tab-btn nav-item" data-tab="variation_multi" onclick="switchTab('variation_multi')">
+<span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="3.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.6"/><rect x="6.5" y="6.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.6" fill="var(--card,#16181d)"/><circle cx="11" cy="11" r="1" fill="currentColor"/></svg></span>
+Variation Studio Multi
 </button>
 </div>
 
@@ -1319,6 +1327,143 @@ Score d'unicité et score de sécurité : indicateurs estimés côté navigateur
 
 </div><!-- /variationTab -->
 
+<!-- ══════════════════════════════════════════
+VARIATION STUDIO MULTI — fully isolated, additive.
+Visual clone of Variation Studio, but uploads 1–10 videos and
+produces N variants PER video in one operation. Reuses the existing
+variation engine (/variation_stage + /variation_multi_run) + a single
+structured ZIP (/variation_multi_zip). IDs namespaced vm*. No Claude
+Vision, no captions, no Batch, no A+B→C.
+══════════════════════════════════════════ -->
+<div id="variationMultiTab" class="tab-content">
+
+<!-- Upload (multi) -->
+<div class="card">
+<h2><span class="num">1</span> Vidéos sources <span style="font-weight:500;opacity:.7;font-size:.85rem">(1 à 10)</span></h2>
+<div class="drop-zone upcard" id="vmZone" style="max-width:420px;margin:0 auto;">
+<input type="file" id="vmInput" accept="video/*" multiple />
+<span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="3.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.6"/><rect x="6.5" y="6.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.6"/><circle cx="11" cy="11" r="1" fill="currentColor"/></svg></span>
+<div class="meta">
+<div class="lbl">Vidéos sources</div>
+<div class="sub">1 à 10 fichiers</div>
+<div class="fn" id="vmName"></div>
+</div>
+</div>
+<div id="vmFileList" style="margin-top:12px;"></div>
+</div>
+
+<!-- Settings (clone of Variation Studio) -->
+<div class="card">
+<h2><span class="num">2</span> Réglages des variations</h2>
+
+<div style="margin-bottom:16px;">
+<div style="font-size:0.84rem;font-weight:600;margin-bottom:8px;color:var(--text)">Variations par vidéo</div>
+<div class="v-count-row">
+<input type="number" id="vmCountNum" class="v-count-num" min="1" max="100" value="5">
+<input type="range" id="vmCountSlider" min="1" max="100" value="5">
+<button type="button" class="v-quick-btn" data-vmcount="5">5</button>
+<button type="button" class="v-quick-btn" data-vmcount="10">10</button>
+<button type="button" class="v-quick-btn" data-vmcount="25">25</button>
+<button type="button" class="v-quick-btn" data-vmcount="50">50</button>
+</div>
+<div id="vmCountWarning" style="display:none;color:var(--error);font-size:0.8rem;margin-top:8px;"></div>
+</div>
+
+<div class="v-section-label"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.5 5.5 H14.5 M3.5 9 H14.5 M3.5 12.5 H14.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="5.5" r="1.5" fill="currentColor"/><circle cx="11.5" cy="9" r="1.5" fill="currentColor"/><circle cx="6" cy="12.5" r="1.5" fill="currentColor"/></svg></span> Contrôles de variation</div>
+<div class="v-modeswitch">
+<label><input type="radio" name="vmConfigMode" value="preset" checked> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 15 L11 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M14.5 2.6 L15 3.8 L16.2 4.3 L15 4.8 L14.5 6 L14 4.8 L12.8 4.3 L14 3.8 Z" fill="currentColor"/></svg></span> Mode Préréglages <span style="font-weight:500;opacity:.8">(débutant)</span></label>
+<label><input type="radio" name="vmConfigMode" value="advanced"> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3.4 a3 3 0 0 0-4 3.7 L4 11.2 a1.5 1.5 0 0 0 2.1 2.1 l4.1-4.1 a3 3 0 0 0 3.7-4 l-2 2-1.4-.4-.4-1.4 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span> Mode Avancé <span style="font-weight:500;opacity:.8">(16 réglages)</span></label>
+</div>
+
+<!-- Preset panel -->
+<div id="vmPresetPanel">
+<div style="font-size:0.84rem;font-weight:600;margin-bottom:8px;color:var(--text)">Intensité des variations</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;">
+<label class="v-opt"><input type="radio" name="vmStrength" value="light" checked> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="3" height="4" rx="1" fill="currentColor"/><rect x="7.5" y="7" width="3" height="8" rx="1" fill="currentColor" opacity=".22"/><rect x="12" y="3" width="3" height="12" rx="1" fill="currentColor" opacity=".22"/></svg></span> Légère</label>
+<label class="v-opt"><input type="radio" name="vmStrength" value="medium"> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="3" height="4" rx="1" fill="currentColor"/><rect x="7.5" y="7" width="3" height="8" rx="1" fill="currentColor"/><rect x="12" y="3" width="3" height="12" rx="1" fill="currentColor" opacity=".22"/></svg></span> Moyenne</label>
+<label class="v-opt"><input type="radio" name="vmStrength" value="strong"> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="3" height="4" rx="1" fill="currentColor"/><rect x="7.5" y="7" width="3" height="8" rx="1" fill="currentColor"/><rect x="12" y="3" width="3" height="12" rx="1" fill="currentColor"/></svg></span> Forte</label>
+</div>
+<div style="font-size:0.78rem;color:var(--muted);margin-top:8px;">Légère = changements discrets (recommandé). Plus l'intensité augmente, plus les vidéos générées diffèrent visuellement de la source.</div>
+</div>
+
+<!-- Advanced panel -->
+<div id="vmAdvancedPanel" style="display:none;">
+<div class="v-section-label"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3.4 a3 3 0 0 0-4 3.7 L4 11.2 a1.5 1.5 0 0 0 2.1 2.1 l4.1-4.1 a3 3 0 0 0 3.7-4 l-2 2-1.4-.4-.4-1.4 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span> Contrôles avancés</div>
+<div style="font-size:0.78rem;color:var(--muted);margin-bottom:10px;">0 = désactivé · 50 = recommandé · 100 = variation maximale (les vidéos restent toujours visuellement propres).</div>
+
+<div class="v-group-title"><span class="v-dot" style="background:var(--accent);color:var(--accent)"></span> Visuel</div>
+<div class="v-slider-row"><label for="vmAdv_brightness">Luminosité</label><input type="range" id="vmAdv_brightness" min="0" max="100" value="50" data-vmadv="brightness"><span class="v-slider-val" id="vmAdv_brightness_val">50</span></div>
+<div class="v-slider-row"><label for="vmAdv_contrast">Contraste</label><input type="range" id="vmAdv_contrast" min="0" max="100" value="50" data-vmadv="contrast"><span class="v-slider-val" id="vmAdv_contrast_val">50</span></div>
+<div class="v-slider-row"><label for="vmAdv_saturation">Saturation</label><input type="range" id="vmAdv_saturation" min="0" max="100" value="50" data-vmadv="saturation"><span class="v-slider-val" id="vmAdv_saturation_val">50</span></div>
+<div class="v-slider-row"><label for="vmAdv_gamma">Gamma</label><input type="range" id="vmAdv_gamma" min="0" max="100" value="50" data-vmadv="gamma"><span class="v-slider-val" id="vmAdv_gamma_val">50</span></div>
+<div class="v-slider-row"><label for="vmAdv_noise">Bruit / Grain</label><input type="range" id="vmAdv_noise" min="0" max="100" value="50" data-vmadv="noise"><span class="v-slider-val" id="vmAdv_noise_val">50</span></div>
+<div class="v-slider-row"><label for="vmAdv_sharpness">Netteté</label><input type="range" id="vmAdv_sharpness" min="0" max="100" value="50" data-vmadv="sharpness"><span class="v-slider-val" id="vmAdv_sharpness_val">50</span></div>
+<div class="v-slider-row"><label for="vmAdv_blur">Flou</label><input type="range" id="vmAdv_blur" min="0" max="100" value="50" data-vmadv="blur"><span class="v-slider-val" id="vmAdv_blur_val">50</span></div>
+<div class="v-slider-row"><label for="vmAdv_zoom">Zoom</label><input type="range" id="vmAdv_zoom" min="0" max="100" value="50" data-vmadv="zoom"><span class="v-slider-val" id="vmAdv_zoom_val">50</span></div>
+<div class="v-slider-row"><label for="vmAdv_crop">Recadrage</label><input type="range" id="vmAdv_crop" min="0" max="100" value="50" data-vmadv="crop"><span class="v-slider-val" id="vmAdv_crop_val">50</span></div>
+<div class="v-slider-row"><label for="vmAdv_rotation">Rotation</label><input type="range" id="vmAdv_rotation" min="0" max="100" value="50" data-vmadv="rotation"><span class="v-slider-val" id="vmAdv_rotation_val">50</span></div>
+
+<div class="v-group-title"><span class="v-dot" style="background:var(--accent2);color:var(--accent2)"></span> Mouvement</div>
+<div class="v-slider-row"><label for="vmAdv_speed">Vitesse vidéo</label><input type="range" id="vmAdv_speed" min="0" max="100" value="50" data-vmadv="speed"><span class="v-slider-val" id="vmAdv_speed_val">50</span></div>
+
+<div class="v-group-title"><span class="v-dot" style="background:var(--accent3);color:var(--accent3)"></span> Audio</div>
+<div class="v-slider-row"><label for="vmAdv_volume">Volume audio</label><input type="range" id="vmAdv_volume" min="0" max="100" value="50" data-vmadv="volume"><span class="v-slider-val" id="vmAdv_volume_val">50</span></div>
+<div class="v-slider-row"><label for="vmAdv_pitch">Tonalité audio</label><input type="range" id="vmAdv_pitch" min="0" max="100" value="50" data-vmadv="pitch"><span class="v-slider-val" id="vmAdv_pitch_val">50</span></div>
+
+<div class="v-group-title"><span class="v-dot" style="background:var(--info);color:var(--info)"></span> Encodage</div>
+<div class="v-slider-row"><label for="vmAdv_fps">Variation FPS</label><input type="range" id="vmAdv_fps" min="0" max="100" value="50" data-vmadv="fps"><span class="v-slider-val" id="vmAdv_fps_val">50</span></div>
+<div class="v-slider-row"><label for="vmAdv_bitrate">Variation bitrate</label><input type="range" id="vmAdv_bitrate" min="0" max="100" value="50" data-vmadv="bitrate"><span class="v-slider-val" id="vmAdv_bitrate_val">50</span></div>
+
+<div class="v-group-title"><span class="v-dot" style="background:var(--warn);color:var(--warn)"></span> Métadonnées</div>
+<div class="v-slider-row"><label for="vmAdv_metadata">Aléatoire métadonnées</label><input type="range" id="vmAdv_metadata" min="0" max="100" value="50" data-vmadv="metadata"><span class="v-slider-val" id="vmAdv_metadata_val">50</span></div>
+
+<div class="v-adv-actions">
+<button type="button" class="v-ghost-btn" id="vmRandomizeBtn"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span> Randomiser la configuration</button>
+<button type="button" class="v-ghost-btn" id="vmResetAdvBtn"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.5 7 H10.5 a3.3 3.3 0 0 1 0 6.6 H7.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 4.5 L4.5 7 L7 9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Réinitialiser (50)</button>
+</div>
+
+<div class="v-preset-row">
+<input type="text" id="vmPresetName" placeholder="Nom du préréglage (ex: Multi V1)" maxlength="80">
+<button type="button" class="v-ghost-btn" id="vmSavePresetBtn"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.4 3 H12 L14.6 5.6 V14.2 a.6.6 0 0 1-.6.6 H3.4 a.6.6 0 0 1-.6-.6 V3.6 a.6.6 0 0 1 .6-.6 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><rect x="5.6" y="3" width="4.8" height="3.2" rx=".4" stroke="currentColor" stroke-width="1.2"/></svg></span> Sauvegarder</button>
+</div>
+<div class="v-preset-row">
+<select id="vmPresetSelect"><option value="">— Charger un préréglage —</option></select>
+<button type="button" class="v-ghost-btn" id="vmLoadPresetBtn">Charger</button>
+<button type="button" class="v-ghost-btn" id="vmDeletePresetBtn">Supprimer</button>
+</div>
+<div id="vmPresetMsg" style="font-size:0.78rem;color:var(--muted);margin-top:8px;"></div>
+</div>
+</div>
+
+<!-- Estimation -->
+<div class="card">
+<h2><span class="num">3</span> Estimation</h2>
+<div class="v-est-grid">
+<div class="v-est-item"><div class="v-est-label">Vidéos sources</div><div class="v-est-value" id="vmEstVideos">0</div></div>
+<div class="v-est-item"><div class="v-est-label">Variations / vidéo</div><div class="v-est-value" id="vmEstPer">5</div></div>
+<div class="v-est-item"><div class="v-est-label">Total variantes</div><div class="v-est-value" id="vmEstTotal">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Durée totale</div><div class="v-est-value" id="vmEstDuration">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Temps estimé</div><div class="v-est-value" id="vmEstTime">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Coût estimé</div><div class="v-est-value" id="vmEstCost">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Score d'unicité</div><div class="v-est-value" id="vmEstUniqueness">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Score de sécurité</div><div class="v-est-value" id="vmEstSafety">—</div></div>
+</div>
+<div style="font-size:0.74rem;color:var(--muted);margin-top:10px;">Scores estimés côté navigateur à partir de vos réglages, donnés à titre indicatif. Plafond : 300 variantes au total par opération.</div>
+</div>
+
+<button id="vmLaunchBtn" class="primary-btn" onclick="runVariationMulti()" disabled><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="3.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.6"/><rect x="6.5" y="6.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.6"/><circle cx="11" cy="11" r="1" fill="currentColor"/></svg></span> Générer toutes les variations</button>
+
+<!-- Progress -->
+<div class="card" id="vmProgressCard" style="display:none;">
+<h2 id="vmProgressTitle"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Génération en cours…</h2>
+<div class="pbar"><div class="pbar-fill" id="vmGlobalFill"></div></div>
+<div id="vmGlobalStatus" style="font-size:.85rem;color:var(--muted);margin-bottom:14px"></div>
+<div id="vmResultsList"></div>
+<button class="zip-btn" id="vmZipBtn" onclick="downloadVariationMultiZip()" style="display:none;"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span> Télécharger tout (.zip)</button>
+</div>
+
+</div><!-- /variationMultiTab -->
+
 </main>
 </div><!-- /app-main -->
 </div><!-- /app-shell -->
@@ -1336,6 +1481,7 @@ document.getElementById('dashboardTab').classList.toggle('active', tab === 'dash
 document.getElementById('simpleTab').classList.toggle('active', tab === 'simple');
 document.getElementById('batchTab').classList.toggle('active', tab === 'batch');
 document.getElementById('variationTab').classList.toggle('active', tab === 'variation');
+document.getElementById('variationMultiTab').classList.toggle('active', tab === 'variation_multi');
 }
 
 function toggleGenDrop(e) {
@@ -2252,6 +2398,335 @@ btn.textContent = origText;
 
 // Initial sync: numeric input ↔ slider ↔ warning ↔ estimation panel.
 setVariationCount(10);
+
+// ══════════════════════════════════════════
+// VARIATION STUDIO MULTI (vm*) — fully isolated, additive.
+// Visual + engine clone of Variation Studio for 1–10 videos. Reuses the
+// untouched /variation_stage, plus /variation_multi_run (engine clone
+// that logs mode "variation_multi") and /variation_multi_zip. Presets
+// reuse the SAME /variation_preset* endpoints with a CORRECT JSON client
+// (so Multi's presets actually work — the existing Variation Studio
+// client is left untouched). Nothing here touches Batch/Simple/captions.
+// ══════════════════════════════════════════
+const MAX_VM_VIDEOS = 10;
+const MAX_VM_PER_VIDEO = 100;        // mirrors MAX_VARIATIONS
+const MAX_VM_TOTAL = 300;            // mirrors MAX_MULTI_TOTAL
+const VM_SLIDER_KEYS = [
+"brightness","contrast","saturation","gamma","noise","sharpness",
+"blur","zoom","crop","rotation","speed","volume","pitch",
+"fps","bitrate","metadata",
+];
+const VM_SLIDER_DEFAULT = 50;
+const VM_COST_PER_SECOND_PER_VARIANT = 0.002;
+
+let vmFiles = [];     // [{file, name, duration}]
+let vmJobs = [];      // [{job_id, label, name}]
+let vmResults = [];
+let vmRunning = false;
+
+// ── Multi-file upload ──
+const vmInput = document.getElementById("vmInput");
+const vmZone = document.getElementById("vmZone");
+function vmStem(name) { return (name || "video").replace(/\.[^.]+$/, ""); }
+function probeDurations(list, done) {
+let pending = list.length;
+if (!pending) { done(); return; }
+list.forEach(item => {
+try {
+const url = URL.createObjectURL(item.file);
+const probe = document.createElement("video");
+probe.preload = "metadata";
+probe.src = url;
+probe.onloadedmetadata = () => { if (isFinite(probe.duration) && probe.duration > 0) item.duration = probe.duration; URL.revokeObjectURL(url); if (--pending === 0) done(); };
+probe.onerror = () => { URL.revokeObjectURL(url); if (--pending === 0) done(); };
+} catch(e) { if (--pending === 0) done(); }
+});
+}
+function handleVmFiles(files) {
+const vids = files.filter(isVideoFile);
+if (vids.length > MAX_VM_VIDEOS) alert(`Maximum ${MAX_VM_VIDEOS} vidéos. Seules les ${MAX_VM_VIDEOS} premières seront utilisées.`);
+vmFiles = vids.slice(0, MAX_VM_VIDEOS).map(f => ({ file: f, name: f.name, duration: null }));
+vmJobs = [];
+const n = vmFiles.length;
+document.getElementById("vmName").textContent = n > 0 ? `✓ ${n} vidéo${n > 1 ? "s" : ""} sélectionnée${n > 1 ? "s" : ""}` : "";
+renderVmFileList();
+updateVmEstimate();
+checkVmReady();
+probeDurations(vmFiles, () => { renderVmFileList(); updateVmEstimate(); });
+}
+vmInput.addEventListener("change", () => handleVmFiles(Array.from(vmInput.files)));
+vmZone.addEventListener("dragover", e => { e.preventDefault(); vmZone.classList.add("drag-over"); });
+vmZone.addEventListener("dragleave", () => vmZone.classList.remove("drag-over"));
+vmZone.addEventListener("drop", e => { e.preventDefault(); vmZone.classList.remove("drag-over"); handleVmFiles(Array.from(e.dataTransfer.files)); });
+function vmFmtDuration(t) {
+if (!isFinite(t) || t <= 0) return "—";
+const s = Math.round(t);
+if (s < 60) return `${s} s`;
+const m = Math.floor(s / 60), r = s % 60;
+if (m < 60) return `${m} min ${r}s`;
+const h = Math.floor(m / 60), rm = m % 60; return `${h} h ${rm} min`;
+}
+function renderVmFileList() {
+const el = document.getElementById("vmFileList");
+if (!vmFiles.length) { el.innerHTML = ""; return; }
+el.innerHTML = vmFiles.map((f, i) =>
+`<div class="batch-row"><span class="batch-idx">${i + 1}</span><span class="batch-fname" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span><span class="batch-st" style="color:var(--muted)">${f.duration ? vmFmtDuration(f.duration) : "…"}</span></div>`
+).join("");
+}
+
+// ── Count control ──
+const vmCountNum = document.getElementById("vmCountNum");
+const vmCountSlider = document.getElementById("vmCountSlider");
+function setVmCount(n) {
+n = Math.max(1, Math.min(MAX_VM_PER_VIDEO, parseInt(n, 10) || 1));
+vmCountNum.value = n; vmCountSlider.value = n;
+updateVmEstimate(); checkVmReady();
+}
+vmCountNum.addEventListener("input", () => setVmCount(vmCountNum.value));
+vmCountSlider.addEventListener("input", () => setVmCount(vmCountSlider.value));
+document.querySelectorAll(".v-quick-btn[data-vmcount]").forEach(b => b.addEventListener("click", () => setVmCount(b.dataset.vmcount)));
+function getVmCount() { return Math.max(1, Math.min(MAX_VM_PER_VIDEO, parseInt(vmCountNum.value, 10) || 1)); }
+function getVmStrength() { const s = document.querySelector('input[name="vmStrength"]:checked'); return s ? s.value : "light"; }
+function getVmConfigMode() { const s = document.querySelector('input[name="vmConfigMode"]:checked'); return s ? s.value : "preset"; }
+document.querySelectorAll('input[name="vmStrength"]').forEach(r => r.addEventListener("change", updateVmEstimate));
+
+// ── Preset / Advanced toggle ──
+const vmPresetPanel = document.getElementById("vmPresetPanel");
+const vmAdvancedPanel = document.getElementById("vmAdvancedPanel");
+document.querySelectorAll('input[name="vmConfigMode"]').forEach(r => {
+r.addEventListener("change", () => {
+const adv = getVmConfigMode() === "advanced";
+vmPresetPanel.style.display = adv ? "none" : "block";
+vmAdvancedPanel.style.display = adv ? "block" : "none";
+updateVmEstimate();
+});
+});
+
+// ── Advanced sliders ──
+function getVmAdvancedConfig() {
+const cfg = {};
+VM_SLIDER_KEYS.forEach(k => { const el = document.getElementById("vmAdv_" + k); cfg[k] = el ? Math.max(0, Math.min(100, parseInt(el.value, 10) || 0)) : VM_SLIDER_DEFAULT; });
+return cfg;
+}
+function setVmAdvancedConfig(cfg) {
+VM_SLIDER_KEYS.forEach(k => {
+const el = document.getElementById("vmAdv_" + k); const val = document.getElementById("vmAdv_" + k + "_val");
+if (!el) return;
+const raw = (cfg && cfg[k] != null) ? cfg[k] : VM_SLIDER_DEFAULT;
+const v = Math.max(0, Math.min(100, parseInt(raw, 10) || VM_SLIDER_DEFAULT));
+el.value = v; if (val) val.textContent = v;
+});
+updateVmEstimate();
+}
+VM_SLIDER_KEYS.forEach(k => {
+const el = document.getElementById("vmAdv_" + k); const val = document.getElementById("vmAdv_" + k + "_val");
+if (!el) return;
+el.addEventListener("input", () => { if (val) val.textContent = el.value; updateVmEstimate(); });
+});
+document.getElementById("vmRandomizeBtn").addEventListener("click", () => {
+const cfg = {}; VM_SLIDER_KEYS.forEach(k => { cfg[k] = Math.floor(Math.random() * 101); });
+setVmAdvancedConfig(cfg);
+const m = document.getElementById("vmPresetMsg"); m.textContent = "🎲 Configuration aléatoire générée."; m.style.color = "var(--muted)";
+});
+document.getElementById("vmResetAdvBtn").addEventListener("click", () => {
+const cfg = {}; VM_SLIDER_KEYS.forEach(k => { cfg[k] = VM_SLIDER_DEFAULT; }); setVmAdvancedConfig(cfg);
+});
+
+// ── Presets (reuse /variation_preset* endpoints with the CORRECT JSON
+// contract the server expects — {name, config} in, {config} out). ──
+async function refreshVmPresets() {
+const sel = document.getElementById("vmPresetSelect");
+try {
+const r = await fetch("/variation_presets");
+const d = await r.json();
+const presets = (d && d.presets) || [];
+sel.innerHTML = '<option value="">— Charger un préréglage —</option>' + presets.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
+sel.dataset.presets = JSON.stringify(presets);
+} catch(e) { /* optional */ }
+}
+refreshVmPresets();
+document.getElementById("vmSavePresetBtn").addEventListener("click", async () => {
+const nameEl = document.getElementById("vmPresetName"); const msg = document.getElementById("vmPresetMsg");
+const name = (nameEl.value || "").trim();
+if (!name) { msg.textContent = "Donnez un nom au préréglage."; msg.style.color = "var(--error)"; return; }
+msg.textContent = "Sauvegarde…"; msg.style.color = "var(--muted)";
+try {
+const r = await fetch("/variation_preset_save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name, config: getVmAdvancedConfig() }) });
+const d = await r.json();
+if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+msg.textContent = `✅ Préréglage "${name}" sauvegardé.`; msg.style.color = "var(--success)"; nameEl.value = ""; refreshVmPresets();
+} catch(e) { msg.textContent = "❌ " + e.message; msg.style.color = "var(--error)"; }
+});
+document.getElementById("vmLoadPresetBtn").addEventListener("click", () => {
+const sel = document.getElementById("vmPresetSelect"); const msg = document.getElementById("vmPresetMsg");
+const presets = JSON.parse(sel.dataset.presets || "[]");
+const picked = presets.find(p => String(p.id) === sel.value);
+if (!picked) { msg.textContent = "Sélectionnez un préréglage."; msg.style.color = "var(--error)"; return; }
+try { setVmAdvancedConfig(picked.config || {}); msg.textContent = `📂 "${picked.name}" chargé.`; msg.style.color = "var(--success)"; }
+catch(e) { msg.textContent = "❌ Préréglage invalide."; msg.style.color = "var(--error)"; }
+});
+document.getElementById("vmDeletePresetBtn").addEventListener("click", async () => {
+const sel = document.getElementById("vmPresetSelect"); const msg = document.getElementById("vmPresetMsg");
+if (!sel.value) { msg.textContent = "Sélectionnez un préréglage."; msg.style.color = "var(--error)"; return; }
+try {
+const r = await fetch("/variation_preset_delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: parseInt(sel.value, 10) }) });
+const d = await r.json();
+if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+msg.textContent = "🗑️ Supprimé."; msg.style.color = "var(--success)"; refreshVmPresets();
+} catch(e) { msg.textContent = "❌ " + e.message; msg.style.color = "var(--error)"; }
+});
+
+// ── Estimation + scores ──
+function vmLoadFactor() {
+if (getVmConfigMode() === "advanced") {
+const cfg = getVmAdvancedConfig();
+const avg = VM_SLIDER_KEYS.reduce((s, k) => s + cfg[k], 0) / VM_SLIDER_KEYS.length;
+return 0.35 + (avg / 100) * 0.55;
+}
+const s = getVmStrength(); return s === "strong" ? 0.7 : s === "medium" ? 0.55 : 0.4;
+}
+function updateVmScores(avgIntensity) {
+const uEl = document.getElementById("vmEstUniqueness"); const sEl = document.getElementById("vmEstSafety");
+if (!uEl || !sEl) return;
+const uniqueness = Math.round(Math.min(100, Math.max(5, avgIntensity * 0.95 + 8)));
+const safety = Math.round(Math.min(100, Math.max(60, 100 - avgIntensity * 0.22)));
+uEl.textContent = uniqueness + "%"; sEl.textContent = safety + "%";
+uEl.style.color = uniqueness >= 60 ? "var(--success)" : "var(--text)";
+sEl.style.color = safety >= 80 ? "var(--success)" : "var(--text)";
+}
+function updateVmEstimate() {
+const vEl = document.getElementById("vmEstVideos"); if (!vEl) return;
+const nVids = vmFiles.length; const count = getVmCount(); const total = nVids * count;
+vEl.textContent = nVids;
+document.getElementById("vmEstPer").textContent = count;
+document.getElementById("vmEstTotal").textContent = nVids > 0 ? total : "—";
+const totalDur = vmFiles.reduce((s, f) => s + (f.duration || 0), 0);
+const knownAll = nVids > 0 && vmFiles.every(f => f.duration);
+document.getElementById("vmEstDuration").textContent = (totalDur > 0) ? vmFmtDuration(totalDur) : "—";
+
+const warn = document.getElementById("vmCountWarning");
+if (nVids > 0 && total > MAX_VM_TOTAL) { warn.style.display = "block"; warn.textContent = `${nVids} vidéos × ${count} = ${total} dépasse la limite de ${MAX_VM_TOTAL} variantes.`; }
+else { warn.style.display = "none"; warn.textContent = ""; }
+
+if (knownAll && total > 0) {
+document.getElementById("vmEstTime").textContent = vmFmtDuration(totalDur * vmLoadFactor() * count);
+document.getElementById("vmEstCost").textContent = "$" + (VM_COST_PER_SECOND_PER_VARIANT * totalDur * count).toFixed(2);
+} else { document.getElementById("vmEstTime").textContent = "—"; document.getElementById("vmEstCost").textContent = "—"; }
+
+let avgIntensity;
+if (getVmConfigMode() === "advanced") { const cfg = getVmAdvancedConfig(); avgIntensity = VM_SLIDER_KEYS.reduce((a, k) => a + cfg[k], 0) / VM_SLIDER_KEYS.length; }
+else { const s = getVmStrength(); avgIntensity = s === "strong" ? 75 : s === "medium" ? 50 : 25; }
+updateVmScores(avgIntensity);
+}
+function checkVmReady() {
+const total = vmFiles.length * getVmCount();
+document.getElementById("vmLaunchBtn").disabled = vmRunning || vmFiles.length === 0 || total > MAX_VM_TOTAL;
+}
+
+// ── Run multi: stage each video, then generate its variants ──
+async function runVariationMulti() {
+if (vmRunning || vmFiles.length === 0) return;
+const count = getVmCount();
+const total = vmFiles.length * count;
+if (total > MAX_VM_TOTAL) { alert(`${vmFiles.length} × ${count} = ${total} dépasse la limite de ${MAX_VM_TOTAL} variantes.`); return; }
+const configMode = getVmConfigMode(); const strength = getVmStrength();
+const advancedConfig = (configMode === "advanced") ? getVmAdvancedConfig() : null;
+
+vmRunning = true; vmJobs = [];
+document.getElementById("vmLaunchBtn").disabled = true;
+
+// Result rows: one per (video, variant)
+vmResults = [];
+vmFiles.forEach((f, vi) => {
+for (let k = 0; k < count; k++) {
+vmResults.push({ vi: vi, idx: k, label: vmStem(f.name), filename: `video_${String(k + 1).padStart(3, "0")}.mp4`, status: "pending", statusText: "⏳ En attente" });
+}
+});
+
+const card = document.getElementById("vmProgressCard"); card.style.display = "block";
+document.getElementById("vmProgressTitle").textContent = "📤 Envoi des vidéos…";
+document.getElementById("vmZipBtn").style.display = "none";
+renderVmResults(); updateVmProgress(0, vmResults.length);
+
+let done = 0;
+try {
+for (let vi = 0; vi < vmFiles.length; vi++) {
+const f = vmFiles[vi];
+// Stage this video (reuses the untouched /variation_stage).
+let jobId = null;
+try {
+const fd = new FormData(); fd.append("file", f.file); fd.append("count", count);
+const r = await fetch("/variation_stage", { method: "POST", body: fd });
+const d = await r.json();
+if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+jobId = d.job_id;
+vmJobs.push({ job_id: jobId, label: vmStem(f.name), name: f.name });
+} catch(e) {
+// Mark every variant of this video as failed; continue with the next video.
+vmResults.filter(x => x.vi === vi).forEach(x => { x.status = "error"; x.statusText = "❌ staging: " + e.message; done++; });
+renderVmResults(); updateVmProgress(done, vmResults.length);
+continue;
+}
+
+document.getElementById("vmProgressTitle").textContent = `🎲 Variantes — vidéo ${vi + 1}/${vmFiles.length}…`;
+for (let k = 0; k < count; k++) {
+const row = vmResults.find(x => x.vi === vi && x.idx === k);
+row.status = "processing"; row.statusText = "⚙️ Génération…"; renderVmResults();
+try {
+const fd = new FormData();
+fd.append("job_id", jobId); fd.append("index", k); fd.append("count", count);
+fd.append("strength", strength); fd.append("config_mode", configMode);
+if (configMode === "advanced" && advancedConfig) fd.append("advanced_config", JSON.stringify(advancedConfig));
+const r = await fetch("/variation_multi_run", { method: "POST", body: fd });
+const d = await r.json();
+if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+row.status = "done"; row.statusText = "✅ Terminé"; row.filename = d.filename || row.filename; row.job_id = jobId;
+} catch(e) { row.status = "error"; row.statusText = "❌ " + e.message; }
+done++; renderVmResults(); updateVmProgress(done, vmResults.length);
+}
+}
+document.getElementById("vmProgressTitle").textContent = "✅ Variations terminées";
+} catch(e) {
+document.getElementById("vmProgressTitle").textContent = "❌ Erreur";
+alert("Erreur Variation Multi : " + e.message);
+}
+
+vmRunning = false; checkVmReady();
+const ok = vmResults.filter(r => r.status === "done");
+if (ok.length > 0) { const b = document.getElementById("vmZipBtn"); b.style.display = "inline-flex"; b.textContent = `📦 Télécharger tout (${ok.length} variante${ok.length > 1 ? "s" : ""}) en .zip`; }
+}
+
+function renderVmResults() {
+const colorMap = { pending: "var(--muted)", processing: "var(--accent2)", done: "var(--success)", error: "var(--error)" };
+document.getElementById("vmResultsList").innerHTML = vmResults.map((r, i) => {
+const color = colorMap[r.status] || "var(--muted)";
+const dl = (r.status === "done" && r.job_id)
+? `<a class="dl-link" href="/variation_file/${r.job_id}/${encodeURIComponent(r.filename)}" download title="Télécharger">⬇️</a>`
+: `<span style="width:1.1rem;display:inline-block"></span>`;
+return `<div class="batch-row"><span class="batch-idx">${i + 1}</span><span class="batch-fname" title="${escapeHtml(r.label + "/" + r.filename)}">${escapeHtml(r.label)}/${escapeHtml(r.filename)}</span><span class="batch-st" style="color:${color}">${escapeHtml(r.statusText)}</span>${dl}</div>`;
+}).join("");
+}
+function updateVmProgress(done, total) {
+const pct = total > 0 ? Math.round(done / total * 100) : 0;
+document.getElementById("vmGlobalFill").style.width = pct + "%";
+document.getElementById("vmGlobalStatus").textContent = `${done} / ${total} variante${total > 1 ? "s" : ""}`;
+}
+async function downloadVariationMultiZip() {
+if (!vmJobs.length) return;
+const btn = document.getElementById("vmZipBtn"); btn.disabled = true; const orig = btn.textContent; btn.textContent = "⏳ Préparation du ZIP…";
+try {
+const items = vmJobs.map(j => ({ job_id: j.job_id, label: j.label }));
+const res = await fetch("/variation_multi_zip", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: items }) });
+if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || res.statusText); }
+const blob = await res.blob(); const url = URL.createObjectURL(blob);
+const a = document.createElement("a"); a.href = url; a.download = "variations_multi.zip"; a.click(); URL.revokeObjectURL(url);
+// Clean up each staged job (reuses the existing /variation_cleanup).
+vmJobs.forEach(j => { fetch("/variation_cleanup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: j.job_id }) }).catch(() => {}); });
+} catch(e) { alert("Erreur ZIP : " + e.message); }
+finally { btn.disabled = false; btn.textContent = orig; }
+}
+
+setVmCount(5);
 </script>
 </body>
 </html>

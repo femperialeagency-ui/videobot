@@ -2412,7 +2412,7 @@ def get_history_rows(user_id=None, period="all", mode_filter="all",
     elif period == "30d":
         where_clauses.append("l.timestamp >= ?")
         params.append(_usage_period_cutoff("30d"))
-    if mode_filter in ("simple", "batch", "variation"):
+    if mode_filter in ("simple", "batch", "variation", "variation_multi"):
         where_clauses.append("l.mode = ?")
         params.append(mode_filter)
     where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
@@ -2464,7 +2464,7 @@ def get_history_kpis(user_id=None, period="all", mode_filter="all", admin=False)
     elif period == "30d":
         where_clauses.append("timestamp >= ?")
         params.append(_usage_period_cutoff("30d"))
-    if mode_filter in ("simple", "batch", "variation"):
+    if mode_filter in ("simple", "batch", "variation", "variation_multi"):
         where_clauses.append("mode = ?")
         params.append(mode_filter)
     where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
@@ -2638,7 +2638,7 @@ def history():
     if period not in ("all", "today", "7d", "30d"):
         period = "all"
     mode_filter = request.args.get("mode", "all")
-    if mode_filter not in ("all", "simple", "batch", "variation"):
+    if mode_filter not in ("all", "simple", "batch", "variation", "variation_multi"):
         mode_filter = "all"
     try:
         page = max(1, int(request.args.get("page", 1)))
@@ -3806,6 +3806,211 @@ def variation_cleanup():
             shutil.rmtree(jdir, ignore_errors=True)
         gc.collect()
         return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+# VARIATION STUDIO MULTI — fully isolated, additive (multi-file).
+#
+# Processes 1..N uploaded videos, each producing its own set of variants,
+# in a SINGLE logical operation. It REUSES the existing, unchanged
+# Variation Studio engine end-to-end: each video is staged with the
+# untouched /variation_stage (one VARIATION_DIR/<job_id> per video) and
+# every variant runs through /variation_multi_run, which is a byte-for-
+# byte clone of /variation_run's generation path (same pure helpers:
+# _pick_variation_params, _pick_advanced_variation_params,
+# _pick_metadata_profile, _pick_advanced_metadata_profile,
+# _build_variation_ffmpeg_cmd) — the ONLY difference is the analytics
+# mode string it logs ("variation_multi" instead of "variation"), so the
+# two can be told apart in Consommation/Historique. Nothing here touches
+# Mode Batch, /batch_render, /process, /analyze, captions/OCR, the
+# A+B→C pipeline, or the existing Variation Studio routes/JS. The new
+# /variation_multi_zip builds ONE structured ZIP (per-video subfolders).
+# Cleanup reuses the existing /variation_cleanup (one call per job_id).
+# ══════════════════════════════════════════════════════════════════
+
+MAX_MULTI_VIDEOS = 10                       # max source videos per multi run
+MAX_MULTI_TOTAL  = 300                      # hard cap: videos × variants-per-video
+
+
+@app.route("/variation_multi_run", methods=["POST"])
+def variation_multi_run():
+    """
+    Generate exactly ONE variant of ONE staged video, identical in every
+    way to /variation_run EXCEPT it logs usage under mode
+    "variation_multi". Same params (job_id, index, count, strength,
+    config_mode, advanced_config); same deterministic per-(job,index)
+    RNG; same hard 100-cap per video; same per-item-error contract.
+    """
+    try:
+        job_id = (request.form.get("job_id") or "").strip()
+        if not job_id or ".." in job_id or "/" in job_id:
+            return jsonify({"error": "job_id invalide"}), 400
+
+        try:
+            index = int(request.form.get("index", "-1"))
+        except Exception:
+            index = -1
+        try:
+            count = int(request.form.get("count", "0"))
+        except Exception:
+            count = 0
+        if index < 0 or count <= 0 or count > MAX_VARIATIONS or index >= count:
+            return jsonify({"error": "Paramètres de variation invalides (max 100)."}), 400
+
+        strength = (request.form.get("strength") or VARIATION_DEFAULT_STRENGTH).strip().lower()
+        if strength not in VARIATION_STRENGTH_PRESETS:
+            strength = VARIATION_DEFAULT_STRENGTH
+
+        config_mode = (request.form.get("config_mode") or "preset").strip().lower()
+        advanced_config = None
+        if config_mode == "advanced":
+            try:
+                _raw_cfg = json.loads(request.form.get("advanced_config") or "{}")
+                if isinstance(_raw_cfg, dict) and _raw_cfg:
+                    advanced_config = _raw_cfg
+            except Exception:
+                advanced_config = None
+
+        jdir = VARIATION_DIR / job_id
+        path_in = jdir / "in" / "source.mp4"
+        if not path_in.exists():
+            return jsonify({"error": "Vidéo source introuvable (étape de staging manquante)"}), 404
+
+        try:
+            with open(jdir / "meta.json", "r", encoding="utf-8") as f:
+                meta = json.load(f)
+        except Exception:
+            meta = {}
+        width  = int(meta.get("width")  or 0) or get_video_dims(str(path_in))[0]
+        height = int(meta.get("height") or 0) or get_video_dims(str(path_in))[1]
+
+        filename  = f"video_{index + 1:03d}.mp4"
+        path_out  = jdir / "out" / filename
+
+        rng = random.Random(f"{job_id}:{index}")
+        if advanced_config is not None:
+            params         = _pick_advanced_variation_params(advanced_config, rng)
+            metadata_level = max(0.0, min(1.0, float(advanced_config.get("metadata", ADVANCED_SLIDER_DEFAULT)) / 100.0))
+            profile        = _pick_advanced_metadata_profile(metadata_level, rng)
+            strength_label = "advanced"
+        else:
+            params         = _pick_variation_params(strength, rng)
+            profile        = _pick_metadata_profile(rng)
+            strength_label = strength
+        cmd = _build_variation_ffmpeg_cmd(str(path_in), str(path_out), params, profile, width, height)
+
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        except subprocess.TimeoutExpired:
+            return jsonify({"error": "Timeout (>3 min)", "index": index, "filename": filename}), 200
+        finally:
+            gc.collect()
+
+        ok = (proc.returncode == 0 and path_out.exists())
+
+        # One usage_logs row per video (at its last index), mode
+        # "variation_multi" — mirrors /variation_run's per-job logging but
+        # with the distinct analytics mode. Never raises.
+        if index == count - 1:
+            try:
+                produced = sorted((jdir / "out").glob("video_*.mp4"))
+                success_count = len(produced)
+                src_seconds = meta.get("duration")
+                log_usage_event(
+                    request.current_user, "variation_multi",
+                    source_seconds=src_seconds, output_seconds=src_seconds,
+                    source_count=1, output_count=success_count,
+                    success=(success_count > 0),
+                    claude_requests=0,
+                )
+                with _users_db() as conn:
+                    src_for_cost = float(src_seconds or 0.0)
+                    correct_cost = round(EST_VARIATION_COST_PER_SECOND_PER_VARIANT * src_for_cost * count, 6)
+                    conn.execute(
+                        """
+                        UPDATE usage_logs
+                        SET variation_strength = ?, source_filename = ?,
+                            estimated_cost = ?, estimated_processing_cost = ?
+                        WHERE id = (SELECT MAX(id) FROM usage_logs WHERE user_id = ? AND mode = 'variation_multi')
+                        """,
+                        (strength_label, meta.get("source_filename"),
+                         correct_cost, correct_cost,
+                         request.current_user["id"]),
+                    )
+                    conn.commit()
+            except Exception as e:
+                print(f"[variation_multi] WARNING: failed to log usage for job={job_id}: {e}")
+
+        if not ok:
+            err = (proc.stderr or "ffmpeg a échoué")[-500:]
+            try:
+                path_out.unlink(missing_ok=True)
+            except Exception:
+                pass
+            return jsonify({"error": err, "index": index, "filename": filename}), 200
+
+        return jsonify({"index": index, "filename": filename, "ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e), "index": request.form.get("index")}), 200
+
+
+@app.route("/variation_multi_zip", methods=["POST"])
+def variation_multi_zip():
+    """
+    Build ONE structured ZIP from several finished per-video jobs. Body:
+    {"items": [{"job_id": "...", "label": "video1"}, ...]}. Each job's
+    out/video_*.mp4 is written under its own sanitized subfolder
+    (label/video_001.mp4). Only files that actually exist are zipped, so
+    failed variants are simply absent. Job ids and labels are sanitized
+    against path traversal.
+    """
+    try:
+        data = request.get_json(force=True) or {}
+        items = data.get("items") or []
+        if not isinstance(items, list) or not items:
+            return jsonify({"error": "Aucune vidéo fournie"}), 400
+
+        zip_path = f"/tmp/variations_multi_{uuid.uuid4().hex}.zip"
+        used_labels = set()
+        total_files = 0
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as zf:
+            for i, it in enumerate(items):
+                if not isinstance(it, dict):
+                    continue
+                job_id = (it.get("job_id") or "").strip()
+                if not job_id or ".." in job_id or "/" in job_id:
+                    continue
+                # Sanitize the folder label; fall back to videoN; de-dupe.
+                raw_label = (it.get("label") or "").strip() or f"video{i + 1}"
+                label = "".join(c for c in raw_label if c.isalnum() or c in (" ", "-", "_")).strip()
+                label = label[:60] or f"video{i + 1}"
+                base_label = label
+                n = 2
+                while label in used_labels:
+                    label = f"{base_label}_{n}"; n += 1
+                used_labels.add(label)
+
+                out_dir = VARIATION_DIR / job_id / "out"
+                files = sorted(out_dir.glob("video_*.mp4")) if out_dir.exists() else []
+                for p in files:
+                    zf.write(str(p), f"{label}/{p.name}")
+                    total_files += 1
+
+        if total_files == 0:
+            try:
+                os.remove(zip_path)
+            except Exception:
+                pass
+            return jsonify({"error": "Aucun fichier valide trouvé"}), 400
+
+        return send_file(
+            zip_path,
+            as_attachment=True,
+            download_name="variations_multi.zip",
+            mimetype="application/zip"
+        )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
