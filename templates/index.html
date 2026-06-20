@@ -1099,6 +1099,7 @@ SIMPLE MODE
 <span>OCR :</span>
 <label class="v-opt"><input type="radio" name="ocrModeS" value="rapide" checked> Rapide</label>
 <label class="v-opt"><input type="radio" name="ocrModeS" value="precis"> Précis <span style="font-weight:500;opacity:.7">(16 frames · 1080p · texte difficile)</span></label>
+<button type="button" class="v-ghost-btn" onclick="reanalyzeNoCache()" title="Force une nouvelle analyse Vision en ignorant le cache OCR">🔄 Réanalyser sans cache</button>
 <span style="font-weight:500;opacity:.6;font-size:.74rem">— à choisir avant d'uploader la vidéo B</span>
 </div>
 
@@ -1801,7 +1802,7 @@ function syncLinesJson() {
 document.getElementById("linesJson").value = JSON.stringify(linesData);
 }
 
-async function analyzeVideoB(file) {
+async function analyzeVideoB(file, ignoreCache) {
 const status = document.getElementById("detectStatus");
 status.style.display = "block";
 status.style.background = "rgba(124,92,255,0.12)";
@@ -1815,6 +1816,7 @@ try {
 const fd = new FormData();
 fd.append("video_b", file);
 fd.append("ocr_mode", getOcrMode("S"));
+if (ignoreCache) fd.append("ignore_cache", "1");
 const res = await fetch("/analyze", { method: "POST", body: fd });
 const data = await res.json();
 
@@ -1828,9 +1830,10 @@ renderLines();
 status.style.background = "rgba(32,217,138,0.12)";
 status.style.color = "var(--success)";
 const _src = data.source || (data.mode === "vision" ? "vision" : "tesseract");
-const srcLabel = _src === "cache" ? "⚡ Cache OCR utilisé"
+const _modeLbl = (data.ocr_mode === "precis") ? "Précis" : "Rapide";
+const srcLabel = _src === "cache" ? `⚡ Cache OCR (${_modeLbl})`
                : _src === "tesseract" ? "🔍 Fallback Tesseract"
-               : "🤖 Analyse Vision";
+               : `🤖 Analyse Vision (${_modeLbl})`;
 status.textContent = `✅ ${linesData.length} ligne(s) détectée(s) — ${srcLabel} — corrige si besoin, puis génère.`;
 
 } catch(e) {
@@ -1838,6 +1841,19 @@ status.style.background = "rgba(248,113,113,0.1)";
 status.style.color = "var(--error)";
 status.textContent = "⚠️ Détection échouée : " + e.message;
 }
+}
+
+function reanalyzeNoCache() {
+const f = document.getElementById("inputB").files[0];
+if (!f) {
+const status = document.getElementById("detectStatus");
+status.style.display = "block";
+status.style.background = "rgba(248,113,113,0.1)";
+status.style.color = "var(--error)";
+status.textContent = "⚠️ Upload d'abord une vidéo B.";
+return;
+}
+analyzeVideoB(f, true);
 }
 
 let animInterval = null;

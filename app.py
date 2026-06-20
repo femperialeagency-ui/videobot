@@ -1901,6 +1901,10 @@ def analyze_with_claude_vision_timed(video_path: str, precise: bool = False):
     # 8 frames, 720p (byte-identical to before). Précis: 16 frames, 1080p.
     count  = 16 if precise else 8
     _scale = "scale=1080:-2" if precise else "scale=720:-1"
+    import sys as _sys_vm
+    print(f"[VISION_MODE] mode={'precis' if precise else 'rapide'} frames={count} "
+          f"scale={'1080' if precise else '720'} prompt={'precise' if precise else 'standard'}",
+          file=_sys_vm.stderr)
     step  = max(0.35, duration / count)
     frame_times, frame_paths = [], []
     for i in range(count):
@@ -3212,6 +3216,11 @@ def analyze():
         _precise   = (ocr_mode == "precis")
         _cache_ver = "v1-precise" if _precise else OCR_CACHE_VERSION
         _fallback_scale = "scale=1080:-2" if _precise else "scale=720:-1"
+        # "Réanalyser sans cache" : saute le lookup et force une analyse Vision
+        # fraîche (le résultat est tout de même re-stocké pour les fois suivantes).
+        _ignore_cache = (request.form.get("ignore_cache", "0") or "0").strip().lower() in ("1", "true", "on", "yes")
+        import sys as _sys_ocr
+        print(f"[OCR_MODE] route=/analyze mode={ocr_mode} engine={_cache_ver} ignore_cache={_ignore_cache}", file=_sys_ocr.stderr)
 
         # ── OCR cache lookup (Chantier 1) — before any Vision call. On a
         # hit we return the EXACT cached detection (same lines format),
@@ -3222,8 +3231,9 @@ def analyze():
                 b_hash = _sha256_file(path_b)
             except Exception:
                 b_hash = None
-            if b_hash:
+            if b_hash and not _ignore_cache:
                 cached = _ocr_cache_get(b_hash, _cache_ver)
+                print(f"[OCR_CACHE] hash={b_hash[:12]} engine={_cache_ver} hit={cached is not None}", file=_sys_ocr.stderr)
                 if cached is not None:
                     return jsonify({
                         "lines":          cached["lines"],
@@ -3231,7 +3241,10 @@ def analyze():
                         "mode":           cached["mode"] or "vision",
                         "cached":         True,
                         "source":         "cache",
+                        "ocr_mode":       ocr_mode,
                     })
+            elif b_hash and _ignore_cache:
+                print(f"[OCR_CACHE] hash={b_hash[:12]} engine={_cache_ver} hit=skipped(ignore_cache)", file=_sys_ocr.stderr)
 
         source = None
         lines = []
@@ -3278,6 +3291,7 @@ def analyze():
             "mode":           "vision" if has_key else "tesseract",
             "cached":         False,
             "source":         source or "tesseract",
+            "ocr_mode":       ocr_mode,
         })
 
     except Exception as e:
@@ -3605,6 +3619,9 @@ def batch_detect():
         _precise   = (ocr_mode == "precis")
         _cache_ver = "v1-precise" if _precise else OCR_CACHE_VERSION
         _fallback_scale = "scale=1080:-2" if _precise else "scale=720:-1"
+        _ignore_cache = (request.form.get("ignore_cache", "0") or "0").strip().lower() in ("1", "true", "on", "yes")
+        import sys as _sys_ocr
+        print(f"[OCR_MODE] route=/batch_detect mode={ocr_mode} engine={_cache_ver} ignore_cache={_ignore_cache}", file=_sys_ocr.stderr)
 
         # ── OCR cache lookup (Chantier 1) — before any Vision call. ──
         b_hash = None
@@ -3613,8 +3630,9 @@ def batch_detect():
                 b_hash = _sha256_file(path_b)
             except Exception:
                 b_hash = None
-            if b_hash:
+            if b_hash and not _ignore_cache:
                 cached = _ocr_cache_get(b_hash, _cache_ver)
+                print(f"[OCR_CACHE] hash={b_hash[:12]} engine={_cache_ver} hit={cached is not None}", file=_sys_ocr.stderr)
                 if cached is not None:
                     return jsonify({
                         "lines":          cached["lines"],
@@ -3622,7 +3640,10 @@ def batch_detect():
                         "mode":           cached["mode"] or "vision",
                         "cached":         True,
                         "source":         "cache",
+                        "ocr_mode":       ocr_mode,
                     })
+            elif b_hash and _ignore_cache:
+                print(f"[OCR_CACHE] hash={b_hash[:12]} engine={_cache_ver} hit=skipped(ignore_cache)", file=_sys_ocr.stderr)
 
         # Identical sequence to /analyze: timed detection first, falling
         # back to the original single-pass detection if it finds nothing.
@@ -3666,6 +3687,7 @@ def batch_detect():
             "mode":           "vision" if has_key else "tesseract",
             "cached":         False,
             "source":         source or "tesseract",
+            "ocr_mode":       ocr_mode,
         })
 
     except Exception as e:
