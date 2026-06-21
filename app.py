@@ -1872,10 +1872,12 @@ def _merge_timed_captions(detections: list, frame_times: list, duration: float) 
 
 def analyze_with_claude_vision_timed(video_path: str, model: str = OCR_MODEL_SONNET):
     """
-    OCR: both user modes (Sonnet/Opus) use 20 frames, 1080p and the relaxed
+    OCR: both user modes (Sonnet/Opus) use 1080p and the relaxed
     VISION_PROMPT_TIMED_PRECISE — they differ ONLY by `model` (Sonnet or Opus,
-    resolved by the caller from the chosen OCR mode). Everything else (merging,
-    schema, fallbacks) is identical.
+    resolved by the caller from the chosen OCR mode). Frame count adapts to
+    duration (20/40/80) and frames are processed in lots of 20 (one Vision
+    call per lot, merged together). Everything else (merging, schema,
+    fallbacks) is identical; ≤60s = one lot of 20 = equivalent to before.
 
     Batch-mode-only detection path: samples several frames spread across
     the video's timeline (instead of the simple-mode path's 4 frames
@@ -1906,13 +1908,28 @@ def analyze_with_claude_vision_timed(video_path: str, model: str = OCR_MODEL_SON
     if duration <= 0:
         duration = 3.0
 
-    # Both OCR modes (Sonnet/Opus) use the same sampling — 20 frames, 1080p.
-    # Only the Vision model differs (passed in as `model`).
-    count  = 20
+    # Adaptive sampling by duration (AUTOMATIC — no UI, no new mode). Longer
+    # videos get more frames so captions aren't missed between samples:
+    #   ≤60s → 20 frames | 60–120s → 40 | 120–300s → 80 | >300s → 80 (cap).
+    # Frames are then sent to Vision in LOTS of 20 (never one giant call):
+    # one call per lot, each lot's detections re-indexed to a GLOBAL
+    # frame_index, then everything merged once via _merge_timed_captions.
+    # The ≤60s case = exactly ONE lot of 20 ⇒ behaviour equivalent to before.
+    # Only the Vision model differs between Sonnet/Opus (passed in as `model`).
+    if duration <= 60:
+        count = 20
+    elif duration <= 120:
+        count = 40
+    elif duration <= 300:
+        count = 80
+    else:
+        count = 80
     _scale = "scale=1080:-2"
+    _CHUNK = 20
+    _n_lots = -(-count // _CHUNK)  # ceil
     import sys as _sys_vm
-    print(f"[VISION_MODE] model={model} frames={count} scale=1080 prompt=precise",
-          file=_sys_vm.stderr)
+    print(f"[VISION_MODE] model={model} duration={duration:.1f}s frames={count} "
+          f"lots={_n_lots} chunk={_CHUNK} scale=1080 prompt=precise", file=_sys_vm.stderr)
     step  = max(0.35, duration / count)
     frame_times, frame_paths = [], []
     for i in range(count):
@@ -1931,65 +1948,80 @@ def analyze_with_claude_vision_timed(video_path: str, model: str = OCR_MODEL_SON
         return [], duration
 
     try:
-        content = []
-        for path in frame_paths:
-            try:
-                with open(path, "rb") as f:
-                    b64 = base64.standard_b64encode(f.read()).decode()
-                content.append({
-                    "type": "image",
-                    "source": {"type": "base64", "media_type": "image/png", "data": b64}
-                })
-            except Exception:
-                pass
-
-        if not content:
-            return [], duration
-
-        timestamps_str = "\n".join(f"frame {i+1}: {t}s" for i, t in enumerate(frame_times))
-        prompt = VISION_PROMPT_TIMED_PRECISE.format(n=len(frame_times), timestamps=timestamps_str)
-        content.append({"type": "text", "text": prompt})
-
         client = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model=model,
-            max_tokens=4096,
-            messages=[{"role": "user", "content": content}]
-        )
-
-        raw = response.content[0].text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-
-        # ── Raw Vision debug log (see analyze_with_claude_vision for the
-        # rationale — same idea, batch/timed path) ───────────────────────
         import sys as _sys
-        print(f"[VISION_RAW] analyze_with_claude_vision_timed ({len(frame_paths)} frames) "
-              f"returned {len(raw)} chars: {raw}", file=_sys.stderr)
-
-        detections = json.loads(raw)
-
         n = len(frame_times)
         normalized = []
-        for d in detections:
-            text = (d.get("text") or "").strip()
-            idx  = d.get("frame_index")
-            if not text or not isinstance(idx, int) or idx < 1 or idx > n:
+
+        # ── Process frames in lots of _CHUNK. Each lot is ONE Vision call
+        # using LOCAL 1-based frame numbering; returned frame_index values
+        # are mapped to GLOBAL position (lot_start + idx) so the final merge
+        # sees a single continuous timeline. A failing lot is skipped, never
+        # fatal — partial coverage is better than no detection. ──
+        for lot_start in range(0, n, _CHUNK):
+            lot_paths = frame_paths[lot_start:lot_start + _CHUNK]
+            lot_times = frame_times[lot_start:lot_start + _CHUNK]
+
+            content = []
+            for path in lot_paths:
+                try:
+                    with open(path, "rb") as f:
+                        b64 = base64.standard_b64encode(f.read()).decode()
+                    content.append({
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": "image/png", "data": b64}
+                    })
+                except Exception:
+                    pass
+            if not content:
                 continue
-            b = dict(d)
-            b["text"]         = text
-            b["frame_index"]  = idx
-            if "cx_pct" not in b:
-                b["cx_pct"] = b.get("x_pct", 0.5)
-            if "cy_pct" not in b:
-                b["cy_pct"] = b.get("y_pct", 0.5)
-            if "fontsize_pct" not in b:
-                b["fontsize_pct"] = b.get("fontsize_b", 36) / 1280
-            if "width_pct" not in b:
-                b["width_pct"] = 0.85
-            normalized.append(b)
+
+            timestamps_str = "\n".join(f"frame {i+1}: {t}s" for i, t in enumerate(lot_times))
+            prompt = VISION_PROMPT_TIMED_PRECISE.format(n=len(lot_times), timestamps=timestamps_str)
+            content.append({"type": "text", "text": prompt})
+
+            try:
+                response = client.messages.create(
+                    model=model,
+                    max_tokens=4096,
+                    messages=[{"role": "user", "content": content}]
+                )
+            except Exception:
+                continue
+
+            raw = response.content[0].text.strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+
+            # ── Raw Vision debug log (per lot) ──
+            print(f"[VISION_RAW] analyze_with_claude_vision_timed lot {lot_start // _CHUNK + 1}/{_n_lots} "
+                  f"({len(lot_paths)} frames) returned {len(raw)} chars: {raw}", file=_sys.stderr)
+
+            try:
+                detections = json.loads(raw)
+            except Exception:
+                continue
+
+            lot_n = len(lot_times)
+            for d in detections:
+                text = (d.get("text") or "").strip()
+                idx  = d.get("frame_index")
+                if not text or not isinstance(idx, int) or idx < 1 or idx > lot_n:
+                    continue
+                b = dict(d)
+                b["text"]         = text
+                b["frame_index"]  = lot_start + idx   # local → global
+                if "cx_pct" not in b:
+                    b["cx_pct"] = b.get("x_pct", 0.5)
+                if "cy_pct" not in b:
+                    b["cy_pct"] = b.get("y_pct", 0.5)
+                if "fontsize_pct" not in b:
+                    b["fontsize_pct"] = b.get("fontsize_b", 36) / 1280
+                if "width_pct" not in b:
+                    b["width_pct"] = 0.85
+                normalized.append(b)
 
         if not normalized:
             return [], duration
@@ -5104,6 +5136,320 @@ def photo_cleanup():
         if not job_id or ".." in job_id or "/" in job_id:
             return jsonify({"error": "job_id invalide"}), 400
         jdir = PHOTO_DIR / job_id
+        if jdir.exists():
+            shutil.rmtree(jdir, ignore_errors=True)
+        gc.collect()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+# MEDIA OPTIMIZER  (Photo + Video) — new "optimizer" tab.
+# Self-contained: reuses the per-tool storage convention (/tmp/videobot_*
+# with in/out per job) plus Pillow (photos) and FFmpeg (videos), exactly
+# like Photo Metadata Studio and Audio Studio. Touches nothing else.
+# ══════════════════════════════════════════════════════════════════
+
+OPTIM_DIR = Path("/tmp/videobot_optimizer")
+OPTIM_DIR.mkdir(parents=True, exist_ok=True)
+
+OPTIM_PHOTO_EXT = {".jpg", ".jpeg", ".png", ".webp"}
+OPTIM_VIDEO_EXT = {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
+OPTIM_MAX_VIDEO_SECONDS = 300.0   # 5 minutes hard limit
+# Resolution dropdown → target for the SHORTER side (keeps aspect ratio,
+# standard "p" convention). None = keep original. Never upscales.
+OPTIM_RES_MAP = {
+    "original": None, "2160": 2160, "1440": 1440,
+    "1080": 1080, "720": 720, "480": 480, "360": 360,
+}
+
+
+def _cleanup_stale_optim_jobs(max_age_hours: float = 3.0):
+    """Remove optimizer job dirs left by earlier sessions. Runs on new job."""
+    try:
+        cutoff = time.time() - max_age_hours * 3600
+        for d in OPTIM_DIR.iterdir():
+            try:
+                if d.is_dir() and d.stat().st_mtime < cutoff:
+                    shutil.rmtree(d, ignore_errors=True)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _optimize_photo(path_in: str, path_out: str, out_fmt: str, comp: int, target_short):
+    """
+    Resize (shorter side → target_short, aspect kept, NEVER upscaled) and
+    re-encode ONE image with Pillow only. `comp` is the 0–100 slider:
+      JPEG/WEBP quality = 95 − comp*0.85 (0%→95 … 90%→18, floor 5)
+      PNG (lossless)    = compress_level mapped from comp (0..9)
+    Returns (orig_w, orig_h, final_w, final_h). Raises on failure.
+    """
+    from PIL import Image
+
+    img = Image.open(path_in)
+    ow, oh = img.size
+
+    if target_short and ow > 0 and oh > 0 and min(ow, oh) > target_short:
+        if ow <= oh:                       # portrait/square → shorter side = width
+            nw = target_short
+            nh = max(1, round(oh * target_short / ow))
+        else:                              # landscape → shorter side = height
+            nh = target_short
+            nw = max(1, round(ow * target_short / oh))
+        img = img.resize((nw, nh), Image.LANCZOS)
+    fw, fh = img.size
+
+    fmt = (out_fmt or "jpg").strip().lower()
+    save_fmt = "JPEG" if fmt in ("jpg", "jpeg") else ("WEBP" if fmt == "webp" else "PNG")
+    quality = max(5, min(100, round(95 - comp * 0.85)))
+
+    save_img = img
+    save_kwargs = {}
+    if save_fmt == "JPEG":
+        if save_img.mode in ("RGBA", "P", "LA"):
+            save_img = save_img.convert("RGB")
+        save_kwargs = {"quality": quality, "optimize": True}
+    elif save_fmt == "WEBP":
+        save_kwargs = {"quality": quality, "method": 6}
+    else:  # PNG is lossless: slider only drives the deflate effort
+        save_kwargs = {"optimize": True, "compress_level": max(0, min(9, round(comp / 11)))}
+
+    save_img.save(path_out, save_fmt, **save_kwargs)
+    return ow, oh, fw, fh
+
+
+def _probe_video_meta(path: str):
+    """Return (duration_seconds, width, height). Reuses get_video_dims."""
+    dur = 0.0
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+             "-print_format", "json", path],
+            capture_output=True, text=True, timeout=20
+        )
+        dur = float(json.loads(r.stdout)["format"]["duration"])
+    except Exception:
+        dur = 0.0
+    w, h = get_video_dims(path)
+    return dur, w, h
+
+
+@app.route("/optimize_photo", methods=["POST"])
+def optimize_photo():
+    """
+    Optimize ONE photo (Pillow): resize + re-encode + format convert.
+    Form: file, resolution, compression (0–100), format (jpg|webp|png).
+    Returns original/final resolution, sizes and reduction %.
+    """
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "Fichier manquant"}), 400
+        f = request.files["file"]
+        orig = f.filename or "photo"
+        ext = os.path.splitext(orig)[1].lower()
+        if ext not in OPTIM_PHOTO_EXT:
+            return jsonify({"error": f"Format non supporté ({ext or 'inconnu'})"}), 400
+
+        out_fmt = (request.form.get("format") or "jpg").strip().lower()
+        if out_fmt not in ("jpg", "webp", "png"):
+            out_fmt = "jpg"
+        try:
+            comp = int(float(request.form.get("compression", "0")))
+        except Exception:
+            comp = 0
+        comp = max(0, min(100, comp))
+        res = (request.form.get("resolution") or "original").strip().lower()
+        target_short = OPTIM_RES_MAP.get(res, None)
+
+        _cleanup_stale_optim_jobs()
+        job_id = uuid.uuid4().hex
+        jdir = OPTIM_DIR / job_id
+        in_dir = jdir / "in"; out_dir = jdir / "out"
+        in_dir.mkdir(parents=True, exist_ok=True)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        path_in = in_dir / f"src{ext}"
+        f.save(str(path_in))
+        orig_size = path_in.stat().st_size
+
+        ext_out = ".jpg" if out_fmt == "jpg" else f".{out_fmt}"
+        base = os.path.splitext(_photo_sanitize_name(orig))[0] or "photo"
+        out_name = f"{base}_optim{ext_out}"
+        path_out = out_dir / out_name
+
+        try:
+            ow, oh, fw, fh = _optimize_photo(str(path_in), str(path_out), out_fmt, comp, target_short)
+        except Exception as e:
+            shutil.rmtree(jdir, ignore_errors=True)
+            return jsonify({"error": f"Échec optimisation: {str(e)[-200:]}"}), 200
+        finally:
+            gc.collect()
+
+        if not path_out.exists():
+            shutil.rmtree(jdir, ignore_errors=True)
+            return jsonify({"error": "Sortie introuvable"}), 200
+        new_size = path_out.stat().st_size
+        reduction = round((1 - new_size / orig_size) * 100, 1) if orig_size else 0.0
+
+        try:
+            log_usage_event(
+                request.current_user, "media_optimizer_photo",
+                source_seconds=None, output_seconds=None,
+                source_count=1, output_count=1, success=True, claude_requests=0,
+            )
+        except Exception:
+            pass
+
+        return jsonify({
+            "job_id": job_id, "filename": out_name,
+            "orig_w": ow, "orig_h": oh, "final_w": fw, "final_h": fh,
+            "orig_size": orig_size, "final_size": new_size, "reduction_pct": reduction,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/optimize_video", methods=["POST"])
+def optimize_video():
+    """
+    Optimize ONE video (FFmpeg): resize + re-encode + codec convert.
+    Form: file, resolution, compression (0–100), codec (h264|h265|webm).
+    Refuses videos longer than 5 minutes. Returns duration, original/final
+    resolution, sizes and reduction %.
+    """
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "Fichier manquant"}), 400
+        f = request.files["file"]
+        orig = f.filename or "video"
+        ext = os.path.splitext(orig)[1].lower()
+        if ext not in OPTIM_VIDEO_EXT:
+            return jsonify({"error": f"Format non supporté ({ext or 'inconnu'})"}), 400
+
+        codec = (request.form.get("codec") or "h264").strip().lower()
+        if codec not in ("h264", "h265", "webm"):
+            codec = "h264"
+        try:
+            comp = int(float(request.form.get("compression", "0")))
+        except Exception:
+            comp = 0
+        comp = max(0, min(100, comp))
+        res = (request.form.get("resolution") or "original").strip().lower()
+        target_short = OPTIM_RES_MAP.get(res, None)
+
+        _cleanup_stale_optim_jobs()
+        job_id = uuid.uuid4().hex
+        jdir = OPTIM_DIR / job_id
+        in_dir = jdir / "in"; out_dir = jdir / "out"
+        in_dir.mkdir(parents=True, exist_ok=True)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        path_in = in_dir / f"src{ext}"
+        f.save(str(path_in))
+        orig_size = path_in.stat().st_size
+
+        duration, ow, oh = _probe_video_meta(str(path_in))
+        if duration > OPTIM_MAX_VIDEO_SECONDS:
+            shutil.rmtree(jdir, ignore_errors=True)
+            return jsonify({"error": "Cette vidéo dépasse la limite maximale de 5 minutes."}), 400
+
+        # Resolution: scale the SHORTER side to target, keep aspect, even
+        # dims, never upscale. Computed from probed dims (robust vs. ffmpeg
+        # filter expressions).
+        vf = []
+        if target_short and ow > 0 and oh > 0 and min(ow, oh) > target_short:
+            if ow <= oh:
+                nw = target_short
+                nh = round(oh * target_short / ow)
+            else:
+                nh = target_short
+                nw = round(ow * target_short / oh)
+            nw -= nw % 2; nh -= nh % 2
+            nw = max(2, nw); nh = max(2, nh)
+            vf = ["-vf", f"scale={nw}:{nh}"]
+
+        out_ext = ".webm" if codec == "webm" else ".mp4"
+        base = os.path.splitext(_photo_sanitize_name(orig))[0] or "video"
+        out_name = f"{base}_optim{out_ext}"
+        path_out = out_dir / out_name
+
+        # Compression slider → CRF (per codec). Higher slider = higher CRF
+        # = smaller file. preset fast = reasonable speed on Render's 0.5 vCPU.
+        if codec == "h264":
+            crf = round(18 + comp / 100 * 22)        # 18 … 40
+            vcmd = ["-c:v", "libx264", "-crf", str(crf), "-preset", "fast",
+                    "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
+                    "-movflags", "+faststart"]
+        elif codec == "h265":
+            crf = round(22 + comp / 100 * 23)        # 22 … 45
+            vcmd = ["-c:v", "libx265", "-crf", str(crf), "-preset", "fast",
+                    "-pix_fmt", "yuv420p", "-tag:v", "hvc1", "-c:a", "aac",
+                    "-b:a", "128k", "-movflags", "+faststart"]
+        else:  # webm / VP9
+            crf = round(24 + comp / 100 * 26)        # 24 … 50
+            vcmd = ["-c:v", "libvpx-vp9", "-crf", str(crf), "-b:v", "0",
+                    "-c:a", "libopus", "-b:a", "128k"]
+
+        cmd = ["ffmpeg", "-y", "-i", str(path_in)] + vf + vcmd + ["-loglevel", "error", str(path_out)]
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        except subprocess.TimeoutExpired:
+            shutil.rmtree(jdir, ignore_errors=True)
+            return jsonify({"error": "Timeout (>10 min)"}), 200
+        finally:
+            gc.collect()
+
+        if proc.returncode != 0 or not path_out.exists():
+            err = (proc.stderr or "ffmpeg a échoué")[-500:]
+            shutil.rmtree(jdir, ignore_errors=True)
+            return jsonify({"error": err}), 200
+
+        new_size = path_out.stat().st_size
+        fw, fh = get_video_dims(str(path_out))
+        reduction = round((1 - new_size / orig_size) * 100, 1) if orig_size else 0.0
+
+        try:
+            log_usage_event(
+                request.current_user, "media_optimizer_video",
+                source_seconds=duration, output_seconds=duration,
+                source_count=1, output_count=1, success=True, claude_requests=0,
+            )
+        except Exception:
+            pass
+
+        return jsonify({
+            "job_id": job_id, "filename": out_name,
+            "duration": round(duration, 2),
+            "orig_w": ow, "orig_h": oh, "final_w": fw, "final_h": fh,
+            "orig_size": orig_size, "final_size": new_size, "reduction_pct": reduction,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/optimizer_file/<job_id>/<filename>")
+def optimizer_file(job_id, filename):
+    """Download the optimized photo/video for a job."""
+    if ".." in job_id or "/" in job_id or ".." in filename or "/" in filename:
+        return jsonify({"error": "Invalid"}), 400
+    path = OPTIM_DIR / job_id / "out" / filename
+    if path.exists():
+        return send_file(str(path), as_attachment=True, download_name=filename)
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.route("/optimizer_cleanup", methods=["POST"])
+def optimizer_cleanup():
+    """Delete a finished optimizer job (inputs + outputs)."""
+    try:
+        data = request.get_json(force=True) or {}
+        job_id = (data.get("job_id") or "").strip()
+        if not job_id or ".." in job_id or "/" in job_id:
+            return jsonify({"error": "job_id invalide"}), 400
+        jdir = OPTIM_DIR / job_id
         if jdir.exists():
             shutil.rmtree(jdir, ignore_errors=True)
         gc.collect()

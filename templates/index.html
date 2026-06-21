@@ -777,6 +777,10 @@ Audio Converter
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="4" width="13" height="10" rx="1.8" stroke="currentColor" stroke-width="1.6"/><circle cx="6.5" cy="8" r="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 13 L7.5 9.5 L10 11.5 L12.5 9 L14.5 11" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
 Photo Metadata Studio
 </button>
+<button class="tab-btn nav-item" data-tab="optimizer" onclick="switchTab('optimizer')">
+<span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2 V5 M9 13 V16 M2 9 H5 M13 9 H16 M4 4 L6 6 M14 4 L12 6 M4 14 L6 12 M14 14 L12 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="9" cy="9" r="2.6" stroke="currentColor" stroke-width="1.6"/></svg></span>
+Media Optimizer
+</button>
 </div>
 
 <div class="nav-group">
@@ -1691,6 +1695,120 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 
 </div><!-- /photoTab -->
 
+<!-- ═══════════ MEDIA OPTIMIZER ═══════════ -->
+<div id="optimizerTab" class="tab-content">
+
+<!-- PHOTO OPTIMIZER -->
+<div class="card">
+<h2><span class="num">1</span> Photo Optimizer</h2>
+<div class="drop-zone upcard" id="optPhZone" style="max-width:420px;margin:0 auto;">
+<input type="file" id="optPhInput" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" />
+<span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="4" width="13" height="10" rx="1.8" stroke="currentColor" stroke-width="1.6"/><circle cx="6.5" cy="8" r="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 13 L7.5 9.5 L10 11.5 L12.5 9 L14.5 11" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
+<div class="meta"><div class="lbl">1 photo</div><div class="sub">.jpg .jpeg .png .webp</div><div class="fn" id="optPhName"></div></div>
+</div>
+
+<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;">
+<div style="flex:1;min-width:160px;">
+<div class="v-est-label" style="margin-bottom:6px;">Résolution</div>
+<select id="optPhRes" class="v-select" style="width:100%;">
+<option value="original" selected>Original</option>
+<option value="2160">2160p (4K)</option>
+<option value="1440">1440p</option>
+<option value="1080">1080p</option>
+<option value="720">720p</option>
+<option value="480">480p</option>
+<option value="360">360p</option>
+</select>
+</div>
+<div style="flex:1;min-width:160px;">
+<div class="v-est-label" style="margin-bottom:6px;">Format de sortie</div>
+<select id="optPhFmt" class="v-select" style="width:100%;">
+<option value="jpg" selected>JPG</option>
+<option value="webp">WEBP</option>
+<option value="png">PNG</option>
+</select>
+</div>
+</div>
+
+<div style="margin-top:16px;">
+<div class="v-est-label" style="margin-bottom:6px;">Compression : <span id="optPhCompVal" style="color:var(--accent);font-weight:700;">0%</span></div>
+<input type="range" id="optPhComp" min="0" max="100" value="0" step="1" style="width:100%;" oninput="document.getElementById('optPhCompVal').textContent=this.value+'%';">
+<div style="font-size:.72rem;color:var(--muted);margin-top:4px;">0% = aucune · 25% légère · 50% moyenne · 75% forte · 90%+ maximale</div>
+</div>
+
+<button id="optPhBtn" class="primary-btn" style="margin-top:18px;" onclick="runOptimizePhoto()" disabled>Optimiser la photo</button>
+
+<div id="optPhResult" class="card" style="display:none;background:rgba(124,92,255,0.06);margin-top:16px;">
+<div class="v-est-grid">
+<div class="v-est-item"><div class="v-est-label">Résolution originale</div><div class="v-est-value" id="optPhOrigRes">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Résolution finale</div><div class="v-est-value" id="optPhFinalRes">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Poids original</div><div class="v-est-value" id="optPhOrigSize">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Poids final</div><div class="v-est-value" id="optPhFinalSize">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Réduction</div><div class="v-est-value" id="optPhReduction" style="color:var(--success);">—</div></div>
+</div>
+<button class="zip-btn" id="optPhDl" style="margin-top:12px;">Télécharger la photo optimisée</button>
+</div>
+<div id="optPhErr" style="display:none;color:var(--error);font-size:.82rem;margin-top:12px;"></div>
+</div>
+
+<!-- VIDEO OPTIMIZER -->
+<div class="card">
+<h2><span class="num">2</span> Video Optimizer</h2>
+<div class="drop-zone upcard" id="optVdZone" style="max-width:420px;margin:0 auto;">
+<input type="file" id="optVdInput" accept=".mp4,.mov,.m4v,.avi,.mkv,video/*" />
+<span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="4" width="13" height="10" rx="1.8" stroke="currentColor" stroke-width="1.6"/><path d="M7.5 7 L11 9 L7.5 11 Z" fill="currentColor"/></svg></span>
+<div class="meta"><div class="lbl">1 vidéo</div><div class="sub">.mp4 .mov .m4v .avi .mkv — 5 min max</div><div class="fn" id="optVdName"></div></div>
+</div>
+
+<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;">
+<div style="flex:1;min-width:160px;">
+<div class="v-est-label" style="margin-bottom:6px;">Résolution</div>
+<select id="optVdRes" class="v-select" style="width:100%;">
+<option value="original" selected>Original</option>
+<option value="2160">2160p (4K)</option>
+<option value="1440">1440p</option>
+<option value="1080">1080p</option>
+<option value="720">720p</option>
+<option value="480">480p</option>
+<option value="360">360p</option>
+</select>
+</div>
+<div style="flex:1;min-width:160px;">
+<div class="v-est-label" style="margin-bottom:6px;">Codec</div>
+<select id="optVdCodec" class="v-select" style="width:100%;">
+<option value="h264" selected>MP4 H264</option>
+<option value="h265">MP4 H265</option>
+<option value="webm">WEBM</option>
+</select>
+</div>
+</div>
+
+<div style="margin-top:16px;">
+<div class="v-est-label" style="margin-bottom:6px;">Compression : <span id="optVdCompVal" style="color:var(--accent);font-weight:700;">0%</span></div>
+<input type="range" id="optVdComp" min="0" max="100" value="0" step="1" style="width:100%;" oninput="document.getElementById('optVdCompVal').textContent=this.value+'%';">
+<div style="font-size:.72rem;color:var(--muted);margin-top:4px;">0% = qualité max · 25% légère · 50% équilibré · 75% forte · 90%+ extrême</div>
+</div>
+
+<button id="optVdBtn" class="primary-btn" style="margin-top:18px;" onclick="runOptimizeVideo()" disabled>Optimiser la vidéo</button>
+
+<div id="optVdProgress" style="display:none;font-size:.85rem;color:var(--muted);margin-top:14px;">⏳ Optimisation en cours… (peut prendre plusieurs minutes selon la durée)</div>
+
+<div id="optVdResult" class="card" style="display:none;background:rgba(124,92,255,0.06);margin-top:16px;">
+<div class="v-est-grid">
+<div class="v-est-item"><div class="v-est-label">Durée</div><div class="v-est-value" id="optVdDur">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Résolution originale</div><div class="v-est-value" id="optVdOrigRes">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Résolution finale</div><div class="v-est-value" id="optVdFinalRes">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Poids original</div><div class="v-est-value" id="optVdOrigSize">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Poids final</div><div class="v-est-value" id="optVdFinalSize">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Réduction</div><div class="v-est-value" id="optVdReduction" style="color:var(--success);">—</div></div>
+</div>
+<button class="zip-btn" id="optVdDl" style="margin-top:12px;">Télécharger la vidéo optimisée</button>
+</div>
+<div id="optVdErr" style="display:none;color:var(--error);font-size:.82rem;margin-top:12px;"></div>
+</div>
+
+</div><!-- /optimizerTab -->
+
 </main>
 </div><!-- /app-main -->
 </div><!-- /app-shell -->
@@ -1711,6 +1829,7 @@ document.getElementById('variationTab').classList.toggle('active', tab === 'vari
 document.getElementById('variationMultiTab').classList.toggle('active', tab === 'variation_multi');
 document.getElementById('audioTab').classList.toggle('active', tab === 'audio');
 document.getElementById('photoTab').classList.toggle('active', tab === 'photo');
+document.getElementById('optimizerTab').classList.toggle('active', tab === 'optimizer');
 }
 
 function toggleGenDrop(e) {
@@ -3648,6 +3767,96 @@ document.querySelectorAll('.fs-preset-btn[data-fsprefix="' + prefix + '"]').forE
 b.classList.toggle("fs-active", b.dataset.fspreset === name);
 });
 if (typeof updateFsPreview === "function") updateFsPreview(prefix);
+}
+
+// ══════════════════════════════════════════
+// MEDIA OPTIMIZER (Photo + Video)
+// ══════════════════════════════════════════
+let optPhFile = null, optVdFile = null;
+
+(function initOptimizer() {
+  const phIn = document.getElementById("optPhInput");
+  if (phIn) phIn.addEventListener("change", e => {
+    optPhFile = e.target.files[0] || null;
+    document.getElementById("optPhName").textContent = optPhFile ? optPhFile.name : "";
+    document.getElementById("optPhBtn").disabled = !optPhFile;
+    document.getElementById("optPhResult").style.display = "none";
+    document.getElementById("optPhErr").style.display = "none";
+  });
+  const vdIn = document.getElementById("optVdInput");
+  if (vdIn) vdIn.addEventListener("change", e => {
+    optVdFile = e.target.files[0] || null;
+    document.getElementById("optVdName").textContent = optVdFile ? optVdFile.name : "";
+    document.getElementById("optVdBtn").disabled = !optVdFile;
+    document.getElementById("optVdResult").style.display = "none";
+    document.getElementById("optVdErr").style.display = "none";
+  });
+})();
+
+async function runOptimizePhoto() {
+  if (!optPhFile) return;
+  const btn = document.getElementById("optPhBtn");
+  const err = document.getElementById("optPhErr");
+  const res = document.getElementById("optPhResult");
+  err.style.display = "none"; res.style.display = "none";
+  btn.disabled = true; btn.textContent = "⏳ Optimisation…";
+  try {
+    const fd = new FormData();
+    fd.append("file", optPhFile);
+    fd.append("resolution", document.getElementById("optPhRes").value);
+    fd.append("format", document.getElementById("optPhFmt").value);
+    fd.append("compression", document.getElementById("optPhComp").value);
+    const r = await fetch("/optimize_photo", { method: "POST", body: fd });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    document.getElementById("optPhOrigRes").textContent = d.orig_w + "×" + d.orig_h;
+    document.getElementById("optPhFinalRes").textContent = d.final_w + "×" + d.final_h;
+    document.getElementById("optPhOrigSize").textContent = fmtBytes(d.orig_size);
+    document.getElementById("optPhFinalSize").textContent = fmtBytes(d.final_size);
+    document.getElementById("optPhReduction").textContent = "−" + d.reduction_pct + "%";
+    const dl = document.getElementById("optPhDl");
+    dl.onclick = () => { window.location.href = "/optimizer_file/" + d.job_id + "/" + encodeURIComponent(d.filename); };
+    res.style.display = "block";
+  } catch (e) {
+    err.textContent = "⚠️ " + e.message; err.style.display = "block";
+  } finally {
+    btn.disabled = false; btn.textContent = "Optimiser la photo";
+  }
+}
+
+async function runOptimizeVideo() {
+  if (!optVdFile) return;
+  const btn = document.getElementById("optVdBtn");
+  const err = document.getElementById("optVdErr");
+  const res = document.getElementById("optVdResult");
+  const prog = document.getElementById("optVdProgress");
+  err.style.display = "none"; res.style.display = "none"; prog.style.display = "block";
+  btn.disabled = true; btn.textContent = "⏳ Optimisation…";
+  try {
+    const fd = new FormData();
+    fd.append("file", optVdFile);
+    fd.append("resolution", document.getElementById("optVdRes").value);
+    fd.append("codec", document.getElementById("optVdCodec").value);
+    fd.append("compression", document.getElementById("optVdComp").value);
+    const r = await fetch("/optimize_video", { method: "POST", body: fd });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    const mm = Math.floor(d.duration / 60), ss = Math.round(d.duration % 60);
+    document.getElementById("optVdDur").textContent = mm + ":" + String(ss).padStart(2, "0");
+    document.getElementById("optVdOrigRes").textContent = d.orig_w + "×" + d.orig_h;
+    document.getElementById("optVdFinalRes").textContent = d.final_w + "×" + d.final_h;
+    document.getElementById("optVdOrigSize").textContent = fmtBytes(d.orig_size);
+    document.getElementById("optVdFinalSize").textContent = fmtBytes(d.final_size);
+    document.getElementById("optVdReduction").textContent = "−" + d.reduction_pct + "%";
+    const dl = document.getElementById("optVdDl");
+    dl.onclick = () => { window.location.href = "/optimizer_file/" + d.job_id + "/" + encodeURIComponent(d.filename); };
+    res.style.display = "block";
+  } catch (e) {
+    err.textContent = "⚠️ " + e.message; err.style.display = "block";
+  } finally {
+    prog.style.display = "none";
+    btn.disabled = false; btn.textContent = "Optimiser la vidéo";
+  }
 }
 </script>
 </body>
