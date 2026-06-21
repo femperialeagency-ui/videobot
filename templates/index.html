@@ -3816,6 +3816,7 @@ async function runOptimizePhoto() {
     document.getElementById("optPhReduction").textContent = "−" + d.reduction_pct + "%";
     const dl = document.getElementById("optPhDl");
     dl.onclick = () => { window.location.href = "/optimizer_file/" + d.job_id + "/" + encodeURIComponent(d.filename); };
+    dl.style.display = "inline-flex";
     res.style.display = "block";
   } catch (e) {
     err.textContent = "⚠️ " + e.message; err.style.display = "block";
@@ -3850,6 +3851,7 @@ async function runOptimizeVideo() {
     document.getElementById("optVdReduction").textContent = "−" + d.reduction_pct + "%";
     const dl = document.getElementById("optVdDl");
     dl.onclick = () => { window.location.href = "/optimizer_file/" + d.job_id + "/" + encodeURIComponent(d.filename); };
+    dl.style.display = "inline-flex";
     res.style.display = "block";
   } catch (e) {
     err.textContent = "⚠️ " + e.message; err.style.display = "block";
