@@ -3786,19 +3786,7 @@ def batch_render():
             num_b = int(request.form.get("num_b", "0"))
         except Exception:
             num_a = num_b = 0
-        # "Variations par A" — outputs = num_a × variations ≤ 300. Reuses the
-        # pairing index/staging bounds (sent with pairing=1 by the client), so
-        # only the TOTAL cap differs. NEVER the full product A × B.
-        try:
-            _variations = int(request.form.get("variations", "0") or 0)
-        except Exception:
-            _variations = 0
-        if _variations > 0:
-            if _variations < 1 or num_a > MAX_BATCH_PAIR_FILES:
-                return jsonify({"error": f"Maximum {MAX_BATCH_PAIR_FILES} vidéos A."}), 400
-            if num_a > 0 and num_a * _variations > MAX_BATCH_COMBOS:
-                return jsonify({"error": f"Maximum autorisé : {MAX_BATCH_COMBOS} vidéos générées."}), 400
-        elif _is_pairing:
+        if _is_pairing:
             # Pairing: outputs = min(#A,#B) ≤ 300. NEVER the product.
             if num_a > MAX_BATCH_PAIR_FILES or num_b > MAX_BATCH_PAIR_FILES:
                 return jsonify({"error": f"Maximum {MAX_BATCH_PAIR_FILES} vidéos A et {MAX_BATCH_PAIR_FILES} vidéos B."}), 400
