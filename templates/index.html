@@ -1114,14 +1114,6 @@ SIMPLE MODE
 <label class="v-opt"><input type="radio" name="igStyleS" value="meme"> Meme</label>
 </div>
 
-<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px;font-size:.82rem;font-weight:600;">
-<span>Contour noir :</span>
-<label class="v-opt"><input type="radio" name="outlineS" value="off"> Off</label>
-<label class="v-opt"><input type="radio" name="outlineS" value="leger" checked> Léger</label>
-<label class="v-opt"><input type="radio" name="outlineS" value="moyen"> Moyen</label>
-<label class="v-opt"><input type="radio" name="outlineS" value="fort"> Fort</label>
-</div>
-
 <!-- Detected lines -->
 <div class="card">
 <h2><span class="num">2</span> Texte détecté <span id="lineCount" style="color:var(--muted);font-weight:400;font-size:0.8rem;margin-left:4px"></span></h2>
@@ -1218,13 +1210,6 @@ BATCH MODE
 <label class="v-opt"><input type="radio" name="igStyleB" value="modern"> Modern</label>
 <label class="v-opt"><input type="radio" name="igStyleB" value="poster"> Poster</label>
 <label class="v-opt"><input type="radio" name="igStyleB" value="meme"> Meme</label>
-</div>
-<div style="margin-top:10px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:.82rem;font-weight:700;">
-<span>Contour noir :</span>
-<label class="v-opt"><input type="radio" name="outlineB" value="off"> Off</label>
-<label class="v-opt"><input type="radio" name="outlineB" value="leger" checked> Léger</label>
-<label class="v-opt"><input type="radio" name="outlineB" value="moyen"> Moyen</label>
-<label class="v-opt"><input type="radio" name="outlineB" value="fort"> Fort</label>
 </div>
 <div id="bPairingOpts" style="display:none;margin-top:10px;display:none;align-items:center;gap:10px;flex-wrap:wrap;">
 <span style="font-size:.82rem;font-weight:600;">Appariement :</span>
@@ -1861,14 +1846,6 @@ const v = el ? el.value : "classic";
 return ["classic", "modern", "poster", "meme"].includes(v) ? v : "classic";
 }
 
-// Black caption outline ("S"=Simple, "B"=Batch). off/leger/moyen/fort;
-// default leger. Sent as outline to /process and /batch_render.
-function getOutline(scope) {
-const el = document.querySelector('input[name="outline' + scope + '"]:checked');
-const v = el ? el.value : "leger";
-return ["off", "leger", "moyen", "fort"].includes(v) ? v : "leger";
-}
-
 // ══════════════════════════════════════════
 // SIMPLE MODE (unchanged)
 // ══════════════════════════════════════════
@@ -2015,7 +1992,6 @@ fd.append("video_a", vaFile);
 fd.append("video_b", vbFile);
 fd.append("lines_json", JSON.stringify(linesData));
 fd.append("ig_style", getIgStyle("S"));
-fd.append("outline", getOutline("S"));
 
 try {
 const res = await fetch("/process", { method: "POST", body: fd });
@@ -2307,7 +2283,6 @@ fd.append("b_index", b);
 fd.append("num_a", bFilesA.length);
 fd.append("num_b", bFilesB.length);
 fd.append("ig_style", getIgStyle("B"));
-fd.append("outline", getOutline("B"));
 fd.append("lines_json", JSON.stringify(linesByB[b]));
 const r = await fetch("/batch_render", { method: "POST", body: fd });
 const d = await r.json();
@@ -2458,7 +2433,7 @@ const fd = new FormData();
 fd.append("batch_id", bBatchId);
 fd.append("a_index", sa); fd.append("b_index", sb);
 fd.append("pairing", "1");
-fd.append("num_a", nA); fd.append("num_b", nB); fd.append("ig_style", getIgStyle("B")); fd.append("outline", getOutline("B"));
+fd.append("num_a", nA); fd.append("num_b", nB); fd.append("ig_style", getIgStyle("B"));
 fd.append("lines_json", JSON.stringify(linesByStagedB[sb]));
 const r = await fetch("/batch_render", { method: "POST", body: fd });
 const d = await r.json();
@@ -2549,7 +2524,7 @@ fd.append("batch_id", bBatchId);
 fd.append("a_index", sa); fd.append("b_index", sb);
 fd.append("pairing", "1");
 fd.append("variations", V);
-fd.append("num_a", nA); fd.append("num_b", nB); fd.append("ig_style", getIgStyle("B")); fd.append("outline", getOutline("B"));
+fd.append("num_a", nA); fd.append("num_b", nB); fd.append("ig_style", getIgStyle("B"));
 fd.append("lines_json", JSON.stringify(linesByStagedB[sb]));
 const r = await fetch("/batch_render", { method: "POST", body: fd });
 const d = await r.json();
