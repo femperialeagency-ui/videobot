@@ -2211,6 +2211,13 @@ IG_STYLES = {
 }
 IG_DEFAULT_STYLE = "classic"
 
+# ── Single fixed black caption outline (CapCut preset). Text is ALWAYS
+# white, outline ALWAYS pure black, NO shadow, ALWAYS on — no user option.
+# Thickness scales with the FONT SIZE (constant ratio to the glyph, like
+# CapCut), NOT with the frame height. Drawn with FreeType's native stroker
+# (stroke_width). ──
+OUTLINE_RATIO = 0.10   # stroke_width = round(fontsize * 0.10), min 1px
+
 
 def _resolve_ig_style(name):
     n = (name or "").strip().lower()
@@ -2351,9 +2358,10 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, ig_sty
     """
     Render all text objects onto a transparent RGBA image in one of the 4
     Instagram caption styles (classic / modern / poster / meme). Each style
-    sets only the font + weight + line-height; ALL styles share: pure white
-    text, NO outline (matches real Instagram), letter-spacing 0, center,
-    casing preserved, anti-aliased. No other options.
+    sets the font + weight + line-height. A SINGLE fixed CapCut-style black
+    outline is ALWAYS applied (no option): pure white text, pure black outline
+    via FreeType's NATIVE stroker, width = round(fontsize × 0.10) (min 1px),
+    NO shadow, letter-spacing 0, center, casing preserved, anti-aliased.
     Improvements over v1:
     - Word-wrap BEFORE shrinking font (preserves readability)
     - Font size floor: never below max(24px, 60% of target size)
@@ -2440,15 +2448,15 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, ig_sty
             fontsize = max(min_fontsize, fontsize - 2)
 
         # ── Layout ────────────────────────────────────────────────────
-        # Instagram has NO outline on Classic/Modern/Poster/Meme → border=0
-        # (the offset-draw loop below draws nothing for border 0). shadow is
-        # kept defined but unused at border 0.
-        border  = 0
-        shadow  = (0, 0, 0, 255)
+        # Single fixed CapCut-style black outline, drawn with FreeType's
+        # native stroker. Thickness is a constant RATIO of the font size
+        # (like CapCut), not the frame height. Always on, min 1px.
+        border  = max(1, round(fontsize * OUTLINE_RATIO))
+        stroke_col = (0, 0, 0, 255)
         line_h  = int(fontsize * _ig_line_h)   # per-style Instagram line-height
-        # Diagnostic — confirms the resolved style + ACTUAL font file used.
+        # Diagnostic — confirms resolved style + ACTUAL font + stroke width.
         import sys as _sys_cs
-        print(f"[CAPTION_STYLE] ig_style={_ig_style} font={getattr(font, 'path', '?')} border={border} line_h={line_h} fontsize={fontsize} ha={ha}", file=_sys_cs.stderr)
+        print(f"[CAPTION_STYLE] ig_style={_ig_style} font={getattr(font, 'path', '?')} stroke_width={border} (ratio={OUTLINE_RATIO}) line_h={line_h} fontsize={fontsize} ha={ha}", file=_sys_cs.stderr)
         total_h = len(lines) * line_h
         y_start = cy - total_h // 2
 
@@ -2491,17 +2499,19 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, ig_sty
             # (`line_rendered_with_emoji`); `use_pilmoji` still gates
             # whether pilmoji is even attempted (e.g. if the import
             # failed) but a per-line failure no longer poisons the rest
-            # of the render. Drawing itself — position, font, border,
-            # shadow, fill — is byte-for-byte identical either way.
+            # of the render. Drawing itself — position, font, outline,
+            # fill — is identical either way.
+            #
+            # Outline is FreeType's NATIVE stroker (stroke_width/stroke_fill),
+            # exactly like CapCut/Instagram — one even, clean, anti-aliased
+            # stroke per glyph. (Replaces the old manual diamond offset loop,
+            # which produced a lumpy, AA-muddied edge.)
             line_rendered_with_emoji = False
             if use_pilmoji:
                 try:
                     with Pilmoji(overlay, **_emoji_kw) as pm:
-                        for dx in range(-border, border + 1):
-                            for dy in range(-border, border + 1):
-                                if abs(dx) + abs(dy) <= border + 1 and (dx or dy):
-                                    pm.text((x+dx, y+dy), line, font=font, fill=shadow)
-                        pm.text((x, y), line, font=font, fill=color)
+                        pm.text((x, y), line, font=font, fill=color,
+                                stroke_width=border, stroke_fill=stroke_col)
                     line_rendered_with_emoji = True
                 except Exception as _pilmoji_exc:
                     print(f"[EMOJI_DEBUG] pilmoji failed for line {i} of '{text[:40]}': "
@@ -2511,11 +2521,8 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, ig_sty
 
             if not line_rendered_with_emoji:
                 draw = ImageDraw.Draw(overlay)
-                for dx in range(-border, border + 1):
-                    for dy in range(-border, border + 1):
-                        if abs(dx) + abs(dy) <= border + 1 and (dx or dy):
-                            draw.text((x+dx, y+dy), line, font=font, fill=shadow)
-                draw.text((x, y), line, font=font, fill=color)
+                draw.text((x, y), line, font=font, fill=color,
+                          stroke_width=border, stroke_fill=stroke_col)
 
         # ── Emoji investigation debug log (per caption object) ────────
         # Traces the text end-to-end through every transformation this
@@ -2690,7 +2697,9 @@ def _build_timed_overlay_cmd(path_a: str, path_b: str, overlay_specs: list, path
         "-map", "[ovout]",
         "-map", "1:a",
         "-shortest",
-        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        "-pix_fmt", "yuv420p",
+        "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
         "-c:a", "aac", "-b:a", "128k",
         "-loglevel", "error",
         path_out
@@ -3350,7 +3359,9 @@ def process():
                     "-map", "[out]",
                     "-map", "1:a",
                     "-shortest",
-                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                    "-pix_fmt", "yuv420p",
+                    "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
                     "-c:a", "aac", "-b:a", "128k",
                     "-loglevel", "error",
                     path_out
@@ -3803,7 +3814,9 @@ def batch_render():
                     "-map", "[out]",
                     "-map", "1:a",
                     "-shortest",
-                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                    "-pix_fmt", "yuv420p",
+                    "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
                     "-c:a", "aac", "-b:a", "128k",
                     "-loglevel", "error",
                     path_out
