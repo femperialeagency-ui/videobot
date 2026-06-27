@@ -435,7 +435,6 @@ transition: border-color .15s, background .15s; }
 .v-quick-btn { padding: 6px 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2);
 color: var(--muted); font-size: 0.76rem; font-weight: 600; cursor: pointer; transition: all .15s; }
 .v-quick-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft, rgba(67,105,255,.12)); }
-.fs-preset-btn.fs-active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft, rgba(67,105,255,.16)); font-weight: 700; }
 
 /* ── Variation mode: config-mode toggle ── */
 .v-modeswitch { display: flex; gap: 7px; margin-bottom: 14px; }
@@ -1117,33 +1116,6 @@ SIMPLE MODE
 <input type="hidden" id="linesJson" />
 </div>
 
-<details class="card" id="fsS_panel">
-<summary style="cursor:pointer;font-weight:700;list-style:revert;">🎨 Style des captions <span style="font-weight:500;opacity:.7;font-size:.85rem">(optionnel — défaut = rendu actuel)</span></summary>
-<div style="font-size:0.78rem;color:var(--muted);margin:8px 0 12px;">Tout reste sur « Défaut » : la vidéo C sort exactement comme aujourd'hui. Changez une option seulement si vous le souhaitez.</div>
-<div style="font-size:0.74rem;color:var(--muted);margin-bottom:6px;">Presets rapides (pré-remplissent les contrôles ci-dessous — ajustables ensuite) :</div>
-<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
-<button type="button" class="v-quick-btn fs-preset-btn fs-active" data-fsprefix="fsS_" data-fspreset="default" onclick="applyPreset('fsS_','default')">Défaut</button>
-<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsS_" data-fspreset="tiktok" onclick="applyPreset('fsS_','tiktok')">TikTok</button>
-<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsS_" data-fspreset="instagram" onclick="applyPreset('fsS_','instagram')">Instagram</button>
-<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsS_" data-fspreset="reddit" onclick="applyPreset('fsS_','reddit')">Reddit</button>
-<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsS_" data-fspreset="ofm" onclick="applyPreset('fsS_','ofm')">OFM</button>
-<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsS_" data-fspreset="viral" onclick="applyPreset('fsS_','viral')">Viral</button>
-</div>
-<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;">Police</label><select id="fsS_font"><option value="default">Défaut</option><option value="tiktok_bold">TikTok Bold</option><option value="clean_sans">Clean Sans</option><option value="rounded">Rounded</option><option value="serif">Serif</option><option value="handwritten">Handwritten</option></select></div>
-<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;cursor:pointer;"><input type="checkbox" id="fsS_sizeOn"> Taille</label><input type="range" id="fsS_size" min="0.7" max="1.5" step="0.05" value="1.0"><span class="v-slider-val" id="fsS_sizeVal">1.0×</span></div>
-<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;">Contour</label><select id="fsS_contour"><option value="default">Défaut</option><option value="fin">Fin</option><option value="moyen">Moyen</option><option value="epais">Épais</option></select></div>
-<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;">Ombre</label><select id="fsS_shadow"><option value="off">Off</option><option value="legere">Légère</option><option value="forte">Forte</option></select></div>
-<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;cursor:pointer;"><input type="checkbox" id="fsS_txtOn"> Couleur texte</label><input type="color" id="fsS_txtColor" value="#ffffff"></div>
-<div style="display:flex;align-items:center;gap:10px;"><label style="min-width:130px;cursor:pointer;"><input type="checkbox" id="fsS_strokeOn"> Couleur contour</label><input type="color" id="fsS_strokeColor" value="#000000"></div>
-<div style="margin-top:16px;">
-<div style="font-size:.78rem;font-weight:600;margin-bottom:6px;">Aperçu caption</div>
-<div style="background:linear-gradient(135deg,#2b2f3a,#161922);border-radius:10px;padding:28px 14px;display:flex;align-items:center;justify-content:center;min-height:96px;overflow:hidden;">
-<span id="fsS_preview" style="display:inline-block;text-align:center;line-height:1.25;font-weight:800;color:#fff;font-size:30px;">POV: you texted me again 😭</span>
-</div>
-<div style="font-size:.7rem;color:var(--muted);margin-top:6px;">Aperçu indicatif — le rendu final peut légèrement différer.</div>
-</div>
-</details>
-
 <button id="submitBtn" class="primary-btn" onclick="submitForm()" disabled><svg class="ico-svg sm" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 2 L4.5 10.5 H8.3 L7.4 16 L13.5 7 H9.5 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="currentColor" fill-opacity=".18"/></svg> Générer la Vidéo C</button>
 
 <div class="card" id="progressCard">
@@ -1208,6 +1180,15 @@ BATCH MODE
 <span style="font-size:.82rem;font-weight:700;">Mode :</span>
 <label class="v-opt"><input type="radio" name="bStrategy" value="matrix" checked onchange="onBatchStrategyChange()"> Matrice (A × B)</label>
 <label class="v-opt"><input type="radio" name="bStrategy" value="pairing" onchange="onBatchStrategyChange()"> Pairing / Shuffle</label>
+<label class="v-opt"><input type="radio" name="bStrategy" value="variations" onchange="onBatchStrategyChange()"> Variations par A ⭐</label>
+</div>
+<div id="bVarOpts" style="display:none;margin-top:10px;align-items:center;gap:10px;flex-wrap:wrap;">
+<span style="font-size:.82rem;font-weight:600;">Variations par vidéo A :</span>
+<select id="bVarCount" onchange="updateComboPreview(); checkBatchReady();">
+<option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
+<option value="5" selected>5</option><option value="10">10</option><option value="15">15</option><option value="20">20</option>
+</select>
+<span style="font-size:.74rem;color:var(--muted);">A × variations sorties · B distincts par A</span>
 </div>
 <div id="bModeHelper" style="margin-top:10px;padding:10px 12px;border-radius:8px;background:rgba(124,92,255,0.07);border:1px solid var(--border);font-size:.8rem;line-height:1.5;"></div>
 <div style="margin-top:10px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:.82rem;font-weight:700;">
@@ -1249,33 +1230,6 @@ BATCH MODE
 {% endif %}
 </div>
 {% endif %}
-
-<details class="card" id="fsB_panel">
-<summary style="cursor:pointer;font-weight:700;list-style:revert;">🎨 Style des captions <span style="font-weight:500;opacity:.7;font-size:.85rem">(optionnel — défaut = rendu actuel)</span></summary>
-<div style="font-size:0.78rem;color:var(--muted);margin:8px 0 12px;">Appliqué à toutes les vidéos du batch. Tout sur « Défaut » = sortie identique à aujourd'hui.</div>
-<div style="font-size:0.74rem;color:var(--muted);margin-bottom:6px;">Presets rapides (pré-remplissent les contrôles ci-dessous — ajustables ensuite) :</div>
-<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
-<button type="button" class="v-quick-btn fs-preset-btn fs-active" data-fsprefix="fsB_" data-fspreset="default" onclick="applyPreset('fsB_','default')">Défaut</button>
-<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsB_" data-fspreset="tiktok" onclick="applyPreset('fsB_','tiktok')">TikTok</button>
-<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsB_" data-fspreset="instagram" onclick="applyPreset('fsB_','instagram')">Instagram</button>
-<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsB_" data-fspreset="reddit" onclick="applyPreset('fsB_','reddit')">Reddit</button>
-<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsB_" data-fspreset="ofm" onclick="applyPreset('fsB_','ofm')">OFM</button>
-<button type="button" class="v-quick-btn fs-preset-btn" data-fsprefix="fsB_" data-fspreset="viral" onclick="applyPreset('fsB_','viral')">Viral</button>
-</div>
-<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;">Police</label><select id="fsB_font"><option value="default">Défaut</option><option value="tiktok_bold">TikTok Bold</option><option value="clean_sans">Clean Sans</option><option value="rounded">Rounded</option><option value="serif">Serif</option><option value="handwritten">Handwritten</option></select></div>
-<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;cursor:pointer;"><input type="checkbox" id="fsB_sizeOn"> Taille</label><input type="range" id="fsB_size" min="0.7" max="1.5" step="0.05" value="1.0"><span class="v-slider-val" id="fsB_sizeVal">1.0×</span></div>
-<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;">Contour</label><select id="fsB_contour"><option value="default">Défaut</option><option value="fin">Fin</option><option value="moyen">Moyen</option><option value="epais">Épais</option></select></div>
-<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;">Ombre</label><select id="fsB_shadow"><option value="off">Off</option><option value="legere">Légère</option><option value="forte">Forte</option></select></div>
-<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><label style="min-width:130px;cursor:pointer;"><input type="checkbox" id="fsB_txtOn"> Couleur texte</label><input type="color" id="fsB_txtColor" value="#ffffff"></div>
-<div style="display:flex;align-items:center;gap:10px;"><label style="min-width:130px;cursor:pointer;"><input type="checkbox" id="fsB_strokeOn"> Couleur contour</label><input type="color" id="fsB_strokeColor" value="#000000"></div>
-<div style="margin-top:16px;">
-<div style="font-size:.78rem;font-weight:600;margin-bottom:6px;">Aperçu caption</div>
-<div style="background:linear-gradient(135deg,#2b2f3a,#161922);border-radius:10px;padding:28px 14px;display:flex;align-items:center;justify-content:center;min-height:96px;overflow:hidden;">
-<span id="fsB_preview" style="display:inline-block;text-align:center;line-height:1.25;font-weight:800;color:#fff;font-size:30px;">POV: you texted me again 😭</span>
-</div>
-<div style="font-size:.7rem;color:var(--muted);margin-top:6px;">Aperçu indicatif — le rendu final peut légèrement différer.</div>
-</div>
-</details>
 
 <button id="bLaunchBtn" class="primary-btn" onclick="runBatch()" disabled><svg class="ico-svg sm" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 2 L4.5 10.5 H8.3 L7.4 16 L13.5 7 H9.5 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="currentColor" fill-opacity=".18"/></svg> Lancer le Batch</button>
 
@@ -2013,7 +1967,6 @@ const fd = new FormData();
 fd.append("video_a", vaFile);
 fd.append("video_b", vbFile);
 fd.append("lines_json", JSON.stringify(linesData));
-const _csS = buildCaptionStyle("fsS_"); if (_csS) fd.append("caption_style", JSON.stringify(_csS));
 
 try {
 const res = await fetch("/process", { method: "POST", body: fd });
@@ -2045,17 +1998,23 @@ const MAX_BATCH_COMBOS = 300;
 const MAX_BATCH_PAIR = 300;          // per-axis cap in Pairing mode
 const MAX_BATCH_PAIR_OUTPUTS = 300;  // outputs cap = min(#A,#B) ≤ 300
 function getBatchStrategy() { const s = document.querySelector('input[name="bStrategy"]:checked'); return s ? s.value : "matrix"; }
-function batchAxisCap() { return getBatchStrategy() === "pairing" ? MAX_BATCH_PAIR : MAX_BATCH_A; }
+function batchAxisCap() { const m = getBatchStrategy(); return (m === "pairing" || m === "variations") ? MAX_BATCH_PAIR : MAX_BATCH_A; }
+function getBatchVariations() { const el = document.getElementById("bVarCount"); return el ? parseInt(el.value, 10) || 0 : 0; }
 function updateBatchModeHints() {
-const pairing = getBatchStrategy() === "pairing";
+const mode = getBatchStrategy();
 const subA = document.getElementById("bSubA");
 const subB = document.getElementById("bSubB");
 const helper = document.getElementById("bModeHelper");
-const range = pairing ? "1 à 300 fichiers" : "1 à 50 fichiers";
+const range = (mode === "matrix") ? "1 à 50 fichiers" : "1 à 300 fichiers";
 if (subA) subA.textContent = range;
 if (subB) subB.textContent = range;
 if (helper) {
-if (pairing) {
+if (mode === "variations") {
+helper.innerHTML =
+`<div><b>Mode Variations par A :</b> chaque vidéo A est associée à N vidéos B différentes.</div>`
++ `<div style="margin-top:4px;"><b>Règle :</b> Sorties = A × variations</div>`
++ `<div style="margin-top:4px;color:var(--muted);">Exemples : 15 A × 5 variations = 75 sorties · 15 A × 20 variations = 300 sorties · 50 A × 10 variations = 500 sorties ❌</div>`;
+} else if (mode === "pairing") {
 helper.innerHTML =
 `<div><b>Mode Pairing :</b> une vidéo A est associée à une vidéo B. Le nombre de sorties correspond au plus petit groupe.</div>`
 + `<div style="margin-top:4px;"><b>Règle :</b> 1 A = 1 B</div>`
@@ -2070,9 +2029,11 @@ helper.innerHTML =
 }
 
 function onBatchStrategyChange() {
-const pairing = getBatchStrategy() === "pairing";
+const mode = getBatchStrategy();
 const opts = document.getElementById("bPairingOpts");
-if (opts) opts.style.display = pairing ? "flex" : "none";
+if (opts) opts.style.display = (mode === "pairing") ? "flex" : "none";
+const varOpts = document.getElementById("bVarOpts");
+if (varOpts) varOpts.style.display = (mode === "variations") ? "flex" : "none";
 // Re-clamp current selections to the new cap (e.g. pairing→matrix with 200 files).
 const cap = batchAxisCap();
 if (bFilesA.length > cap) bFilesA = bFilesA.slice(0, cap);
@@ -2147,6 +2108,22 @@ checkBatchReady();
 function updateComboPreview() {
 const el = document.getElementById("bComboPreview");
 const nA = bFilesA.length, nB = bFilesB.length;
+if (getBatchStrategy() === "variations") {
+const V = getBatchVariations();
+const outputs = nA * V;
+const over = outputs > MAX_BATCH_COMBOS;
+const tooManyV = nB > 0 && V > nB;
+let html = `<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:.85rem;font-weight:600;">`
++ `<span>Vidéos A : <b>${nA}</b> / ${MAX_BATCH_PAIR}</span>`
++ `<span>Vidéos B : <b>${nB}</b> / ${MAX_BATCH_PAIR}</span>`
++ `<span>Variations par A : <b>${V}</b></span>`
++ `<span style="color:${over ? 'var(--error)' : 'var(--text)'}">Sorties prévues : <b>${outputs}</b> / ${MAX_BATCH_COMBOS}</span>`
++ `</div>`;
+if (over) html += `<div style="color:var(--error);font-size:.82rem;font-weight:600;margin-top:6px;">⚠️ Maximum autorisé : ${MAX_BATCH_COMBOS} vidéos générées.</div>`;
+if (tooManyV) html += `<div style="color:var(--error);font-size:.82rem;font-weight:600;margin-top:6px;">⚠️ Variations (${V}) > nombre de vidéos B (${nB}).</div>`;
+el.innerHTML = html;
+return;
+}
 if (getBatchStrategy() === "pairing") {
 const outputs = Math.min(nA, nB);
 const over = outputs > MAX_BATCH_PAIR_OUTPUTS;
@@ -2176,7 +2153,10 @@ el.innerHTML = html;
 function checkBatchReady() {
 const nA = bFilesA.length, nB = bFilesB.length;
 let ok;
-if (getBatchStrategy() === "pairing") {
+if (getBatchStrategy() === "variations") {
+const V = getBatchVariations();
+ok = nA > 0 && nB > 0 && V > 0 && V <= nB && (nA * V) <= MAX_BATCH_COMBOS && nA <= MAX_BATCH_PAIR && nB <= MAX_BATCH_PAIR;
+} else if (getBatchStrategy() === "pairing") {
 ok = nA > 0 && nB > 0 && nA <= MAX_BATCH_PAIR && nB <= MAX_BATCH_PAIR && Math.min(nA, nB) <= MAX_BATCH_PAIR_OUTPUTS;
 } else {
 ok = nA > 0 && nB > 0 && (nA * nB) <= MAX_BATCH_COMBOS;
@@ -2200,10 +2180,9 @@ async function runBatch() {
 if (bRunning) return;
 // Pairing / Shuffle mode → dedicated flow; MATRIX code below is untouched.
 if (getBatchStrategy() === "pairing") return runBatchPairing();
+// Variations par A → dedicated flow; MATRIX code below is untouched.
+if (getBatchStrategy() === "variations") return runBatchVariations();
 if (bFilesA.length === 0 || bFilesB.length === 0) return;
-// Font Studio (optional): computed ONCE, applied to every combo. null
-// when all-default ⇒ caption_style is never sent ⇒ render unchanged.
-const _bCaptionStyle = buildCaptionStyle("fsB_");
 const totalCombos = bFilesA.length * bFilesB.length;
 if (totalCombos > MAX_BATCH_COMBOS) {
 alert(`Maximum autorisé : ${MAX_BATCH_COMBOS} vidéos générées.`);
@@ -2279,7 +2258,6 @@ fd.append("b_index", b);
 fd.append("num_a", bFilesA.length);
 fd.append("num_b", bFilesB.length);
 fd.append("lines_json", JSON.stringify(linesByB[b]));
-if (_bCaptionStyle) fd.append("caption_style", JSON.stringify(_bCaptionStyle));
 const r = await fetch("/batch_render", { method: "POST", body: fd });
 const d = await r.json();
 if (!r.ok || d.error) throw new Error(d.error || r.statusText);
@@ -2377,7 +2355,6 @@ if (nA === 0 || nB === 0 || bRunning) return;
 if (nA > MAX_BATCH_PAIR || nB > MAX_BATCH_PAIR) { alert(`Maximum ${MAX_BATCH_PAIR} vidéos A et B.`); return; }
 const outputs = Math.min(nA, nB);
 if (outputs > MAX_BATCH_PAIR_OUTPUTS) { alert(`Maximum autorisé : ${MAX_BATCH_PAIR_OUTPUTS} vidéos générées.`); return; }
-const _bCaptionStyle = buildCaptionStyle("fsB_");
 const mode = document.getElementById("bPairMode").value;
 
 bRunning = true; bBatchId = null;
@@ -2432,7 +2409,6 @@ fd.append("a_index", sa); fd.append("b_index", sb);
 fd.append("pairing", "1");
 fd.append("num_a", nA); fd.append("num_b", nB);
 fd.append("lines_json", JSON.stringify(linesByStagedB[sb]));
-if (_bCaptionStyle) fd.append("caption_style", JSON.stringify(_bCaptionStyle));
 const r = await fetch("/batch_render", { method: "POST", body: fd });
 const d = await r.json();
 if (!r.ok || d.error) throw new Error(d.error || r.statusText);
@@ -2444,6 +2420,97 @@ document.getElementById("bProgressTitle").textContent = "✅ Pairing terminé";
 } catch (e) {
 document.getElementById("bProgressTitle").textContent = "❌ Erreur";
 alert("Erreur pairing : " + e.message);
+}
+
+bRunning = false; document.getElementById("bLaunchBtn").disabled = false;
+const successes = bResults.filter(r => r.status === "done");
+if (successes.length > 0) {
+const btn = document.getElementById("bZipBtn");
+btn.style.display = "inline-flex";
+btn.textContent = `📦 Télécharger les ${successes.length} vidéo${successes.length > 1 ? "s" : ""} en ZIP`;
+}
+}
+
+// ══════════════════════════════════════════
+// BATCH "VARIATIONS PAR A" — dedicated flow.
+// For each A, pick V distinct random B (no repeat within the same A; a B
+// may be reused across different A's). outputs = #A × V ≤ 300. Reuses
+// /batch_stage + /batch_detect + /batch_render (pairing flag for the 300
+// staging/index bounds; variations sent for the server total cap). The
+// A+B→C pipeline is untouched.
+// ══════════════════════════════════════════
+async function runBatchVariations() {
+const nA = bFilesA.length, nB = bFilesB.length, V = getBatchVariations();
+if (nA === 0 || nB === 0 || bRunning) return;
+if (V < 1 || V > nB) { alert(`Variations (${V}) ne peut pas dépasser le nombre de vidéos B (${nB}).`); return; }
+const outputs = nA * V;
+if (outputs > MAX_BATCH_COMBOS) { alert(`Maximum autorisé : ${MAX_BATCH_COMBOS} vidéos générées.`); return; }
+
+bRunning = true; bBatchId = null;
+document.getElementById("bLaunchBtn").disabled = true;
+const card = document.getElementById("bProgressCard"); card.style.display = "block";
+document.getElementById("bZipBtn").style.display = "none";
+
+try {
+// Build pairs: each A gets V distinct random B (B reusable across A's).
+const shuffle = arr => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+const pairs = [];
+for (let a = 0; a < nA; a++) {
+const bPool = shuffle([...Array(nB).keys()]).slice(0, V);
+for (const b of bPool) pairs.push({ a, b });
+}
+// Stage only the A's and B's actually used (re-indexed to staged indices).
+const usedA = [...new Set(pairs.map(p => p.a))];
+const usedB = [...new Set(pairs.map(p => p.b))];
+const aStage = new Map(usedA.map((orig, i) => [orig, i]));
+const bStage = new Map(usedB.map((orig, j) => [orig, j]));
+
+bResults = pairs.map(p => ({ filename: `A${pad2(aStage.get(p.a) + 1)}_B${pad2(bStage.get(p.b) + 1)}_output.mp4`, status: "pending", statusText: "⏳ En attente" }));
+renderBatchResults(); updateBatchProgress(0, pairs.length);
+
+document.getElementById("bProgressTitle").textContent = "📤 Envoi des vidéos A…";
+for (let i = 0; i < usedA.length; i++) bBatchId = await stageFile(bFilesA[usedA[i]], "a", i, bBatchId, true);
+document.getElementById("bProgressTitle").textContent = "📤 Envoi des vidéos B…";
+for (let j = 0; j < usedB.length; j++) bBatchId = await stageFile(bFilesB[usedB[j]], "b", j, bBatchId, true);
+
+// Detect once per unique staged B (reuses /batch_detect + OCR cache).
+document.getElementById("bProgressTitle").textContent = "🔍 Analyse des cibles B…";
+const linesByStagedB = {}; let ch = 0, vr = 0;
+for (let j = 0; j < usedB.length; j++) {
+const fd = new FormData(); fd.append("batch_id", bBatchId); fd.append("b_index", j); fd.append("ocr_mode", getOcrMode("B"));
+const r = await fetch("/batch_detect", { method: "POST", body: fd });
+const d = await r.json();
+if (d.error) throw new Error(`Analyse B${j + 1} : ${d.error}`);
+if (d.source === "cache") ch++; else if (d.source === "vision") vr++;
+document.getElementById("bProgressTitle").textContent = `🔍 Analyse des cibles B… (${j + 1}/${usedB.length} · ⚡${ch} cache · 🤖${vr} Vision)`;
+const lines = (d.lines || []).filter(l => l.text);
+if (!lines.length) throw new Error(`Aucun texte détecté dans une vidéo B`);
+linesByStagedB[j] = lines;
+}
+
+document.getElementById("bProgressTitle").textContent = "⚙️ Génération des variantes…";
+for (let i = 0; i < pairs.length; i++) {
+const sa = aStage.get(pairs[i].a), sb = bStage.get(pairs[i].b);
+bResults[i].status = "processing"; bResults[i].statusText = "⚙️ Génération…"; renderBatchResults();
+try {
+const fd = new FormData();
+fd.append("batch_id", bBatchId);
+fd.append("a_index", sa); fd.append("b_index", sb);
+fd.append("pairing", "1");
+fd.append("variations", V);
+fd.append("num_a", nA); fd.append("num_b", nB);
+fd.append("lines_json", JSON.stringify(linesByStagedB[sb]));
+const r = await fetch("/batch_render", { method: "POST", body: fd });
+const d = await r.json();
+if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+bResults[i].status = "done"; bResults[i].statusText = "✅ Terminé"; bResults[i].batch_id = bBatchId;
+} catch (e) { bResults[i].status = "error"; bResults[i].statusText = "❌ " + e.message; }
+renderBatchResults(); updateBatchProgress(i + 1, pairs.length);
+}
+document.getElementById("bProgressTitle").textContent = "✅ Variations terminées";
+} catch (e) {
+document.getElementById("bProgressTitle").textContent = "❌ Erreur";
+alert("Erreur variations : " + e.message);
 }
 
 bRunning = false; document.getElementById("bLaunchBtn").disabled = false;
@@ -3688,113 +3755,6 @@ fetch("/photo_cleanup", { method: "POST", headers: { "Content-Type": "applicatio
 finally { btn.disabled = false; btn.textContent = orig; }
 }
 document.getElementById("phModeHint").textContent = PH_MODE_HINTS["rapide"];
-
-// ══════════════════════════════════════════
-// FONT STUDIO (optional) — captions style, Simple + Batch.
-// Builds a caption_style object ONLY from non-default selections; if the
-// user leaves everything on "Défaut"/Off, returns null and NOTHING is
-// sent, so /process & /batch_render render exactly as today.
-// ══════════════════════════════════════════
-function buildCaptionStyle(p) {
-const g = id => document.getElementById(p + id);
-const st = {};
-const font = g("font") ? g("font").value : "default";
-if (font && font !== "default") st.font = font;
-if (g("sizeOn") && g("sizeOn").checked) st.size_factor = parseFloat(g("size").value);
-const contour = g("contour") ? g("contour").value : "default";
-if (contour && contour !== "default") st.contour = contour;
-const shadow = g("shadow") ? g("shadow").value : "off";
-if (shadow && shadow !== "off") st.shadow = shadow;
-if (g("txtOn") && g("txtOn").checked) st.text_color = g("txtColor").value;
-if (g("strokeOn") && g("strokeOn").checked) st.stroke_color = g("strokeColor").value;
-return Object.keys(st).length ? st : null;
-}
-["fsS_", "fsB_"].forEach(p => {
-const sl = document.getElementById(p + "size"), val = document.getElementById(p + "sizeVal");
-if (sl && val) sl.addEventListener("input", () => { val.textContent = parseFloat(sl.value).toFixed(2).replace(/0$/, "") + "×"; });
-});
-
-// ── Live caption preview (Chantier Preview) — 100% frontend, indicative.
-// Reflects the SAME fs* controls buildCaptionStyle reads, on a test
-// caption. Default (all-default) = white text + thin black outline +
-// default font + no drop shadow = the current look. Never affects the
-// real render (no backend, no caption_style sent from here).
-const FS_PREVIEW_FONTS = {
-default:     "'Arial Narrow', Arial, Helvetica, sans-serif",
-tiktok_bold: "Arial, Helvetica, sans-serif",
-clean_sans:  "Helvetica, Arial, sans-serif",
-rounded:     "'Trebuchet MS', 'Segoe UI', sans-serif",
-serif:       "Georgia, 'Times New Roman', serif",
-handwritten: "'Segoe Script', 'Comic Sans MS', cursive",
-};
-const FS_PREVIEW_STROKE_W = { default: 1.3, fin: 1.0, moyen: 2.0, epais: 3.0 };
-function updateFsPreview(prefix) {
-const g = id => document.getElementById(prefix + id);
-const el = g("preview"); if (!el) return;
-const font = g("font") ? g("font").value : "default";
-el.style.fontFamily = FS_PREVIEW_FONTS[font] || FS_PREVIEW_FONTS.default;
-el.style.fontWeight = (font === "serif" || font === "handwritten") ? "600" : "800";
-const sf = (g("sizeOn") && g("sizeOn").checked) ? (parseFloat(g("size").value) || 1.0) : 1.0;
-el.style.fontSize = Math.round(30 * sf) + "px";
-el.style.color = (g("txtOn") && g("txtOn").checked) ? g("txtColor").value : "#ffffff";
-const strokeCol = (g("strokeOn") && g("strokeOn").checked) ? g("strokeColor").value : "#000000";
-const contour = g("contour") ? g("contour").value : "default";
-const w = (FS_PREVIEW_STROKE_W[contour] != null) ? FS_PREVIEW_STROKE_W[contour] : 1.3;
-const shadows = [];
-for (let i = 0; i < 8; i++) { const a = (Math.PI * 2 * i) / 8; shadows.push(`${(Math.cos(a) * w).toFixed(2)}px ${(Math.sin(a) * w).toFixed(2)}px 0 ${strokeCol}`); }
-const shadow = g("shadow") ? g("shadow").value : "off";
-if (shadow === "legere") shadows.push("2px 2px 3px rgba(0,0,0,.55)");
-else if (shadow === "forte") shadows.push("4px 4px 5px rgba(0,0,0,.8)");
-el.style.textShadow = shadows.join(", ");
-}
-["fsS_", "fsB_"].forEach(p => {
-["font", "sizeOn", "size", "contour", "shadow", "txtOn", "txtColor", "strokeOn", "strokeColor"].forEach(id => {
-const el = document.getElementById(p + id);
-if (el) { el.addEventListener("input", () => updateFsPreview(p)); el.addEventListener("change", () => updateFsPreview(p)); }
-});
-updateFsPreview(p);
-});
-
-// ── Style Presets (Chantier B) — pré-remplissent les contrôles Font
-// Studio existants, puis le flux inchangé prend le relais. "default"
-// remet TOUT sur Défaut/Off ⇒ buildCaptionStyle renvoie null ⇒ rendu
-// identique à aujourd'hui. Les contrôles restent modifiables après clic.
-// Aucun nouveau backend : on ne fait que positionner des champs UI.
-const FS_PRESETS = {
-default:   { font: "default",     size: null, contour: "default", shadow: "off",    txt: null, stroke: null },
-tiktok:    { font: "tiktok_bold", size: 1.25, contour: "epais",   shadow: "forte",  txt: null, stroke: null },
-instagram: { font: "clean_sans",  size: 1.00, contour: "fin",     shadow: "legere", txt: null, stroke: null },
-reddit:    { font: "clean_sans",  size: 1.00, contour: "fin",     shadow: "off",    txt: null, stroke: null },
-ofm:       { font: "rounded",     size: 1.10, contour: "moyen",   shadow: "legere", txt: null, stroke: null },
-viral:     { font: "tiktok_bold", size: 1.45, contour: "epais",   shadow: "forte",  txt: null, stroke: null },
-};
-function applyPreset(prefix, name) {
-const p = FS_PRESETS[name] || FS_PRESETS.default;
-const g = id => document.getElementById(prefix + id);
-if (g("font")) g("font").value = p.font;
-// Taille : activée seulement si le preset fixe un facteur, sinon Défaut (off, 1.0)
-if (g("sizeOn") && g("size")) {
-if (p.size != null) { g("sizeOn").checked = true; g("size").value = p.size; }
-else { g("sizeOn").checked = false; g("size").value = "1.0"; }
-const sv = g("sizeVal"); if (sv) sv.textContent = parseFloat(g("size").value).toFixed(2).replace(/0$/, "") + "×";
-}
-if (g("contour")) g("contour").value = p.contour;
-if (g("shadow")) g("shadow").value = p.shadow;
-// Couleurs : activées seulement si le preset en fournit une, sinon Défaut (off)
-if (g("txtOn") && g("txtColor")) {
-if (p.txt) { g("txtOn").checked = true; g("txtColor").value = p.txt; }
-else { g("txtOn").checked = false; g("txtColor").value = "#ffffff"; }
-}
-if (g("strokeOn") && g("strokeColor")) {
-if (p.stroke) { g("strokeOn").checked = true; g("strokeColor").value = p.stroke; }
-else { g("strokeOn").checked = false; g("strokeColor").value = "#000000"; }
-}
-const det = g("panel"); if (det && det.open === false) det.open = true;
-document.querySelectorAll('.fs-preset-btn[data-fsprefix="' + prefix + '"]').forEach(b => {
-b.classList.toggle("fs-active", b.dataset.fspreset === name);
-});
-if (typeof updateFsPreview === "function") updateFsPreview(prefix);
-}
 
 // ══════════════════════════════════════════
 // MEDIA OPTIMIZER (Photo + Video)

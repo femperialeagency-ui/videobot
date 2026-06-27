@@ -2198,60 +2198,7 @@ def _wrap_lines(orig_lines: list, font, max_w: int) -> list:
 # default until the matching .ttf is dropped into fonts/. No font files
 # are bundled or shared by this code.
 _FONT_DIR_FS = Path(__file__).parent / "fonts"
-_FONT_STUDIO_CANDIDATES = {
-    "tiktok_bold": {
-        "regular": [str(_FONT_DIR_FS / "TikTokBold.ttf"), str(_FONT_DIR_FS / "Montserrat-Bold.ttf"), FONT_BOLD],
-        "bold":    [str(_FONT_DIR_FS / "TikTokBold.ttf"), str(_FONT_DIR_FS / "Montserrat-Bold.ttf"), FONT_BOLD],
-    },
-    "clean_sans": {
-        "regular": [str(_FONT_DIR_FS / "CleanSans-Regular.ttf"), str(_FONT_DIR_FS / "Roboto-Regular.ttf"), FONT_REG],
-        "bold":    [str(_FONT_DIR_FS / "CleanSans-Bold.ttf"), str(_FONT_DIR_FS / "Roboto-Bold.ttf"), FONT_BOLD],
-    },
-    "rounded": {
-        "regular": [str(_FONT_DIR_FS / "Rounded-Regular.ttf"), str(_FONT_DIR_FS / "Nunito-Regular.ttf")],
-        "bold":    [str(_FONT_DIR_FS / "Rounded-Bold.ttf"), str(_FONT_DIR_FS / "Nunito-Bold.ttf")],
-    },
-    "serif": {
-        "regular": [str(_FONT_DIR_FS / "Serif-Regular.ttf"), "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf"],
-        "bold":    [str(_FONT_DIR_FS / "Serif-Bold.ttf"), "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf"],
-    },
-    "handwritten": {
-        "regular": [str(_FONT_DIR_FS / "Handwritten.ttf"), str(_FONT_DIR_FS / "Caveat-Regular.ttf")],
-        "bold":    [str(_FONT_DIR_FS / "Handwritten.ttf"), str(_FONT_DIR_FS / "Caveat-Bold.ttf")],
-    },
-}
-
-
-def _parse_hex_rgba(s):
-    """Parse '#RRGGBB' (or 'RRGGBB') into an opaque RGBA tuple. Returns
-    None for anything invalid/empty so callers keep their current color."""
-    if not s or not isinstance(s, str):
-        return None
-    h = s.strip().lstrip("#")
-    if len(h) == 6:
-        try:
-            return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), 255)
-        except Exception:
-            return None
-    return None
-
-
-def _caption_style_from_request():
-    """Read the OPTIONAL Font Studio 'caption_style' JSON from the current
-    request form. Returns a non-empty dict, or None when absent/invalid —
-    and None means render_text_overlay runs its exact pre-Font-Studio path.
-    Used only by /process and /batch_render (Simple + Batch)."""
-    try:
-        raw = request.form.get("caption_style")
-        if not raw:
-            return None
-        cs = json.loads(raw)
-        return cs if isinstance(cs, dict) and cs else None
-    except Exception:
-        return None
-
-
-def _load_caption_font(fontsize: int, bold: bool, font_key: str = "default"):
+def _load_caption_font(fontsize: int, bold: bool = True):
     """
     Load the caption font at the requested pixel size, selecting the
     Bold or Regular weight from the bundled Inter variable font.
@@ -2264,17 +2211,6 @@ def _load_caption_font(fontsize: int, bold: bool, font_key: str = "default"):
     fall back to Liberation if the bundled font can't be loaded/instanced.
     """
     from PIL import ImageFont
-
-    # Font Studio (optional): a non-"default" choice tries its candidate
-    # files first. If none load, we fall straight through to the EXACT
-    # current default path below — Inter is never forced, the fallback is
-    # never broken.
-    if font_key and font_key != "default":
-        for cand in _FONT_STUDIO_CANDIDATES.get(font_key, {}).get("bold" if bold else "regular", []):
-            try:
-                return ImageFont.truetype(cand, fontsize)
-            except Exception:
-                continue
 
     # Instagram Classic default: prefer Montserrat Bold (700) when the file
     # is bundled; otherwise fall back cleanly to Inter at weight 700. Never
@@ -2404,7 +2340,7 @@ def _get_local_twemoji_source():
     return _LOCAL_TWEMOJI
 
 
-def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, style: dict = None) -> str:
+def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str:
     """
     Render all text objects onto a transparent RGBA image.
 
@@ -2426,27 +2362,11 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, style:
     overlay = Image.new("RGBA", (wa, ha), (0, 0, 0, 0))
     _caption_debug_log.clear()
 
-    # ── Font Studio (optional) — parse overrides once. Every default
-    # sentinel maps to the original hard-coded value, so style=None (or
-    # all-defaults) ⇒ byte-identical render. ──
-    # ── Instagram Classic — forced default style for ALL renders ──
-    # The caption look is now fixed (Montserrat Bold / Inter 700, pure white,
-    # pure black outline 2.5px @1080×1920, no shadow, line-height 0.92,
-    # center). Font Studio style overrides that would change font / colour /
-    # contour / shadow are IGNORED here; only size_factor (and per-block
-    # position/size/alignment) are still honoured. The Font Studio UI is not
-    # removed — its font/colour/contour/shadow inputs simply no longer affect
-    # the render.
-    style = style or {}
-    _fs_font    = "default"          # forced — ignore any font override
-    _fs_sizef   = style.get("size_factor")
-    _fs_size    = float(_fs_sizef) if isinstance(_fs_sizef, (int, float)) and _fs_sizef > 0 else 1.0
-    _fs_contour = "default"          # forced — outline thickness computed below
-    _fs_shadow  = "off"             # forced — never any drop shadow
-    _fs_txt     = None              # forced — text is always pure white
-    _fs_stroke  = None              # forced — outline is always pure black
-    _FS_CONTOUR_DIV = {"default": 22, "fin": 30, "moyen": 16, "epais": 11}
-    _FS_SHADOW_CFG  = {"legere": (2, 110), "forte": (4, 175)}  # (offset_px_per_unit, alpha)
+    # ── Instagram Classic — the ONE and only caption style. Hard-coded,
+    # no overrides, no presets, no Font Studio. Montserrat Bold (700) when
+    # fonts/Montserrat-Bold.ttf is present, else Inter Bold 700; pure white
+    # text, pure black outline 2.5px @1080×1920, no shadow, line-height 0.92,
+    # letter-spacing 0, center, original casing, anti-aliased. ──
 
     use_pilmoji = True
     try:
@@ -2470,7 +2390,7 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, style:
         # Scale down from the vision-estimated size — generated captions were
         # consistently reading larger/heavier than native TikTok captions.
         fontsize_pct   = max(0.022, min(block.get("fontsize_pct", 0.035), 0.08)) * CAPTION_SIZE_SCALE
-        target_fontsize = int(ha * fontsize_pct * _fs_size)  # _fs_size=1.0 by default ⇒ unchanged
+        target_fontsize = int(ha * fontsize_pct)
         fontsize        = max(24, target_fontsize)
         # Floor: never shrink below 60% of the requested size (or 24px)
         min_fontsize    = max(24, int(target_fontsize * 0.60))
@@ -2503,12 +2423,12 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, style:
             continue
 
         # ── Phase 1: word-wrap at target font size ────────────────────
-        font  = _load_caption_font(fontsize, bold, _fs_font)
+        font  = _load_caption_font(fontsize, bold)
         lines = _wrap_lines(orig_lines, font, max_w)
 
         # ── Phase 2: shrink only if still overflowing, respect floor ──
         for _ in range(30):
-            font = _load_caption_font(fontsize, bold, _fs_font)
+            font = _load_caption_font(fontsize, bold)
             max_line_w = max((_measure_text(font, ln) for ln in lines), default=0)
             if max_line_w <= max_w or fontsize <= min_fontsize:
                 break
@@ -2572,14 +2492,6 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, style:
                 x = cx - block_w // 2
 
             x = max(margin, min(x, wa - tw - margin))
-
-            # ── Font Studio (optional) drop shadow — OFF by default, so
-            # this block is fully skipped in the default path. When on,
-            # draws the line offset behind the stroke/fill in soft black. ──
-            if _fs_shadow in _FS_SHADOW_CFG:
-                _soff, _salpha = _FS_SHADOW_CFG[_fs_shadow]
-                _sdraw = ImageDraw.Draw(overlay)
-                _sdraw.text((x + _soff, y + _soff), line, font=font, fill=(0, 0, 0, _salpha))
 
             # NOTE (emoji-loss fix): the fallback used to flip the shared
             # `use_pilmoji` flag to False on ANY exception, which silently
@@ -3425,7 +3337,7 @@ def process():
                     # Render EACH caption alone on its own transparent layer
                     # using the exact same render_text_overlay function/logic
                     # as every other mode — only the time window differs.
-                    op = render_text_overlay([line], wa, ha, wb, hb, style=_caption_style_from_request())
+                    op = render_text_overlay([line], wa, ha, wb, hb)
                     overlay_paths.append(op)
                     overlay_specs.append((op, start, end))
 
@@ -3436,7 +3348,7 @@ def process():
             else:
                 # ── Original single-overlay path (simple mode + batch
                 # fallback when timing wasn't available) — unchanged. ──
-                overlay_path = render_text_overlay(lines, wa, ha, wb, hb, style=_caption_style_from_request())
+                overlay_path = render_text_overlay(lines, wa, ha, wb, hb)
                 overlay_paths.append(overlay_path)
 
                 cmd = [
@@ -3874,7 +3786,7 @@ def batch_render():
                         end   = max(start + 0.05, float(line.get("end_time", start + 0.05)))
                     except Exception:
                         continue
-                    op = render_text_overlay([line], wa, ha, wb, hb, style=_caption_style_from_request())
+                    op = render_text_overlay([line], wa, ha, wb, hb)
                     overlay_paths.append(op)
                     overlay_specs.append((op, start, end))
                     if CAPTION_VISUAL_DEBUG and debug_capture is None and _caption_debug_log:
@@ -3886,7 +3798,7 @@ def batch_render():
 
                 cmd = _build_timed_overlay_cmd(path_a, path_b, overlay_specs, path_out)
             else:
-                overlay_path = render_text_overlay(lines, wa, ha, wb, hb, style=_caption_style_from_request())
+                overlay_path = render_text_overlay(lines, wa, ha, wb, hb)
                 overlay_paths.append(overlay_path)
                 if CAPTION_VISUAL_DEBUG and _caption_debug_log:
                     debug_capture = (dict(_caption_debug_log[0]), 0.5)
