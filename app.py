@@ -2354,14 +2354,15 @@ def _get_local_twemoji_source():
     return _LOCAL_TWEMOJI
 
 
-def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, ig_style: str = IG_DEFAULT_STYLE) -> str:
+def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, ig_style: str = IG_DEFAULT_STYLE, capcut_outline: bool = True) -> str:
     """
     Render all text objects onto a transparent RGBA image in one of the 4
     Instagram caption styles (classic / modern / poster / meme). Each style
-    sets the font + weight + line-height. A SINGLE fixed CapCut-style black
-    outline is ALWAYS applied (no option): pure white text, pure black outline
-    via FreeType's NATIVE stroker, width = round(fontsize × 0.10) (min 1px),
-    NO shadow, letter-spacing 0, center, casing preserved, anti-aliased.
+    sets the font + weight + line-height. The CapCut black outline is a single
+    ON/OFF toggle (`capcut_outline`, default ON): ON → pure black outline via
+    FreeType's NATIVE stroker, width = round(fontsize × 0.10) (min 1px); OFF →
+    no outline (stroke_width 0). Text is ALWAYS white, NO shadow,
+    letter-spacing 0, center, casing preserved, anti-aliased.
     Improvements over v1:
     - Word-wrap BEFORE shrinking font (preserves readability)
     - Font size floor: never below max(24px, 60% of target size)
@@ -2448,15 +2449,15 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, ig_sty
             fontsize = max(min_fontsize, fontsize - 2)
 
         # ── Layout ────────────────────────────────────────────────────
-        # Single fixed CapCut-style black outline, drawn with FreeType's
-        # native stroker. Thickness is a constant RATIO of the font size
-        # (like CapCut), not the frame height. Always on, min 1px.
-        border  = max(1, round(fontsize * OUTLINE_RATIO))
+        # CapCut black outline — single ON/OFF toggle. ON → FreeType native
+        # stroker, width = constant RATIO of the font size (like CapCut),
+        # min 1px. OFF → stroke_width 0 (no outline). stroke_fill pure black.
+        border  = max(1, round(fontsize * OUTLINE_RATIO)) if capcut_outline else 0
         stroke_col = (0, 0, 0, 255)
         line_h  = int(fontsize * _ig_line_h)   # per-style Instagram line-height
         # Diagnostic — confirms resolved style + ACTUAL font + stroke width.
         import sys as _sys_cs
-        print(f"[CAPTION_STYLE] ig_style={_ig_style} font={getattr(font, 'path', '?')} stroke_width={border} (ratio={OUTLINE_RATIO}) line_h={line_h} fontsize={fontsize} ha={ha}", file=_sys_cs.stderr)
+        print(f"[CAPTION_STYLE] ig_style={_ig_style} capcut_outline={'on' if capcut_outline else 'off'} font={getattr(font, 'path', '?')} stroke_width={border} (ratio={OUTLINE_RATIO}) line_h={line_h} fontsize={fontsize} ha={ha}", file=_sys_cs.stderr)
         total_h = len(lines) * line_h
         y_start = cy - total_h // 2
 
@@ -3274,6 +3275,7 @@ def process():
         _usage_attempt_started = False
         _usage_source_seconds  = None
         _ig_style_req          = _resolve_ig_style(request.form.get("ig_style"))
+        _capcut_outline_req    = (request.form.get("capcut_outline", "1") or "1").strip().lower() not in ("0", "false", "off", "no")
 
         if "video_a" not in request.files or "video_b" not in request.files:
             return jsonify({"error": "Les deux videos sont requises."}), 400
@@ -3335,7 +3337,7 @@ def process():
                     # Render EACH caption alone on its own transparent layer
                     # using the exact same render_text_overlay function/logic
                     # as every other mode — only the time window differs.
-                    op = render_text_overlay([line], wa, ha, wb, hb, ig_style=_ig_style_req)
+                    op = render_text_overlay([line], wa, ha, wb, hb, ig_style=_ig_style_req, capcut_outline=_capcut_outline_req)
                     overlay_paths.append(op)
                     overlay_specs.append((op, start, end))
 
@@ -3346,7 +3348,7 @@ def process():
             else:
                 # ── Original single-overlay path (simple mode + batch
                 # fallback when timing wasn't available) — unchanged. ──
-                overlay_path = render_text_overlay(lines, wa, ha, wb, hb, ig_style=_ig_style_req)
+                overlay_path = render_text_overlay(lines, wa, ha, wb, hb, ig_style=_ig_style_req, capcut_outline=_capcut_outline_req)
                 overlay_paths.append(overlay_path)
 
                 cmd = [
@@ -3688,6 +3690,7 @@ def batch_render():
         _usage_attempt_started = False
         _usage_source_seconds  = None
         _ig_style_req          = _resolve_ig_style(request.form.get("ig_style"))
+        _capcut_outline_req    = (request.form.get("capcut_outline", "1") or "1").strip().lower() not in ("0", "false", "off", "no")
 
         batch_id = (request.form.get("batch_id") or "").strip()
         if not batch_id or ".." in batch_id or "/" in batch_id:
@@ -3787,7 +3790,7 @@ def batch_render():
                         end   = max(start + 0.05, float(line.get("end_time", start + 0.05)))
                     except Exception:
                         continue
-                    op = render_text_overlay([line], wa, ha, wb, hb, ig_style=_ig_style_req)
+                    op = render_text_overlay([line], wa, ha, wb, hb, ig_style=_ig_style_req, capcut_outline=_capcut_outline_req)
                     overlay_paths.append(op)
                     overlay_specs.append((op, start, end))
                     if CAPTION_VISUAL_DEBUG and debug_capture is None and _caption_debug_log:
@@ -3799,7 +3802,7 @@ def batch_render():
 
                 cmd = _build_timed_overlay_cmd(path_a, path_b, overlay_specs, path_out)
             else:
-                overlay_path = render_text_overlay(lines, wa, ha, wb, hb, ig_style=_ig_style_req)
+                overlay_path = render_text_overlay(lines, wa, ha, wb, hb, ig_style=_ig_style_req, capcut_outline=_capcut_outline_req)
                 overlay_paths.append(overlay_path)
                 if CAPTION_VISUAL_DEBUG and _caption_debug_log:
                     debug_capture = (dict(_caption_debug_log[0]), 0.5)
