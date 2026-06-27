@@ -2211,12 +2211,15 @@ IG_STYLES = {
 }
 IG_DEFAULT_STYLE = "classic"
 
-# ── Single fixed black caption outline (CapCut preset). Text is ALWAYS
-# white, outline ALWAYS pure black, NO shadow, ALWAYS on — no user option.
-# Thickness scales with the FONT SIZE (constant ratio to the glyph, like
-# CapCut), NOT with the frame height. Drawn with FreeType's native stroker
-# (stroke_width). ──
-OUTLINE_RATIO = 0.10   # stroke_width = round(fontsize * 0.10), min 1px
+# ── CapCut black caption outline (toggle on/off). Text is ALWAYS white,
+# outline ALWAYS pure black, NO shadow. Thickness scales with the FONT SIZE
+# (constant ratio to the glyph, like CapCut), NOT with the frame height.
+# Drawn with FreeType's native stroker (stroke_width).
+# Ratio 0.060 was CALIBRATED by measuring CapCut's real "contour" preset on
+# an exported clip: cap-height ≈ 104px / outline ≈ 9px → outline/cap ≈ 0.087;
+# round(fontsize * 0.060) reproduces that same 0.088 ratio. (The earlier 0.10
+# guess was ~2× too thick.) ──
+OUTLINE_RATIO = 0.060   # stroke_width = round(fontsize * 0.060), min 1px
 
 
 def _resolve_ig_style(name):
@@ -2360,7 +2363,8 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, ig_sty
     Instagram caption styles (classic / modern / poster / meme). Each style
     sets the font + weight + line-height. The CapCut black outline is a single
     ON/OFF toggle (`capcut_outline`, default ON): ON → pure black outline via
-    FreeType's NATIVE stroker, width = round(fontsize × 0.10) (min 1px); OFF →
+    FreeType's NATIVE stroker, width = round(fontsize × 0.060) (min 1px,
+    calibrated to CapCut's real outline preset); OFF →
     no outline (stroke_width 0). Text is ALWAYS white, NO shadow,
     letter-spacing 0, center, casing preserved, anti-aliased.
     Improvements over v1:
