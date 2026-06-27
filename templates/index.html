@@ -1106,6 +1106,14 @@ SIMPLE MODE
 <span style="font-weight:500;opacity:.6;font-size:.74rem">— à choisir avant d'uploader la vidéo B</span>
 </div>
 
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px;font-size:.82rem;font-weight:600;">
+<span>Style Instagram :</span>
+<label class="v-opt"><input type="radio" name="igStyleS" value="classic" checked> Classic</label>
+<label class="v-opt"><input type="radio" name="igStyleS" value="modern"> Modern</label>
+<label class="v-opt"><input type="radio" name="igStyleS" value="poster"> Poster</label>
+<label class="v-opt"><input type="radio" name="igStyleS" value="meme"> Meme</label>
+</div>
+
 <!-- Detected lines -->
 <div class="card">
 <h2><span class="num">2</span> Texte détecté <span id="lineCount" style="color:var(--muted);font-weight:400;font-size:0.8rem;margin-left:4px"></span></h2>
@@ -1195,6 +1203,13 @@ BATCH MODE
 <span>OCR :</span>
 <label class="v-opt"><input type="radio" name="ocrModeB" value="sonnet" checked> Sonnet ⭐ <span style="font-weight:500;opacity:.7">(Recommandé)</span></label>
 <label class="v-opt"><input type="radio" name="ocrModeB" value="opus"> Opus 👑 <span style="font-weight:500;opacity:.7">(Qualité maximale)</span></label>
+</div>
+<div style="margin-top:10px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:.82rem;font-weight:700;">
+<span>Style Instagram :</span>
+<label class="v-opt"><input type="radio" name="igStyleB" value="classic" checked> Classic</label>
+<label class="v-opt"><input type="radio" name="igStyleB" value="modern"> Modern</label>
+<label class="v-opt"><input type="radio" name="igStyleB" value="poster"> Poster</label>
+<label class="v-opt"><input type="radio" name="igStyleB" value="meme"> Meme</label>
 </div>
 <div id="bPairingOpts" style="display:none;margin-top:10px;display:none;align-items:center;gap:10px;flex-wrap:wrap;">
 <span style="font-size:.82rem;font-weight:600;">Appariement :</span>
@@ -1822,6 +1837,15 @@ const el = document.querySelector('input[name="ocrMode' + scope + '"]:checked');
 return (el && el.value === "opus") ? "opus" : "sonnet";
 }
 
+// Instagram caption style ("S"=Simple, "B"=Batch). One of
+// classic/modern/poster/meme; default classic. Sent as ig_style to
+// /process and /batch_render.
+function getIgStyle(scope) {
+const el = document.querySelector('input[name="igStyle' + scope + '"]:checked');
+const v = el ? el.value : "classic";
+return ["classic", "modern", "poster", "meme"].includes(v) ? v : "classic";
+}
+
 // ══════════════════════════════════════════
 // SIMPLE MODE (unchanged)
 // ══════════════════════════════════════════
@@ -1967,6 +1991,7 @@ const fd = new FormData();
 fd.append("video_a", vaFile);
 fd.append("video_b", vbFile);
 fd.append("lines_json", JSON.stringify(linesData));
+fd.append("ig_style", getIgStyle("S"));
 
 try {
 const res = await fetch("/process", { method: "POST", body: fd });
@@ -2257,6 +2282,7 @@ fd.append("a_index", a);
 fd.append("b_index", b);
 fd.append("num_a", bFilesA.length);
 fd.append("num_b", bFilesB.length);
+fd.append("ig_style", getIgStyle("B"));
 fd.append("lines_json", JSON.stringify(linesByB[b]));
 const r = await fetch("/batch_render", { method: "POST", body: fd });
 const d = await r.json();
@@ -2407,7 +2433,7 @@ const fd = new FormData();
 fd.append("batch_id", bBatchId);
 fd.append("a_index", sa); fd.append("b_index", sb);
 fd.append("pairing", "1");
-fd.append("num_a", nA); fd.append("num_b", nB);
+fd.append("num_a", nA); fd.append("num_b", nB); fd.append("ig_style", getIgStyle("B"));
 fd.append("lines_json", JSON.stringify(linesByStagedB[sb]));
 const r = await fetch("/batch_render", { method: "POST", body: fd });
 const d = await r.json();
@@ -2498,7 +2524,7 @@ fd.append("batch_id", bBatchId);
 fd.append("a_index", sa); fd.append("b_index", sb);
 fd.append("pairing", "1");
 fd.append("variations", V);
-fd.append("num_a", nA); fd.append("num_b", nB);
+fd.append("num_a", nA); fd.append("num_b", nB); fd.append("ig_style", getIgStyle("B"));
 fd.append("lines_json", JSON.stringify(linesByStagedB[sb]));
 const r = await fetch("/batch_render", { method: "POST", body: fd });
 const d = await r.json();

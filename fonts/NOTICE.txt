@@ -1,0 +1,8 @@
+Caption fonts bundled for the 4 Instagram-style presets (Classic/Modern/Poster/Meme):
+
+- Arimo-Variable.ttf        — Arimo (Apache License 2.0), a metric-compatible Helvetica/Arial substitute. © Google / Steve Matteson.
+- Montserrat-Variable.ttf   — Montserrat (SIL Open Font License 1.1). © Julieta Ulanovsky et al.
+- SourceSerif4-Variable.ttf — Source Serif 4 (SIL Open Font License 1.1). © Adobe.
+- Nunito-Variable.ttf       — Nunito (SIL Open Font License 1.1). © Vernon Adams / Cyreal.
+
+These are open-licensed clones approximating Instagram's proprietary Story fonts; not the original Instagram fonts.

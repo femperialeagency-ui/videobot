@@ -2198,52 +2198,59 @@ def _wrap_lines(orig_lines: list, font, max_w: int) -> list:
 # default until the matching .ttf is dropped into fonts/. No font files
 # are bundled or shared by this code.
 _FONT_DIR_FS = Path(__file__).parent / "fonts"
-def _load_caption_font(fontsize: int, bold: bool = True):
-    """
-    Load the caption font at the requested pixel size, selecting the
-    Bold or Regular weight from the bundled Inter variable font.
 
-    TikTok/IG captions render in a narrow modern grotesque (TikTok Sans /
-    SF Pro Display / Helvetica Neue). Liberation Sans (an Arial-Black-ish
-    metrics clone) is noticeably wider and heavier, which made batch-mode
-    text look bulkier and wrap differently than the source. Inter is the
-    closest open-source match to that family, so we prefer it and only
-    fall back to Liberation if the bundled font can't be loaded/instanced.
+# ── The 4 Instagram caption styles — the ONLY caption styles. Each maps to
+# an open-licensed clone (bundled in fonts/, variable TTF) + a named weight
+# instance, plus per-style line-height. NO outline (matches real IG),
+# letter-spacing 0, center, casing preserved. Default = classic. ──
+IG_STYLES = {
+    "classic": {"font": "Arimo-Variable.ttf",        "weight": "Bold",      "line_height": 1.04},
+    "modern":  {"font": "Montserrat-Variable.ttf",   "weight": "SemiBold",  "line_height": 1.04},
+    "poster":  {"font": "SourceSerif4-Variable.ttf", "weight": "Bold",      "line_height": 1.06},
+    "meme":    {"font": "Nunito-Variable.ttf",       "weight": "ExtraBold", "line_height": 1.10},
+}
+IG_DEFAULT_STYLE = "classic"
+
+
+def _resolve_ig_style(name):
+    n = (name or "").strip().lower()
+    return n if n in IG_STYLES else IG_DEFAULT_STYLE
+
+
+def _load_caption_font(fontsize: int, ig_style: str = IG_DEFAULT_STYLE):
+    """
+    Load the caption font for one of the 4 Instagram styles
+    (classic / modern / poster / meme) at the requested pixel size and apply
+    the style's named weight instance. Falls back cleanly (Inter → Liberation
+    → PIL default) so a render never fails if a bundled font is missing.
     """
     from PIL import ImageFont
 
-    # Instagram Classic default: prefer Montserrat Bold (700) when the file
-    # is bundled; otherwise fall back cleanly to Inter at weight 700. Never
-    # fails the render if Montserrat is absent.
+    spec = IG_STYLES.get(ig_style, IG_STYLES[IG_DEFAULT_STYLE])
+    path = str(_FONT_DIR_FS / spec["font"])
     try:
-        _montserrat = str(_FONT_DIR_FS / "Montserrat-Bold.ttf")
-        if os.path.exists(_montserrat):
+        if os.path.exists(path):
+            font = ImageFont.truetype(path, fontsize)
             try:
-                return ImageFont.truetype(_montserrat, fontsize)  # static Bold = 700
+                font.set_variation_by_name(spec["weight"])
             except Exception:
                 pass
+            return font
     except Exception:
         pass
 
+    # Fallback chain — never crash (and the per-render [CAPTION_STYLE] log
+    # exposes font.path so any fallback is visible).
     try:
         font = ImageFont.truetype(FONT_CAPTION, fontsize)
         try:
-            # Instagram Classic: Inter at weight 700 (bold) on the variable
-            # font's continuous wght axis. Regular (400) kept for any
-            # non-bold caller, but the caption path forces bold below.
-            font.set_variation_by_axes([700 if bold else 400])
+            font.set_variation_by_axes([700])
         except Exception:
-            try:
-                # Fallback for static/non-variable instances: SemiBold (600)
-                # is the closest named instance to ~575.
-                font.set_variation_by_name("SemiBold" if bold else "Regular")
-            except Exception:
-                pass  # static instance (e.g. default Regular) — still usable
+            pass
         return font
     except Exception:
-        # Bundled font missing/unreadable — fall back to the prior Liberation fonts
         try:
-            return ImageFont.truetype(FONT_BOLD if bold else FONT_REG, fontsize)
+            return ImageFont.truetype(FONT_BOLD, fontsize)
         except Exception:
             return ImageFont.load_default()
 
@@ -2340,15 +2347,13 @@ def _get_local_twemoji_source():
     return _LOCAL_TWEMOJI
 
 
-def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str:
+def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, ig_style: str = IG_DEFAULT_STYLE) -> str:
     """
-    Render all text objects onto a transparent RGBA image.
-
-    `style` is an OPTIONAL Font Studio override dict (global per render).
-    When it is None or every key is the default sentinel, EVERY computed
-    value below equals the original hard-coded expression, so the output
-    is byte-identical to the pre-Font-Studio behaviour. Only explicitly
-    non-default keys change anything.
+    Render all text objects onto a transparent RGBA image in one of the 4
+    Instagram caption styles (classic / modern / poster / meme). Each style
+    sets only the font + weight + line-height; ALL styles share: pure white
+    text, NO outline (matches real Instagram), letter-spacing 0, center,
+    casing preserved, anti-aliased. No other options.
     Improvements over v1:
     - Word-wrap BEFORE shrinking font (preserves readability)
     - Font size floor: never below max(24px, 60% of target size)
@@ -2362,11 +2367,11 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
     overlay = Image.new("RGBA", (wa, ha), (0, 0, 0, 0))
     _caption_debug_log.clear()
 
-    # ── Instagram Classic — the ONE and only caption style. Hard-coded,
-    # no overrides, no presets, no Font Studio. Montserrat Bold (700) when
-    # fonts/Montserrat-Bold.ttf is present, else Inter Bold 700; pure white
-    # text, pure black outline 2.5px @1080×1920, no shadow, line-height 0.92,
-    # letter-spacing 0, center, original casing, anti-aliased. ──
+    # ── Instagram style (classic / modern / poster / meme). Only the font +
+    # weight + line-height change between styles; all are pure white, NO
+    # outline, letter-spacing 0, center, casing preserved. ──
+    _ig_style   = _resolve_ig_style(ig_style)
+    _ig_line_h  = IG_STYLES[_ig_style]["line_height"]
 
     use_pilmoji = True
     try:
@@ -2423,47 +2428,27 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
             continue
 
         # ── Phase 1: word-wrap at target font size ────────────────────
-        font  = _load_caption_font(fontsize, bold)
+        font  = _load_caption_font(fontsize, _ig_style)
         lines = _wrap_lines(orig_lines, font, max_w)
 
         # ── Phase 2: shrink only if still overflowing, respect floor ──
         for _ in range(30):
-            font = _load_caption_font(fontsize, bold)
+            font = _load_caption_font(fontsize, _ig_style)
             max_line_w = max((_measure_text(font, ln) for ln in lines), default=0)
             if max_line_w <= max_w or fontsize <= min_fontsize:
                 break
             fontsize = max(min_fontsize, fontsize - 2)
 
         # ── Layout ────────────────────────────────────────────────────
-        # Native TikTok/IG caption outlines read as a thin hairline stroke.
-        # The 1/11 ratio was still ~2x thicker than source captions in
-        # side-by-side comparison, so we halved it again to ~1/22, then
-        # nudged ~10% thinner still to ~1/24.
-        # Follow-up readability pass: B-vs-C contrast comparison showed
-        # source captions still read with slightly stronger contrast, so
-        # we strengthen the stroke ~10% back toward 1/22 (24 -> 22).
-        # Weight (675), font family (Inter), color (pure white), position,
-        # wrapping and spacing are unaffected — this only thickens the
-        # existing outline.
-        # Contrast-only follow-up: thickness (border) was already close to
-        # native captions, but the outline itself read as slightly faded —
-        # the stroke colour was translucent black (alpha 225/255 ≈ 88%),
-        # which lets background show through at the edge on bright scenes /
-        # skin tones. Bumped alpha to 255 (fully opaque black) so the edge
-        # reads as a crisp, solid line — darker edge separation without
-        # adding any extra pixels of width. Border math, weight, size,
-        # colour, font family, position, wrap and spacing untouched.
-        # Instagram Classic outline: pure black, thickness fixed at 2.5px
-        # relative to a 1080×1920 frame and scaled to the actual A height.
-        border  = max(1, round(ha * 2.5 / 1920))
-        shadow  = (0, 0, 0, 255)               # always pure black outline
-        # Slightly more breathing room between lines than native captions'
-        # tightest spacing — keeps multi-line blocks from reading as a dense
-        # slab of text the way the generated output previously did.
-        line_h  = int(fontsize * 0.92)   # Instagram Classic line-height
-        # TEMP diagnostic — confirms forced style + actual font file used.
+        # Instagram has NO outline on Classic/Modern/Poster/Meme → border=0
+        # (the offset-draw loop below draws nothing for border 0). shadow is
+        # kept defined but unused at border 0.
+        border  = 0
+        shadow  = (0, 0, 0, 255)
+        line_h  = int(fontsize * _ig_line_h)   # per-style Instagram line-height
+        # Diagnostic — confirms the resolved style + ACTUAL font file used.
         import sys as _sys_cs
-        print(f"[CAPTION_STYLE] Instagram Classic forced font={getattr(font, 'path', '?')} border={border} line_h={line_h}", file=_sys_cs.stderr)
+        print(f"[CAPTION_STYLE] ig_style={_ig_style} font={getattr(font, 'path', '?')} border={border} line_h={line_h} fontsize={fontsize} ha={ha}", file=_sys_cs.stderr)
         total_h = len(lines) * line_h
         y_start = cy - total_h // 2
 
@@ -3279,6 +3264,7 @@ def process():
         _usage_mode            = (request.form.get("mode") or "simple").strip().lower()
         _usage_attempt_started = False
         _usage_source_seconds  = None
+        _ig_style_req          = _resolve_ig_style(request.form.get("ig_style"))
 
         if "video_a" not in request.files or "video_b" not in request.files:
             return jsonify({"error": "Les deux videos sont requises."}), 400
@@ -3340,7 +3326,7 @@ def process():
                     # Render EACH caption alone on its own transparent layer
                     # using the exact same render_text_overlay function/logic
                     # as every other mode — only the time window differs.
-                    op = render_text_overlay([line], wa, ha, wb, hb)
+                    op = render_text_overlay([line], wa, ha, wb, hb, ig_style=_ig_style_req)
                     overlay_paths.append(op)
                     overlay_specs.append((op, start, end))
 
@@ -3351,7 +3337,7 @@ def process():
             else:
                 # ── Original single-overlay path (simple mode + batch
                 # fallback when timing wasn't available) — unchanged. ──
-                overlay_path = render_text_overlay(lines, wa, ha, wb, hb)
+                overlay_path = render_text_overlay(lines, wa, ha, wb, hb, ig_style=_ig_style_req)
                 overlay_paths.append(overlay_path)
 
                 cmd = [
@@ -3690,6 +3676,7 @@ def batch_render():
         _usage_mode            = "batch"
         _usage_attempt_started = False
         _usage_source_seconds  = None
+        _ig_style_req          = _resolve_ig_style(request.form.get("ig_style"))
 
         batch_id = (request.form.get("batch_id") or "").strip()
         if not batch_id or ".." in batch_id or "/" in batch_id:
@@ -3789,7 +3776,7 @@ def batch_render():
                         end   = max(start + 0.05, float(line.get("end_time", start + 0.05)))
                     except Exception:
                         continue
-                    op = render_text_overlay([line], wa, ha, wb, hb)
+                    op = render_text_overlay([line], wa, ha, wb, hb, ig_style=_ig_style_req)
                     overlay_paths.append(op)
                     overlay_specs.append((op, start, end))
                     if CAPTION_VISUAL_DEBUG and debug_capture is None and _caption_debug_log:
@@ -3801,7 +3788,7 @@ def batch_render():
 
                 cmd = _build_timed_overlay_cmd(path_a, path_b, overlay_specs, path_out)
             else:
-                overlay_path = render_text_overlay(lines, wa, ha, wb, hb)
+                overlay_path = render_text_overlay(lines, wa, ha, wb, hb, ig_style=_ig_style_req)
                 overlay_paths.append(overlay_path)
                 if CAPTION_VISUAL_DEBUG and _caption_debug_log:
                     debug_capture = (dict(_caption_debug_log[0]), 0.5)
