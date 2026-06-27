@@ -2276,20 +2276,26 @@ def _load_caption_font(fontsize: int, bold: bool, font_key: str = "default"):
             except Exception:
                 continue
 
+    # Instagram Classic default: prefer Montserrat Bold (700) when the file
+    # is bundled; otherwise fall back cleanly to Inter at weight 700. Never
+    # fails the render if Montserrat is absent.
+    try:
+        _montserrat = str(_FONT_DIR_FS / "Montserrat-Bold.ttf")
+        if os.path.exists(_montserrat):
+            try:
+                return ImageFont.truetype(_montserrat, fontsize)  # static Bold = 700
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     try:
         font = ImageFont.truetype(FONT_CAPTION, fontsize)
         try:
-            # Variable font: pick the named instance matching the requested weight.
-            # Native TikTok/IG captions read closer to SemiBold than full Bold —
-            # Bold/ExtraBold instances were part of why generated text looked
-            # heavier and more "meme-generator" than the source captions.
-            # User feedback after the 625 tuning pass: captions still read too
-            # thin for native TikTok/Reels presence on short captions/emoji
-            # lists. Bumped to 675 — between SemiBold (600) and Bold (700) —
-            # directly on the variable font's continuous wght axis. Size,
-            # scale, stroke, spacing, wrapping, positioning and font family
-            # are all unchanged.
-            font.set_variation_by_axes([675 if bold else 400])
+            # Instagram Classic: Inter at weight 700 (bold) on the variable
+            # font's continuous wght axis. Regular (400) kept for any
+            # non-bold caller, but the caption path forces bold below.
+            font.set_variation_by_axes([700 if bold else 400])
         except Exception:
             try:
                 # Fallback for static/non-variable instances: SemiBold (600)
@@ -2423,14 +2429,22 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, style:
     # ── Font Studio (optional) — parse overrides once. Every default
     # sentinel maps to the original hard-coded value, so style=None (or
     # all-defaults) ⇒ byte-identical render. ──
+    # ── Instagram Classic — forced default style for ALL renders ──
+    # The caption look is now fixed (Montserrat Bold / Inter 700, pure white,
+    # pure black outline 2.5px @1080×1920, no shadow, line-height 0.92,
+    # center). Font Studio style overrides that would change font / colour /
+    # contour / shadow are IGNORED here; only size_factor (and per-block
+    # position/size/alignment) are still honoured. The Font Studio UI is not
+    # removed — its font/colour/contour/shadow inputs simply no longer affect
+    # the render.
     style = style or {}
-    _fs_font    = (style.get("font") or "default")
+    _fs_font    = "default"          # forced — ignore any font override
     _fs_sizef   = style.get("size_factor")
     _fs_size    = float(_fs_sizef) if isinstance(_fs_sizef, (int, float)) and _fs_sizef > 0 else 1.0
-    _fs_contour = (style.get("contour") or "default")
-    _fs_shadow  = (style.get("shadow") or "off")
-    _fs_txt     = _parse_hex_rgba(style.get("text_color"))
-    _fs_stroke  = _parse_hex_rgba(style.get("stroke_color"))
+    _fs_contour = "default"          # forced — outline thickness computed below
+    _fs_shadow  = "off"             # forced — never any drop shadow
+    _fs_txt     = None              # forced — text is always pure white
+    _fs_stroke  = None              # forced — outline is always pure black
     _FS_CONTOUR_DIV = {"default": 22, "fin": 30, "moyen": 16, "epais": 11}
     _FS_SHADOW_CFG  = {"legere": (2, 110), "forte": (4, 175)}  # (offset_px_per_unit, alpha)
 
@@ -2466,11 +2480,8 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, style:
         cy = int(ha * block.get("cy_pct", 0.5))
 
         # ── Style ─────────────────────────────────────────────────────
-        bold      = block.get("bold", False)
-        color_str = block.get("color", "white")
-        color     = (255, 255, 255, 255) if "white" in color_str.lower() else (0, 0, 0, 255)
-        if _fs_txt:
-            color = _fs_txt   # Font Studio text-color override (else unchanged)
+        bold      = True                      # Instagram Classic: always weight 700
+        color     = (255, 255, 255, 255)      # Instagram Classic: always pure white
         align     = block.get("align", "center")
 
         # ── Max width: use width_pct if provided, else 88% of frame ──
@@ -2522,12 +2533,14 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, style:
         # reads as a crisp, solid line — darker edge separation without
         # adding any extra pixels of width. Border math, weight, size,
         # colour, font family, position, wrap and spacing untouched.
-        border  = max(1, fontsize // _FS_CONTOUR_DIV.get(_fs_contour, 22))  # //22 by default ⇒ unchanged
-        shadow  = _fs_stroke or (0, 0, 0, 255)  # Font Studio stroke-color override (else unchanged)
+        # Instagram Classic outline: pure black, thickness fixed at 2.5px
+        # relative to a 1080×1920 frame and scaled to the actual A height.
+        border  = max(1, round(ha * 2.5 / 1920))
+        shadow  = (0, 0, 0, 255)               # always pure black outline
         # Slightly more breathing room between lines than native captions'
         # tightest spacing — keeps multi-line blocks from reading as a dense
         # slab of text the way the generated output previously did.
-        line_h  = int(fontsize * 1.34)
+        line_h  = int(fontsize * 0.92)   # Instagram Classic line-height
         total_h = len(lines) * line_h
         y_start = cy - total_h // 2
 
@@ -3786,7 +3799,19 @@ def batch_render():
             num_b = int(request.form.get("num_b", "0"))
         except Exception:
             num_a = num_b = 0
-        if _is_pairing:
+        # "Variations par A" — outputs = num_a × variations ≤ 300. Reuses the
+        # pairing index/staging bounds (sent with pairing=1 by the client), so
+        # only the TOTAL cap differs. NEVER the full product A × B.
+        try:
+            _variations = int(request.form.get("variations", "0") or 0)
+        except Exception:
+            _variations = 0
+        if _variations > 0:
+            if _variations < 1 or num_a > MAX_BATCH_PAIR_FILES:
+                return jsonify({"error": f"Maximum {MAX_BATCH_PAIR_FILES} vidéos A."}), 400
+            if num_a > 0 and num_a * _variations > MAX_BATCH_COMBOS:
+                return jsonify({"error": f"Maximum autorisé : {MAX_BATCH_COMBOS} vidéos générées."}), 400
+        elif _is_pairing:
             # Pairing: outputs = min(#A,#B) ≤ 300. NEVER the product.
             if num_a > MAX_BATCH_PAIR_FILES or num_b > MAX_BATCH_PAIR_FILES:
                 return jsonify({"error": f"Maximum {MAX_BATCH_PAIR_FILES} vidéos A et {MAX_BATCH_PAIR_FILES} vidéos B."}), 400
