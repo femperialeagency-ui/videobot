@@ -2461,6 +2461,9 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int) -> str
         # tightest spacing — keeps multi-line blocks from reading as a dense
         # slab of text the way the generated output previously did.
         line_h  = int(fontsize * 0.92)   # Instagram Classic line-height
+        # TEMP diagnostic — confirms forced style + actual font file used.
+        import sys as _sys_cs
+        print(f"[CAPTION_STYLE] Instagram Classic forced font={getattr(font, 'path', '?')} border={border} line_h={line_h}", file=_sys_cs.stderr)
         total_h = len(lines) * line_h
         y_start = cy - total_h // 2
 
