@@ -2204,10 +2204,10 @@ _FONT_DIR_FS = Path(__file__).parent / "fonts"
 # instance, plus per-style line-height. NO outline (matches real IG),
 # letter-spacing 0, center, casing preserved. Default = classic. ──
 IG_STYLES = {
-    "classic": {"font": "Arimo-Variable.ttf",        "weight": "Bold",      "line_height": 1.04},
-    "modern":  {"font": "Montserrat-Variable.ttf",   "weight": "SemiBold",  "line_height": 1.04},
-    "poster":  {"font": "SourceSerif4-Variable.ttf", "weight": "Bold",      "line_height": 1.06},
-    "meme":    {"font": "Nunito-Variable.ttf",       "weight": "ExtraBold", "line_height": 1.10},
+    "classic": {"font": "Montserrat-VariableFont_wght.ttf", "weight": "Bold", "line_height": 1.04},
+    "modern":  {"font": "Montserrat-VariableFont_wght.ttf", "weight": "Bold", "line_height": 1.04},
+    "poster":  {"font": "Montserrat-VariableFont_wght.ttf", "weight": "Bold", "line_height": 1.06},
+    "meme":    {"font": "Montserrat-VariableFont_wght.ttf", "weight": "Bold", "line_height": 1.10},
 }
 IG_DEFAULT_STYLE = "classic"
 
