@@ -1911,10 +1911,17 @@ def analyze_with_claude_vision_timed(video_path: str, model: str = OCR_MODEL_SON
     # Adaptive sampling by duration (AUTOMATIC — no UI, no new mode). Longer
     # videos get more frames so captions aren't missed between samples:
     #   ≤60s → 20 frames | 60–120s → 40 | 120–300s → 80 | >300s → 80 (cap).
-    # Frames are then sent to Vision in LOTS of 20 (never one giant call):
-    # one call per lot, each lot's detections re-indexed to a GLOBAL
-    # frame_index, then everything merged once via _merge_timed_captions.
-    # The ≤60s case = exactly ONE lot of 20 ⇒ behaviour equivalent to before.
+    # Frames are sent to Vision in small LOTS (never one giant call): one call
+    # per lot, each lot's detections re-indexed to a GLOBAL frame_index, then
+    # everything merged once via _merge_timed_captions.
+    #
+    # RECALL FIX (sequential captions): _CHUNK was 20 → a 13s clip with 3
+    # captions that change at the SAME on-screen spot was sent as ONE 20-frame
+    # call, and Vision tended to "lock onto" the first caption and report it
+    # for the whole clip (the other captions vanished from video C). Smaller
+    # lots (10) force the model to RE-READ each shorter temporal segment
+    # independently, so each caption is detected and the merge stitches them
+    # together. Cost: ~2× the number of Vision calls; reliability prioritized.
     # Only the Vision model differs between Sonnet/Opus (passed in as `model`).
     if duration <= 60:
         count = 20
@@ -1925,7 +1932,7 @@ def analyze_with_claude_vision_timed(video_path: str, model: str = OCR_MODEL_SON
     else:
         count = 80
     _scale = "scale=1080:-2"
-    _CHUNK = 20
+    _CHUNK = 10
     _n_lots = -(-count // _CHUNK)  # ceil
     import sys as _sys_vm
     print(f"[VISION_MODE] model={model} duration={duration:.1f}s frames={count} "
@@ -2199,17 +2206,12 @@ def _wrap_lines(orig_lines: list, font, max_w: int) -> list:
 # are bundled or shared by this code.
 _FONT_DIR_FS = Path(__file__).parent / "fonts"
 
-# ── The 4 Instagram caption styles — the ONLY caption styles. Each maps to
-# an open-licensed clone (bundled in fonts/, variable TTF) + a named weight
-# instance, plus per-style line-height. NO outline (matches real IG),
-# letter-spacing 0, center, casing preserved. Default = classic. ──
-IG_STYLES = {
-    "classic": {"font": "Montserrat-VariableFont_wght.ttf", "weight": "Bold", "line_height": 1.04},
-    "modern":  {"font": "Montserrat-VariableFont_wght.ttf", "weight": "Bold", "line_height": 1.04},
-    "poster":  {"font": "Montserrat-VariableFont_wght.ttf", "weight": "Bold", "line_height": 1.06},
-    "meme":    {"font": "Montserrat-VariableFont_wght.ttf", "weight": "Bold", "line_height": 1.10},
-}
-IG_DEFAULT_STYLE = "classic"
+# ── Single default caption style (the 4 Instagram styles were removed). One
+# font for ALL captions, Simple + Batch: Montserrat Bold (700), fixed
+# line-height. NO per-style/ig_style option anymore. ──
+CAPTION_FONT_FILE   = "Montserrat-VariableFont_wght.ttf"
+CAPTION_FONT_WEIGHT = "Bold"   # Montserrat named instance = wght 700
+CAPTION_LINE_HEIGHT = 1.04
 
 # ── CapCut black caption outline (toggle on/off). Text is ALWAYS white,
 # outline ALWAYS pure black, NO shadow. Thickness scales with the FONT SIZE
@@ -2222,27 +2224,20 @@ IG_DEFAULT_STYLE = "classic"
 OUTLINE_RATIO = 0.060   # stroke_width = round(fontsize * 0.060), min 1px
 
 
-def _resolve_ig_style(name):
-    n = (name or "").strip().lower()
-    return n if n in IG_STYLES else IG_DEFAULT_STYLE
-
-
-def _load_caption_font(fontsize: int, ig_style: str = IG_DEFAULT_STYLE):
+def _load_caption_font(fontsize: int):
     """
-    Load the caption font for one of the 4 Instagram styles
-    (classic / modern / poster / meme) at the requested pixel size and apply
-    the style's named weight instance. Falls back cleanly (Inter → Liberation
-    → PIL default) so a render never fails if a bundled font is missing.
+    Load the single default caption font (Montserrat Bold 700) at the
+    requested pixel size. Falls back cleanly (Inter → Liberation → PIL
+    default) so a render never fails if the bundled font is missing.
     """
     from PIL import ImageFont
 
-    spec = IG_STYLES.get(ig_style, IG_STYLES[IG_DEFAULT_STYLE])
-    path = str(_FONT_DIR_FS / spec["font"])
+    path = str(_FONT_DIR_FS / CAPTION_FONT_FILE)
     try:
         if os.path.exists(path):
             font = ImageFont.truetype(path, fontsize)
             try:
-                font.set_variation_by_name(spec["weight"])
+                font.set_variation_by_name(CAPTION_FONT_WEIGHT)
             except Exception:
                 pass
             return font
@@ -2357,16 +2352,15 @@ def _get_local_twemoji_source():
     return _LOCAL_TWEMOJI
 
 
-def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, ig_style: str = IG_DEFAULT_STYLE, capcut_outline: bool = True) -> str:
+def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, capcut_outline: bool = True) -> str:
     """
-    Render all text objects onto a transparent RGBA image in one of the 4
-    Instagram caption styles (classic / modern / poster / meme). Each style
-    sets the font + weight + line-height. The CapCut black outline is a single
-    ON/OFF toggle (`capcut_outline`, default ON): ON → pure black outline via
-    FreeType's NATIVE stroker, width = round(fontsize × 0.060) (min 1px,
-    calibrated to CapCut's real outline preset); OFF →
-    no outline (stroke_width 0). Text is ALWAYS white, NO shadow,
-    letter-spacing 0, center, casing preserved, anti-aliased.
+    Render all text objects onto a transparent RGBA image with the single
+    default caption style (Montserrat Bold 700, fixed line-height). The CapCut
+    black outline is a single ON/OFF toggle (`capcut_outline`, default ON):
+    ON → pure black outline via FreeType's NATIVE stroker, width =
+    round(fontsize × 0.060) (min 1px, calibrated to CapCut's real outline
+    preset); OFF → no outline (stroke_width 0). Text is ALWAYS white, NO
+    shadow, letter-spacing 0, center, casing preserved, anti-aliased.
     Improvements over v1:
     - Word-wrap BEFORE shrinking font (preserves readability)
     - Font size floor: never below max(24px, 60% of target size)
@@ -2380,11 +2374,9 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, ig_sty
     overlay = Image.new("RGBA", (wa, ha), (0, 0, 0, 0))
     _caption_debug_log.clear()
 
-    # ── Instagram style (classic / modern / poster / meme). Only the font +
-    # weight + line-height change between styles; all are pure white, NO
-    # outline, letter-spacing 0, center, casing preserved. ──
-    _ig_style   = _resolve_ig_style(ig_style)
-    _ig_line_h  = IG_STYLES[_ig_style]["line_height"]
+    # ── Single default caption style (Montserrat Bold 700). Pure white text,
+    # optional CapCut outline, letter-spacing 0, center, casing preserved. ──
+    _ig_line_h  = CAPTION_LINE_HEIGHT
 
     use_pilmoji = True
     try:
@@ -2441,12 +2433,12 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, ig_sty
             continue
 
         # ── Phase 1: word-wrap at target font size ────────────────────
-        font  = _load_caption_font(fontsize, _ig_style)
+        font  = _load_caption_font(fontsize)
         lines = _wrap_lines(orig_lines, font, max_w)
 
         # ── Phase 2: shrink only if still overflowing, respect floor ──
         for _ in range(30):
-            font = _load_caption_font(fontsize, _ig_style)
+            font = _load_caption_font(fontsize)
             max_line_w = max((_measure_text(font, ln) for ln in lines), default=0)
             if max_line_w <= max_w or fontsize <= min_fontsize:
                 break
@@ -2461,7 +2453,7 @@ def render_text_overlay(blocks: list, wa: int, ha: int, wb: int, hb: int, ig_sty
         line_h  = int(fontsize * _ig_line_h)   # per-style Instagram line-height
         # Diagnostic — confirms resolved style + ACTUAL font + stroke width.
         import sys as _sys_cs
-        print(f"[CAPTION_STYLE] ig_style={_ig_style} capcut_outline={'on' if capcut_outline else 'off'} font={getattr(font, 'path', '?')} stroke_width={border} (ratio={OUTLINE_RATIO}) line_h={line_h} fontsize={fontsize} ha={ha}", file=_sys_cs.stderr)
+        print(f"[CAPTION_STYLE] capcut_outline={'on' if capcut_outline else 'off'} font={getattr(font, 'path', '?')} stroke_width={border} (ratio={OUTLINE_RATIO}) line_h={line_h} fontsize={fontsize} ha={ha}", file=_sys_cs.stderr)
         total_h = len(lines) * line_h
         y_start = cy - total_h // 2
 
@@ -3176,13 +3168,14 @@ def analyze():
         has_key = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
 
         # OCR: two modes that differ ONLY by model — Sonnet (default,
-        # recommended, cache 'v1-sonnet') and Opus (max quality, cache
-        # 'v1-opus'). Both 20 frames, 1080p, relaxed prompt. Strictly separate
-        # cache namespaces (never mixed).
+        # recommended, cache 'v2-sonnet') and Opus (max quality, cache
+        # 'v2-opus'). Strictly separate cache namespaces (never mixed). Bumped
+        # v1→v2 so old, incomplete detections (sequential-caption recall bug)
+        # are invalidated and re-detected with the smaller-lot pipeline.
         ocr_mode   = (request.form.get("ocr_mode") or "sonnet").strip().lower()
         _is_opus   = (ocr_mode == "opus")
         _model     = OCR_MODEL_OPUS if _is_opus else OCR_MODEL_SONNET
-        _cache_ver = "v1-opus" if _is_opus else "v1-sonnet"
+        _cache_ver = "v2-opus" if _is_opus else "v2-sonnet"
         _fallback_scale = "scale=1080:-2"
         # "Réanalyser sans cache" : saute le lookup et force une analyse Vision
         # fraîche (le résultat est tout de même re-stocké pour les fois suivantes).
@@ -3278,7 +3271,6 @@ def process():
         _usage_mode            = (request.form.get("mode") or "simple").strip().lower()
         _usage_attempt_started = False
         _usage_source_seconds  = None
-        _ig_style_req          = _resolve_ig_style(request.form.get("ig_style"))
         _capcut_outline_req    = (request.form.get("capcut_outline", "1") or "1").strip().lower() not in ("0", "false", "off", "no")
 
         if "video_a" not in request.files or "video_b" not in request.files:
@@ -3341,7 +3333,7 @@ def process():
                     # Render EACH caption alone on its own transparent layer
                     # using the exact same render_text_overlay function/logic
                     # as every other mode — only the time window differs.
-                    op = render_text_overlay([line], wa, ha, wb, hb, ig_style=_ig_style_req, capcut_outline=_capcut_outline_req)
+                    op = render_text_overlay([line], wa, ha, wb, hb, capcut_outline=_capcut_outline_req)
                     overlay_paths.append(op)
                     overlay_specs.append((op, start, end))
 
@@ -3352,7 +3344,7 @@ def process():
             else:
                 # ── Original single-overlay path (simple mode + batch
                 # fallback when timing wasn't available) — unchanged. ──
-                overlay_path = render_text_overlay(lines, wa, ha, wb, hb, ig_style=_ig_style_req, capcut_outline=_capcut_outline_req)
+                overlay_path = render_text_overlay(lines, wa, ha, wb, hb, capcut_outline=_capcut_outline_req)
                 overlay_paths.append(overlay_path)
 
                 cmd = [
@@ -3584,13 +3576,13 @@ def batch_detect():
         has_key = bool(os.environ.get("ANTHROPIC_API_KEY", ""))
 
         # OCR: two modes that differ ONLY by model — Sonnet (default, cache
-        # 'v1-sonnet') and Opus (cache 'v1-opus'). Both 20 frames, 1080p,
-        # relaxed prompt. Applies to Batch Matrice AND Pairing (both call this
-        # route). Strictly separate cache namespaces.
+        # 'v2-sonnet') and Opus (cache 'v2-opus'). Applies to Batch Matrice AND
+        # Pairing (both call this route). Strictly separate cache namespaces.
+        # (v1→v2: invalidates old incomplete detections after the recall fix.)
         ocr_mode   = (request.form.get("ocr_mode") or "sonnet").strip().lower()
         _is_opus   = (ocr_mode == "opus")
         _model     = OCR_MODEL_OPUS if _is_opus else OCR_MODEL_SONNET
-        _cache_ver = "v1-opus" if _is_opus else "v1-sonnet"
+        _cache_ver = "v2-opus" if _is_opus else "v2-sonnet"
         _fallback_scale = "scale=1080:-2"
         _ignore_cache = (request.form.get("ignore_cache", "0") or "0").strip().lower() in ("1", "true", "on", "yes")
         import sys as _sys_ocr
@@ -3693,7 +3685,6 @@ def batch_render():
         _usage_mode            = "batch"
         _usage_attempt_started = False
         _usage_source_seconds  = None
-        _ig_style_req          = _resolve_ig_style(request.form.get("ig_style"))
         _capcut_outline_req    = (request.form.get("capcut_outline", "1") or "1").strip().lower() not in ("0", "false", "off", "no")
 
         batch_id = (request.form.get("batch_id") or "").strip()
@@ -3794,7 +3785,7 @@ def batch_render():
                         end   = max(start + 0.05, float(line.get("end_time", start + 0.05)))
                     except Exception:
                         continue
-                    op = render_text_overlay([line], wa, ha, wb, hb, ig_style=_ig_style_req, capcut_outline=_capcut_outline_req)
+                    op = render_text_overlay([line], wa, ha, wb, hb, capcut_outline=_capcut_outline_req)
                     overlay_paths.append(op)
                     overlay_specs.append((op, start, end))
                     if CAPTION_VISUAL_DEBUG and debug_capture is None and _caption_debug_log:
@@ -3806,7 +3797,7 @@ def batch_render():
 
                 cmd = _build_timed_overlay_cmd(path_a, path_b, overlay_specs, path_out)
             else:
-                overlay_path = render_text_overlay(lines, wa, ha, wb, hb, ig_style=_ig_style_req, capcut_outline=_capcut_outline_req)
+                overlay_path = render_text_overlay(lines, wa, ha, wb, hb, capcut_outline=_capcut_outline_req)
                 overlay_paths.append(overlay_path)
                 if CAPTION_VISUAL_DEBUG and _caption_debug_log:
                     debug_capture = (dict(_caption_debug_log[0]), 0.5)
