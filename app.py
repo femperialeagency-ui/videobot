@@ -12,7 +12,7 @@ import sqlite3
 import subprocess
 from pathlib import Path
 from functools import wraps
-from flask import Flask, render_template, request, send_file, jsonify, session, redirect, url_for
+from flask import Flask, render_template, request, send_file, jsonify, session, redirect, url_for, after_this_request
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
@@ -970,7 +970,11 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 # with. /batch_render then renders one combination at a time, reusing
 # the exact same detection/rendering functions as /analyze and
 # /process — only the orchestration and output naming are new.
-BATCH_DIR = Path("/tmp/videobot_batches")
+# Batch state (staged A/B + rendered outputs) lives under DATA_DIR so it
+# persists on the Render disk (default /tmp for local dev). This is what makes
+# the ZIP download reliable even after a long batch / a restart / on a service
+# that would otherwise route requests to another instance.
+BATCH_DIR = DATA_DIR / "videobot_batches"
 BATCH_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_BATCH_FILES  = 50   # max source (A) videos AND max target (B) videos (MATRIX mode)
@@ -3439,10 +3443,21 @@ def batch_zip():
             if not files:
                 return jsonify({"error": "Aucun fichier valide trouvé"}), 400
 
-            zip_path = f"/tmp/batch_{uuid.uuid4().hex}.zip"
+            # Write the (potentially multi-GB, 260+ file) zip on the persistent
+            # disk, not ephemeral /tmp which can be small/RAM-backed. Delete it
+            # once the response has been sent so the disk isn't filled.
+            zip_path = str(DATA_DIR / f"batch_{uuid.uuid4().hex}.zip")
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as zf:
                 for p in files:
                     zf.write(str(p), p.name)
+
+            @after_this_request
+            def _rm_zip(resp, _zp=zip_path):
+                try:
+                    os.remove(_zp)
+                except Exception:
+                    pass
+                return resp
 
             return send_file(
                 zip_path,
@@ -3466,10 +3481,18 @@ def batch_zip():
         if not valid:
             return jsonify({"error": "Aucun fichier valide trouvé"}), 400
 
-        zip_path = f"/tmp/batch_{uuid.uuid4().hex}.zip"
+        zip_path = str(DATA_DIR / f"batch_{uuid.uuid4().hex}.zip")
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as zf:
             for i, (jid, p) in enumerate(valid, 1):
                 zf.write(str(p), f"video_C_{i}.mp4")
+
+        @after_this_request
+        def _rm_zip_jobs(resp, _zp=zip_path):
+            try:
+                os.remove(_zp)
+            except Exception:
+                pass
+            return resp
 
         return send_file(
             zip_path,

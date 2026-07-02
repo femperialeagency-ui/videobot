@@ -4,7 +4,19 @@ services:
     runtime: docker
     plan: starter          # $7/month — no sleep, faster CPU
     # plan: free           # gratuit mais dort après 15 min d'inactivité
+    # Persistent disk: survives deploys/restarts AND forces a single instance
+    # (Render disallows horizontal scaling when a disk is attached). Both are
+    # required so batch outputs stay reachable when the user clicks the ZIP —
+    # otherwise the batch state (staged files + rendered outputs) lives in
+    # ephemeral, per-instance /tmp and disappears on restart / other instance.
+    disk:
+      name: videobot-data
+      mountPath: /data
+      sizeGB: 10
     envVars:
       - key: PORT
         value: 10000
+      # Point all persistent state (users DB + batch files) at the disk.
+      - key: DATA_DIR
+        value: /data
     healthCheckPath: /
