@@ -839,6 +839,24 @@ body {
 .r-usebadge { font-size:.6rem; color:var(--muted); }
 .r-favmark { color:#f5c451; cursor:pointer; }
 .r-favmark.off { color:var(--border-strong); }
+/* Assignation rapide (Module 2) */
+.r-quickbar { align-items:center; padding-top:2px; }
+.r-quicklbl { font-size:.68rem; color:var(--muted); font-weight:600; }
+/* Sélecteur de mode + compteur (Module 1) */
+.r-genmode { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+.r-genmode-lbl { font-size:.72rem; color:var(--muted); font-weight:600; }
+.r-genmode .r-tool-sel { min-width:min(420px,60vw); }
+.r-gencount { font-size:.8rem; font-weight:700; color:var(--accent); padding:3px 10px; border:1px solid rgba(124,92,255,.4); background:rgba(124,92,255,.1); border-radius:20px; }
+/* Dossiers / catégories (Modules 4 & 5) */
+.r-folderbar { display:flex; gap:5px; flex-wrap:wrap; padding:0 10px 7px; align-items:center; }
+.r-fchip { font-size:.64rem; padding:3px 9px; border-radius:20px; border:1px solid var(--border); color:var(--muted); background:rgba(255,255,255,.02); cursor:pointer; user-select:none; }
+.r-fchip b { color:var(--text); font-weight:700; opacity:.7; margin-left:2px; }
+.r-fchip.on { color:#9fd0ff; border-color:rgba(80,160,255,.55); background:rgba(80,160,255,.14); }
+.r-fchip.add { color:var(--accent); border-color:rgba(124,92,255,.45); background:transparent; }
+.r-fchip.mini { padding:3px 7px; }
+.r-fchip.danger { color:#ff8f8f; border-color:rgba(255,120,120,.4); }
+.r-cardfolder { display:flex; align-items:center; gap:5px; padding:2px 0 6px; font-size:.7rem; color:var(--muted); }
+.r-folder-sel { flex:1; min-width:0; font-size:.68rem; padding:3px 6px; border:1px solid var(--border); background:rgba(255,255,255,.03); color:var(--text); border-radius:7px; cursor:pointer; }
 
 /* éditeur visuel */
 .r-edit-box { width:min(1180px,97vw); }
@@ -2063,6 +2081,13 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
         <button type="button" class="v-ghost-btn" onclick="rSelectAllReels()">☑ Tout sélect.</button>
         <button type="button" class="v-ghost-btn" onclick="rClearAssign()">✕ Vider assign.</button>
       </div>
+      <div class="r-assign-bar r-quickbar">
+        <span class="r-quicklbl">⚡ En un clic :</span>
+        <button type="button" class="v-ghost-btn" onclick="rQuickAssign('cap')">✏️ Toutes les captions → reels</button>
+        <button type="button" class="v-ghost-btn" onclick="rQuickAssign('mus')">🎵 Toutes les musiques → reels</button>
+        <button type="button" class="v-ghost-btn" onclick="rQuickAssign('both')">✨ Captions + musiques auto</button>
+        <button type="button" class="v-ghost-btn ws-danger" onclick="rClearAssign()">🧹 Vider toutes les assignations</button>
+      </div>
       <div class="r-toolbar">
         <input type="text" id="rReelSearch" class="r-tool-input" placeholder="Rechercher un reel…" oninput="rRenderReels()">
         <select id="rReelSort" class="r-tool-sel" onchange="rRenderReels()"><option value="added">Récents</option><option value="name">Nom</option><option value="assigned">Assignés</option></select>
@@ -2089,6 +2114,7 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
         <select id="rCapSort" class="r-tool-sel" onchange="rCapRender()"><option value="recent">Récents</option><option value="name">Nom</option><option value="used">Utilisées</option></select>
         <button type="button" class="r-tool-chip" id="rCapFavChip" onclick="rToggleFavFilter('cap')" title="Favoris">★</button>
       </div>
+      <div class="r-folderbar" id="rCapFolderBar"></div>
       <div class="r-tagbar" id="rCapTagBar"></div>
       <div class="ws-cap-list" id="rCapList"></div>
     </section>
@@ -2110,6 +2136,7 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
         <select id="rMusSort" class="r-tool-sel" onchange="rMusRender()"><option value="recent">Récents</option><option value="name">Nom</option><option value="used">Utilisées</option><option value="duration">Durée</option></select>
         <button type="button" class="r-tool-chip" id="rMusFavChip" onclick="rToggleFavFilter('mus')" title="Favoris">★</button>
       </div>
+      <div class="r-folderbar" id="rMusFolderBar"></div>
       <div class="r-tagbar" id="rMusTagBar"></div>
       <div class="ws-cap-list" id="rMusList"></div>
     </section>
@@ -2118,6 +2145,16 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 
   <!-- Barre de génération + review -->
   <div class="ws-genbar">
+    <div class="r-genmode">
+      <label class="r-genmode-lbl">Mode d'assignation</label>
+      <select id="rGenMode" class="r-tool-sel" onchange="rUpdateInfo()">
+        <option value="assigned">1 Reel = 1 Caption + 1 Musique (assignations)</option>
+        <option value="cap_all">Tous les Reels × toutes les Captions</option>
+        <option value="mus_all">Tous les Reels × toutes les Musiques</option>
+        <option value="full">Tous les Reels × toutes les Captions × toutes les Musiques</option>
+      </select>
+      <span class="r-gencount" id="rGenCount">0 vidéo à générer</span>
+    </div>
     <button id="rGenBtn" class="primary-btn ws-gen-btn" onclick="reelsGenerate()" disabled>▶ Générer les reels</button>
     <div class="card ws-progress" id="rProgressCard" style="display:none;">
       <h2 id="rProgressTitle">Génération des reels…</h2>
@@ -4500,6 +4537,8 @@ let rReviewSel = new Set();
 let rReelsRunning = false;
 let rCapSel = new Set(), rMusSel = new Set();
 let rFilter = { reelFav:false, capFav:false, musFav:false, capTag:null, musTag:null };
+let rCapFolders = [], rMusFolders = [];               // Module 4 — dossiers
+let rActiveCapFolder = "all", rActiveMusFolder = "all"; // "all" | "none" | id
 let rEdit = { align: "center" };   // état de l'éditeur visuel (alignement courant)
 
 function rFmtSize(b){ b=b||0; return b<1024*1024 ? (b/1024).toFixed(0)+" Ko" : b<1024*1024*1024 ? (b/1024/1024).toFixed(1)+" Mo" : (b/1024/1024/1024).toFixed(2)+" Go"; }
@@ -4516,12 +4555,73 @@ const rIO = ("IntersectionObserver" in window) ? new IntersectionObserver(ents=>
 function rLazyVideo(v,url){ if(rIO){ v.dataset.src=url; rIO.observe(v); } else { v.src=url; } }
 
 async function reelsOnOpen(){
-  await Promise.all([rRefreshCaptions(), rRefreshMusic(), rPresetRefresh()]);
+  await Promise.all([rRefreshFolders(), rRefreshCaptions(), rRefreshMusic(), rPresetRefresh()]);
   rRenderReels(); rRenderReview(); rUpdateInfo();
   if(!window._rWired){ window._rWired=true; rWireResizers(); rWireShortcuts(); }
 }
-async function rRefreshCaptions(){ try{ const d=await rGet("/reels_caption_list"); rCaptions=d.captions||[]; }catch(e){} rCapRender(); rCapTagBar(); }
-async function rRefreshMusic(){ try{ const d=await rGet("/reels_music_list"); rMusic=d.music||[]; }catch(e){} rMusRender(); rMusTagBar(); }
+async function rRefreshFolders(){
+  try{ const d=await rGet("/reels_folder_list?kind=caption"); rCapFolders=d.folders||[]; }catch(e){}
+  try{ const d=await rGet("/reels_folder_list?kind=music"); rMusFolders=d.folders||[]; }catch(e){}
+  rFolderBar("cap"); rFolderBar("mus");
+}
+async function rRefreshCaptions(){ try{ const d=await rGet("/reels_caption_list"); rCaptions=d.captions||[]; }catch(e){} rCapRender(); rCapTagBar(); rFolderBar("cap"); }
+async function rRefreshMusic(){ try{ const d=await rGet("/reels_music_list"); rMusic=d.music||[]; }catch(e){} rMusRender(); rMusTagBar(); rFolderBar("mus"); }
+
+// ── Dossiers / catégories (Modules 4 & 5) ──
+function _rFoldersOf(kind){ return kind==="cap"?rCapFolders:rMusFolders; }
+function _rActiveFolder(kind){ return kind==="cap"?rActiveCapFolder:rActiveMusFolder; }
+function _rItemsOf(kind){ return kind==="cap"?rCaptions:rMusic; }
+function _rFolderCount(kind, fid){
+  const items=_rItemsOf(kind);
+  if(fid==="all") return items.length;
+  if(fid==="none") return items.filter(x=>x.folder_id==null).length;
+  return items.filter(x=>String(x.folder_id)===String(fid)).length;
+}
+function rFolderName(kind, fid){ const f=_rFoldersOf(kind).find(x=>String(x.id)===String(fid)); return f?f.name:""; }
+function rFolderBar(kind){
+  const bar=document.getElementById(kind==="cap"?"rCapFolderBar":"rMusFolderBar"); if(!bar) return;
+  const folders=_rFoldersOf(kind), active=_rActiveFolder(kind);
+  let h=`<span class="r-fchip ${active==="all"?"on":""}" onclick="rFolderPick('${kind}','all')">📁 Tous <b>${_rFolderCount(kind,"all")}</b></span>`;
+  folders.forEach(f=>{ h+=`<span class="r-fchip ${String(active)===String(f.id)?"on":""}" onclick="rFolderPick('${kind}',${f.id})" ondblclick="rFolderRename('${kind}',${f.id})" title="Double-clic pour renommer">${rEsc(f.name)} <b>${_rFolderCount(kind,f.id)}</b></span>`; });
+  h+=`<span class="r-fchip ${active==="none"?"on":""}" onclick="rFolderPick('${kind}','none')">Sans dossier <b>${_rFolderCount(kind,"none")}</b></span>`;
+  h+=`<button type="button" class="r-fchip add" onclick="rFolderCreate('${kind}')">＋ dossier</button>`;
+  if(active!=="all" && active!=="none"){
+    h+=`<button type="button" class="r-fchip mini" onclick="rFolderRename('${kind}',${active})" title="Renommer">✎</button>`;
+    h+=`<button type="button" class="r-fchip mini danger" onclick="rFolderDelete('${kind}',${active})" title="Supprimer">🗑</button>`;
+  }
+  bar.innerHTML=h;
+}
+function rFolderPick(kind, fid){
+  if(kind==="cap"){ rActiveCapFolder=fid; rFolderBar("cap"); rCapRender(); }
+  else { rActiveMusFolder=fid; rFolderBar("mus"); rMusRender(); }
+}
+async function rFolderCreate(kind){
+  const name=prompt("Nom du dossier :",""); if(!name||!name.trim()) return;
+  try{ await rPost("/reels_folder_create",{kind:kind==="cap"?"caption":"music", name:name.trim()}); await rRefreshFolders(); }catch(e){ alert("Erreur : "+e.message); }
+}
+async function rFolderRename(kind, fid){
+  const cur=rFolderName(kind,fid); const name=prompt("Renommer le dossier :",cur); if(!name||!name.trim()) return;
+  try{ await rPost("/reels_folder_rename",{id:fid, name:name.trim()}); await rRefreshFolders(); if(kind==="cap")rCapRender(); else rMusRender(); }catch(e){ alert("Erreur : "+e.message); }
+}
+async function rFolderDelete(kind, fid){
+  if(!confirm("Supprimer ce dossier ? Les éléments repasseront dans « Sans dossier ».")) return;
+  try{ await rPost("/reels_folder_delete",{id:fid});
+    if(kind==="cap"){ if(String(rActiveCapFolder)===String(fid)) rActiveCapFolder="all"; await rRefreshFolders(); await rRefreshCaptions(); }
+    else { if(String(rActiveMusFolder)===String(fid)) rActiveMusFolder="all"; await rRefreshFolders(); await rRefreshMusic(); }
+  }catch(e){ alert("Erreur : "+e.message); }
+}
+async function rCapSetFolder(id, val){
+  try{ await rPost("/reels_caption_set_folder",{id, folder_id:val||null}); await rRefreshCaptions(); rFolderBar("cap"); }catch(e){ alert("Erreur : "+e.message); }
+}
+async function rMusSetFolder(id, val){
+  try{ await rPost("/reels_music_set_folder",{id, folder_id:val||null}); await rRefreshMusic(); rFolderBar("mus"); }catch(e){ alert("Erreur : "+e.message); }
+}
+function rFolderSelectHtml(kind, curId){
+  const folders=_rFoldersOf(kind);
+  let o=`<option value="">Sans dossier</option>`;
+  folders.forEach(f=>{ o+=`<option value="${f.id}" ${String(curId)===String(f.id)?"selected":""}>${rEsc(f.name)}</option>`; });
+  return o;
+}
 async function rPresetRefresh(){ try{ const d=await rGet("/reels_pos_preset_list"); rPresets=d.presets||[]; }catch(e){} rPresetRenderBar(); }
 
 function rWireResizers(){
@@ -4597,9 +4697,9 @@ function rRenderReels(){
     const mb=document.createElement("div"); mb.className="r-badge mus"+(r.musId?" on":""); mb.textContent="🎵 "+(r.musId?rMusNameOf(r.musId):"—");
     badges.appendChild(cb); badges.appendChild(mb);
     const acts=document.createElement("div"); acts.style.cssText="display:flex;gap:6px;align-items:center;padding:0 8px 7px;";
-    acts.innerHTML=`<button type="button" class="r-assign-mini" onclick="event.stopPropagation();rReelPreview(${i})">👁 aperçu</button><span class="r-favmark ${r.fav?'':'off'}" onclick="event.stopPropagation();rReelFav(${i})">★</span>`;
+    acts.innerHTML=`<button type="button" class="r-assign-mini" onclick="event.stopPropagation();rReelPreview(${i})">👁 aperçu${r.musId?" 🎵":""}</button><span class="r-favmark ${r.fav?'':'off'}" onclick="event.stopPropagation();rReelFav(${i})">★</span>`;
     chk.addEventListener("click",ev=>{ ev.stopPropagation(); r.sel=!r.sel; card.classList.toggle("sel",r.sel); chk.textContent=r.sel?"✓":""; rUpdateInfo(); });
-    card.addEventListener("click",()=>{ if(!v.src && v.dataset.src) v.src=v.dataset.src; if(v.paused){ document.querySelectorAll("#rGalleryReels video").forEach(x=>{if(x!==v)x.pause();}); v.play().catch(()=>{}); } else v.pause(); });
+    card.addEventListener("click",()=>{ if(rPreviewAudio){ rPreviewAudio.pause(); } rPreviewIdx=-1; if(!v.src && v.dataset.src) v.src=v.dataset.src; if(v.paused){ document.querySelectorAll("#rGalleryReels video").forEach(x=>{if(x!==v)x.pause();}); v.play().catch(()=>{}); } else v.pause(); });
     card.appendChild(chk); card.appendChild(v); card.appendChild(info); card.appendChild(badges); card.appendChild(acts);
     g.appendChild(card);
   });
@@ -4619,6 +4719,8 @@ function rMatchCap(c){
   if(q && !(c.name.toLowerCase().includes(q) || (c.segments||[]).some(s=>(s.text||"").toLowerCase().includes(q)))) return false;
   if(rFilter.capFav && !c.favorite) return false;
   if(rFilter.capTag && !(c.tags||[]).includes(rFilter.capTag)) return false;
+  if(rActiveCapFolder==="none"){ if(c.folder_id!=null) return false; }
+  else if(rActiveCapFolder!=="all"){ if(String(c.folder_id)!==String(rActiveCapFolder)) return false; }
   return true;
 }
 function rCapRender(){
@@ -4635,6 +4737,7 @@ function rCapRender(){
     card.innerHTML=`<div class="ws-cap-name"><span class="r-favmark ${c.favorite?'':'off'}" onclick="event.stopPropagation();rCapFav(${c.id},${c.favorite?0:1})">★</span> ${rEsc(c.name)}</div>
       <div class="ws-cap-preview">${rEsc(prev)||"(vide)"}</div>
       ${(c.tags&&c.tags.length)?`<div class="r-tagbar" style="padding:2px 0 6px">${c.tags.map(t=>`<span class="r-tag">${rEsc(t)}</span>`).join("")}</div>`:""}
+      <div class="r-cardfolder">📁 <select class="r-folder-sel" onclick="event.stopPropagation()" onchange="rCapSetFolder(${c.id}, this.value)">${rFolderSelectHtml("cap", c.folder_id)}</select></div>
       <div class="ws-cap-foot"><span class="ws-cap-lines">${c.segments.length} seg. · <span class="r-usebadge">▶ ${c.usage_count||0}</span></span>
       <span class="ws-cap-btns">
         <button type="button" class="r-assign-mini" onclick="rCapAssign(${c.id})">assigner</button>
@@ -4899,6 +5002,8 @@ function rMatchMus(m){
   if(q && !m.name.toLowerCase().includes(q)) return false;
   if(rFilter.musFav && !m.favorite) return false;
   if(rFilter.musTag && !(m.tags||[]).includes(rFilter.musTag)) return false;
+  if(rActiveMusFolder==="none"){ if(m.folder_id!=null) return false; }
+  else if(rActiveMusFolder!=="all"){ if(String(m.folder_id)!==String(rActiveMusFolder)) return false; }
   return true;
 }
 function rMusRender(){
@@ -4916,6 +5021,7 @@ function rMusRender(){
     card.innerHTML=`<div class="ws-cap-name"><span class="r-favmark ${m.favorite?'':'off'}" onclick="event.stopPropagation();rMusFav(${m.id},${m.favorite?0:1})">★</span> ${rEsc(m.name)}${vid}</div>
       <div class="r-audiorow"><audio controls preload="none" src="/reels_music_file/${m.id}"></audio></div>
       ${(m.tags&&m.tags.length)?`<div class="r-tagbar" style="padding:2px 0 6px">${m.tags.map(t=>`<span class="r-tag">${rEsc(t)}</span>`).join("")}</div>`:""}
+      <div class="r-cardfolder">📁 <select class="r-folder-sel" onclick="event.stopPropagation()" onchange="rMusSetFolder(${m.id}, this.value)">${rFolderSelectHtml("mus", m.folder_id)}</select></div>
       <div class="ws-cap-foot"><span class="ws-cap-lines">${rFmtDur(m.duration)} · ${rFmtSize(m.size||0)} · <span class="r-usebadge">▶ ${m.usage_count||0}</span></span>
       <span class="ws-cap-btns">
         <button type="button" class="r-assign-mini" onclick="rMusAssign(${m.id})">assigner</button>
@@ -4980,16 +5086,86 @@ function rAssignApply(){
 }
 function _rGet(r,setter){ return setter===undefined?null:(setter.name.includes("Cap")?r.capId:r.musId); }
 
-// ── Preview avant rendu (Module 4) ──
-function rReelPreview(i){ const r=rReels[i]; if(!r) return; if(r.musId){ /* audio joue via l'éditeur? on ouvre l'éditeur avec la vidéo en fond */ } rCapOpen(r.capId||null, i); }
+// ── Preview reel + musique assignée (Module 3) ──
+// La vidéo reste visuelle (muette) ; l'audio vient de la musique assignée.
+// Une seule preview joue à la fois (vidéos + audio de preview stoppés).
+let rPreviewAudio=null, rPreviewIdx=-1;
+function rEnsurePreviewAudio(){
+  if(!rPreviewAudio){ rPreviewAudio=document.createElement("audio"); rPreviewAudio.id="rPreviewAudio"; rPreviewAudio.style.display="none"; document.body.appendChild(rPreviewAudio); }
+  return rPreviewAudio;
+}
+function rStopPreview(){
+  if(rPreviewAudio){ rPreviewAudio.pause(); }
+  document.querySelectorAll("#rGalleryReels video").forEach(v=>v.pause());
+  rPreviewIdx=-1;
+}
+function rReelPreview(i){
+  const r=rReels[i]; if(!r) return;
+  // Toggle : reclic sur le même reel → stop.
+  if(rPreviewIdx===i){ rStopPreview(); return; }
+  rStopPreview();
+  const card=document.querySelector(`#rGalleryReels .ws-card[data-i="${i}"]`);
+  const v=card?card.querySelector("video"):null;
+  if(v){ if(!v.src && v.dataset.src) v.src=v.dataset.src; v.muted=true; try{ v.currentTime=0; }catch(e){} v.play().catch(()=>{}); }
+  if(r.musId){
+    const a=rEnsurePreviewAudio(); a.src=`/reels_music_file/${r.musId}`; try{ a.currentTime=0; }catch(e){} a.play().catch(()=>{});
+  } else if(rPreviewAudio){ rPreviewAudio.pause(); rPreviewAudio.removeAttribute("src"); }
+  rPreviewIdx=i;
+}
+
+// ── Assignation "tout croiser" (Module 1) — nombre de vidéos ──
+function rGenMode(){ return rVal("rGenMode") || "assigned"; }
+function rGenCount(){
+  const nR=rReels.length, nC=rCaptions.length, nM=rMusic.length; const mode=rGenMode();
+  if(!nR) return 0;
+  if(mode==="cap_all") return nR * Math.max(1,nC);
+  if(mode==="mus_all") return nR * Math.max(1,nM);
+  if(mode==="full")    return nR * Math.max(1,nC) * Math.max(1,nM);
+  return nR; // assigned : 1 sortie par reel
+}
+// Construit la liste des jobs (reelIndex, capId, musId, name) selon le mode.
+function rBuildJobs(){
+  const mode=rGenMode(); const jobs=[];
+  rReels.forEach((r,i)=>{
+    const base=(r.file.name.replace(/\.[^.]+$/,"")||`reel_${i+1}`);
+    if(mode==="cap_all"){
+      const caps=rCaptions.length?rCaptions:[null];
+      caps.forEach((c,ci)=>jobs.push({i, capId:c?c.id:null, musId:r.musId, name:`${base}_cap${ci+1}`}));
+    } else if(mode==="mus_all"){
+      const mus=rMusic.length?rMusic:[null];
+      mus.forEach((m,mi)=>jobs.push({i, capId:r.capId, musId:m?m.id:null, name:`${base}_mus${mi+1}`}));
+    } else if(mode==="full"){
+      const caps=rCaptions.length?rCaptions:[null], mus=rMusic.length?rMusic:[null];
+      caps.forEach((c,ci)=>mus.forEach((m,mi)=>jobs.push({i, capId:c?c.id:null, musId:m?m.id:null, name:`${base}_c${ci+1}_m${mi+1}`})));
+    } else {
+      jobs.push({i, capId:r.capId, musId:r.musId, name:`${base}_reel`});
+    }
+  });
+  return jobs;
+}
 
 // ── Info ──
 function rUpdateInfo(){
   const set=(id,v)=>{ const e=document.getElementById(id); if(e) e.textContent=v; };
-  set("rInfoReels", rReels.length); set("rInfoCap", rCaptions.length); set("rInfoMus", rMusic.length); set("rInfoOut", rReels.length);
+  const nOut=rGenCount();
+  set("rInfoReels", rReels.length); set("rInfoCap", rCaptions.length); set("rInfoMus", rMusic.length); set("rInfoOut", nOut);
+  const gc=document.getElementById("rGenCount"); if(gc) gc.textContent = `${nOut} vidéo${nOut>1?"s":""} à générer`;
   const gen=document.getElementById("rGenBtn"); if(gen) gen.disabled = rReels.length===0 || rReelsRunning;
   const dot=document.getElementById("rStatusDot"), lbl=document.getElementById("rInfoStatus");
   if(dot && !rReelsRunning){ if(rReview.length){ dot.className="ws-dot done"; if(lbl)lbl.textContent="Terminé · "+rReview.length; } else { dot.className="ws-dot ready"; if(lbl)lbl.textContent="Prêt"; } }
+}
+// ── Assignation rapide (Module 2) — rotation sur TOUS les reels ──
+function rQuickAssign(kind){
+  if(!rReels.length){ alert("Ajoute d'abord des reels."); return; }
+  if((kind==="cap"||kind==="both")){
+    if(!rCaptions.length){ if(kind==="cap"){ alert("Aucune caption dans la bibliothèque."); return; } }
+    else rReels.forEach((r,i)=>{ r.capId=rCaptions[i%rCaptions.length].id; });
+  }
+  if((kind==="mus"||kind==="both")){
+    if(!rMusic.length){ if(kind==="mus"){ alert("Aucune musique dans la bibliothèque."); return; } }
+    else rReels.forEach((r,i)=>{ r.musId=rMusic[i%rMusic.length].id; });
+  }
+  rRenderReels(); rUpdateInfo();
 }
 
 // ── Génération (low-cost, séparé) ──
@@ -5004,22 +5180,26 @@ async function reelsGenerate(){
   const setDot=(s,t)=>{ const d=document.getElementById("rStatusDot"); if(d)d.className="ws-dot "+s; const l=document.getElementById("rInfoStatus"); if(l)l.textContent=t; };
   setDot("run","Génération…");
   try{
+    // Étape 1 : chaque reel n'est stagé qu'UNE fois (in/NNN.mp4), réutilisé
+    // par toutes ses combinaisons.
     title.textContent="📤 Envoi des reels…";
     for(let i=0;i<rReels.length;i++){
       const fd=new FormData(); fd.append("file",rReels[i].file); fd.append("index",i); if(rMixJobId) fd.append("job_id",rMixJobId);
       const d=await rPost("/reels_mix_stage",fd,true); if(d.error) throw new Error(d.error); rMixJobId=d.job_id;
       fill.style.width=Math.round((i+1)/rReels.length*30)+"%";
     }
-    title.textContent="⚙️ Génération des reels…";
+    // Étape 2 : expansion des combinaisons (Module 1) → 1 appel run par job.
+    const jobs=rBuildJobs(); const total=jobs.length||1;
+    title.textContent=`⚙️ Génération de ${jobs.length} vidéo${jobs.length>1?"s":""}…`;
     let ok=0, err=0;
-    for(let i=0;i<rReels.length;i++){
-      const r=rReels[i];
-      const fd=new FormData(); fd.append("job_id",rMixJobId); fd.append("index",i);
-      if(r.capId) fd.append("caption_id",r.capId); if(r.musId) fd.append("music_id",r.musId);
-      fd.append("out_name", r.file.name.replace(/\.[^.]+$/,"")+"_reel");
+    for(let j=0;j<jobs.length;j++){
+      const job=jobs[j];
+      const fd=new FormData(); fd.append("job_id",rMixJobId); fd.append("index",job.i);
+      if(job.capId) fd.append("caption_id",job.capId); if(job.musId) fd.append("music_id",job.musId);
+      fd.append("out_name", job.name);
       try{ const d=await rPost("/reels_mix_run",fd,true); if(d.ok){ ok++; rReview.push({job_id:rMixJobId, filename:d.filename}); } else err++; }catch(e){ err++; }
-      fill.style.width=(30+Math.round((i+1)/rReels.length*70))+"%";
-      status.textContent=`${i+1}/${rReels.length} · ✅ ${ok} · ❌ ${err}`;
+      fill.style.width=(30+Math.round((j+1)/total*70))+"%";
+      status.textContent=`${j+1}/${jobs.length} · ✅ ${ok} · ❌ ${err}`;
       rRenderReview();
     }
     title.textContent="✅ Reels terminés";

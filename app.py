@@ -5480,6 +5480,16 @@ def _migrate_reels_tables():
                     align        TEXT DEFAULT 'center',
                     created_at   TEXT
                 )""")
+            # Module 4 — dossiers/catégories pour captions & musiques.
+            # Une seule table, discriminée par `kind` ('caption'|'music').
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS reels_folders (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id    INTEGER,
+                    kind       TEXT NOT NULL,
+                    name       TEXT NOT NULL,
+                    created_at TEXT
+                )""")
 
             def _addcol(table, col, decl):
                 try:
@@ -5492,13 +5502,14 @@ def _migrate_reels_tables():
             # Idempotent columns (pre-existing installs).
             _addcol("reels_music", "source_type", "TEXT DEFAULT 'audio'")
             for col, decl in [("tags", "TEXT DEFAULT '[]'"), ("favorite", "INTEGER DEFAULT 0"),
-                              ("usage_count", "INTEGER DEFAULT 0"), ("last_used_at", "TEXT")]:
+                              ("usage_count", "INTEGER DEFAULT 0"), ("last_used_at", "TEXT"),
+                              ("folder_id", "INTEGER")]:
                 _addcol("reels_music", col, decl)
             for col, decl in [("cx_pct", "REAL DEFAULT 0.5"), ("cy_pct", "REAL DEFAULT 0.78"),
                               ("width_pct", "REAL DEFAULT 0.86"), ("fontsize_pct", "REAL DEFAULT 0.05"),
                               ("align", "TEXT DEFAULT 'center'"), ("tags", "TEXT DEFAULT '[]'"),
                               ("favorite", "INTEGER DEFAULT 0"), ("usage_count", "INTEGER DEFAULT 0"),
-                              ("last_used_at", "TEXT")]:
+                              ("last_used_at", "TEXT"), ("folder_id", "INTEGER")]:
                 _addcol("reels_captions", col, decl)
     except Exception as e:
         print(f"[reels] migrate WARNING: {e}")
@@ -5604,6 +5615,7 @@ def _reels_caption_row(row):
             "align": _reels_col(row, "align", "center"),
             "tags": tags if isinstance(tags, list) else [], "favorite": _reels_col(row, "favorite", 0) or 0,
             "usage_count": _reels_col(row, "usage_count", 0) or 0,
+            "folder_id": _reels_col(row, "folder_id", None),
             "updated_at": row["updated_at"]}
 
 
@@ -5826,6 +5838,126 @@ def reels_pos_preset_delete():
         return jsonify({"error": str(e)}), 500
 
 
+# ── MODULE 4 — FOLDERS / CATEGORIES (captions + music) ────────────
+def _reels_folder_kind(raw):
+    k = (raw or "").strip().lower()
+    return k if k in ("caption", "music") else None
+
+
+def _reels_folder_row(row):
+    return {"id": row["id"], "kind": row["kind"], "name": row["name"]}
+
+
+@app.route("/reels_folder_list", methods=["GET"])
+def reels_folder_list():
+    try:
+        kind = _reels_folder_kind(request.args.get("kind"))
+        if not kind:
+            return jsonify({"error": "kind invalide"}), 400
+        uid = _reels_uid()
+        with _users_db() as conn:
+            rows = conn.execute(
+                "SELECT * FROM reels_folders WHERE user_id IS ? AND kind=? ORDER BY name COLLATE NOCASE ASC, id ASC",
+                (uid, kind)).fetchall()
+        return jsonify({"folders": [_reels_folder_row(r) for r in rows]})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_folder_create", methods=["POST"])
+def reels_folder_create():
+    try:
+        data = request.get_json(force=True) or {}
+        kind = _reels_folder_kind(data.get("kind"))
+        if not kind:
+            return jsonify({"error": "kind invalide"}), 400
+        name = (data.get("name") or "").strip()[:60]
+        if not name:
+            return jsonify({"error": "Nom requis"}), 400
+        uid = _reels_uid()
+        with _users_db() as conn:
+            cur = conn.execute(
+                "INSERT INTO reels_folders (user_id, kind, name, created_at) VALUES (?,?,?,?)",
+                (uid, kind, name, _reels_now()))
+            row = conn.execute("SELECT * FROM reels_folders WHERE id=?", (cur.lastrowid,)).fetchone()
+        return jsonify({"folder": _reels_folder_row(row)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_folder_rename", methods=["POST"])
+def reels_folder_rename():
+    try:
+        data = request.get_json(force=True) or {}
+        fid = int(data.get("id", 0))
+        name = (data.get("name") or "").strip()[:60]
+        if not name:
+            return jsonify({"error": "Nom requis"}), 400
+        uid = _reels_uid()
+        with _users_db() as conn:
+            conn.execute("UPDATE reels_folders SET name=? WHERE id=? AND user_id IS ?", (name, fid, uid))
+            row = conn.execute("SELECT * FROM reels_folders WHERE id=? AND user_id IS ?", (fid, uid)).fetchone()
+        if not row:
+            return jsonify({"error": "Dossier introuvable"}), 404
+        return jsonify({"folder": _reels_folder_row(row)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_folder_delete", methods=["POST"])
+def reels_folder_delete():
+    try:
+        data = request.get_json(force=True) or {}
+        fid = int(data.get("id", 0))
+        uid = _reels_uid()
+        with _users_db() as conn:
+            row = conn.execute("SELECT * FROM reels_folders WHERE id=? AND user_id IS ?", (fid, uid)).fetchone()
+            if not row:
+                return jsonify({"error": "Dossier introuvable"}), 404
+            # Orphelins → 'Sans dossier' (folder_id NULL), on ne supprime aucun média.
+            tbl = "reels_captions" if row["kind"] == "caption" else "reels_music"
+            conn.execute(f"UPDATE {tbl} SET folder_id=NULL WHERE folder_id=? AND user_id IS ?", (fid, uid))
+            conn.execute("DELETE FROM reels_folders WHERE id=? AND user_id IS ?", (fid, uid))
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+def _reels_set_folder(table, data):
+    """Assign a caption/music row to a folder (or None = 'Sans dossier')."""
+    mid = int(data.get("id", 0))
+    uid = _reels_uid()
+    fid = data.get("folder_id")
+    with _users_db() as conn:
+        if fid in (None, "", 0, "0"):
+            fid = None
+        else:
+            fid = int(fid)
+            frow = conn.execute("SELECT id FROM reels_folders WHERE id=? AND user_id IS ?", (fid, uid)).fetchone()
+            if not frow:
+                fid = None
+        conn.execute(f"UPDATE {table} SET folder_id=? WHERE id=? AND user_id IS ?", (fid, mid, uid))
+    return fid
+
+
+@app.route("/reels_caption_set_folder", methods=["POST"])
+def reels_caption_set_folder():
+    try:
+        fid = _reels_set_folder("reels_captions", request.get_json(force=True) or {})
+        return jsonify({"ok": True, "folder_id": fid})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_music_set_folder", methods=["POST"])
+def reels_music_set_folder():
+    try:
+        fid = _reels_set_folder("reels_music", request.get_json(force=True) or {})
+        return jsonify({"ok": True, "folder_id": fid})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ── MODULE 2 — MUSIC LIBRARY ──────────────────────────────────────
 def _reels_music_row(row):
     try:
@@ -5838,6 +5970,7 @@ def _reels_music_row(row):
             "tags": tags if isinstance(tags, list) else [],
             "favorite": _reels_col(row, "favorite", 0) or 0,
             "usage_count": _reels_col(row, "usage_count", 0) or 0,
+            "folder_id": _reels_col(row, "folder_id", None),
             "created_at": _reels_col(row, "created_at", "")}
 
 
