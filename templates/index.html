@@ -724,8 +724,11 @@ body {
 .ws-vt { width:26px; height:22px; border:0; background:transparent; color:var(--muted); border-radius:6px; cursor:pointer; font-size:.9rem; line-height:1; }
 .ws-vt.active { background:var(--accent); color:#fff; }
 .ws-drop { margin:10px; flex:0 0 auto; }
-.ws-gallery { flex:1 1 auto; overflow-y:auto; padding:0 10px 12px; }
-.ws-gallery.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(120px,1fr)); gap:10px; align-content:start; }
+/* min-height:0 → indispensable pour que la galerie scrolle dans le panneau
+   flex au lieu de comprimer/étirer les cartes selon le nombre de vidéos. */
+.ws-gallery { flex:1 1 auto; min-height:0; overflow-y:auto; padding:0 10px 12px; }
+.ws-gallery.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(130px,1fr));
+  grid-auto-rows:max-content; gap:10px; align-content:start; }
 .ws-gallery.list { display:flex; flex-direction:column; gap:6px; }
 
 /* cartes reels */
@@ -733,7 +736,9 @@ body {
   background:#0c0e14; cursor:pointer; transition:border-color .12s, transform .08s; }
 .ws-card:hover { border-color:var(--border-strong); }
 .ws-card.sel { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
-.ws-card video, .ws-card .ws-thumb-ph { width:100%; aspect-ratio:9/16; object-fit:cover; display:block; background:#05060a; }
+/* Hauteur de miniature FIXE (jamais dépendante du nombre de vidéos). */
+.ws-card video, .ws-card .ws-thumb-ph { width:100%; object-fit:cover; display:block; background:#05060a; }
+.ws-gallery.grid .ws-card video, .ws-gallery.grid .ws-card .ws-thumb-ph { height:190px; }
 .ws-thumb-ph { display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:1.6rem; }
 .ws-card-info { padding:6px 8px; }
 .ws-card-name { font-size:.72rem; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -744,7 +749,7 @@ body {
 .ws-card-grip { position:absolute; top:6px; right:6px; color:rgba(255,255,255,.5); font-size:.8rem; cursor:grab; }
 /* list mode */
 .ws-gallery.list .ws-card { display:flex; align-items:center; gap:10px; aspect-ratio:auto; }
-.ws-gallery.list .ws-card video, .ws-gallery.list .ws-card .ws-thumb-ph { width:44px; aspect-ratio:9/16; flex:0 0 auto; border-radius:6px; }
+.ws-gallery.list .ws-card video, .ws-gallery.list .ws-card .ws-thumb-ph { width:46px; height:82px; flex:0 0 auto; border-radius:6px; }
 .ws-gallery.list .ws-card-check, .ws-gallery.list .ws-card-grip { position:static; }
 .ws-gallery.list .ws-card-info { flex:1 1 auto; padding:6px 8px 6px 0; min-width:0; }
 .ws-empty { grid-column:1/-1; color:var(--muted); font-size:.78rem; text-align:center; padding:24px 8px; }
