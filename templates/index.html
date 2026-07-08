@@ -849,7 +849,11 @@ body {
 .r-cap-box { position:absolute; transform:translate(-50%,-50%); text-align:center; color:#fff; font-weight:800;
   line-height:1.1; cursor:grab; user-select:none; text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 3px rgba(0,0,0,.9);
   -webkit-text-stroke:1px #000; padding:2px; }
-.r-cap-box.drag { cursor:grabbing; outline:1px dashed rgba(255,255,255,.6); }
+.r-cap-box { touch-action:none; }
+.r-cap-box:hover { outline:1px dashed rgba(255,255,255,.35); }
+.r-cap-box.drag { cursor:grabbing; outline:1px dashed rgba(255,255,255,.8); }
+.r-quick-row { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+.r-quick-row .v-ghost-btn { font-size:.7rem; padding:4px 9px; }
 .r-safe { position:absolute; inset:6% 6% 12% 6%; border:1px dashed rgba(255,255,255,.35); border-radius:6px; pointer-events:none; }
 .r-edit-hint { font-size:.68rem; color:var(--muted); text-align:center; }
 .r-edit-line { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:.72rem; }
@@ -2154,6 +2158,12 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
             <button type="button" class="r-align-btn" data-al="left" onclick="rEditAlign('left')">⯇</button>
             <button type="button" class="r-align-btn active" data-al="center" onclick="rEditAlign('center')">≡</button>
             <button type="button" class="r-align-btn" data-al="right" onclick="rEditAlign('right')">⯈</button>
+          </div>
+          <div class="r-quick-row">
+            <button type="button" class="v-ghost-btn" onclick="rEditQuick('center')">⊕ Centrer</button>
+            <button type="button" class="v-ghost-btn" onclick="rEditQuick('tiktok')">⬇ Bas TikTok</button>
+            <button type="button" class="v-ghost-btn" onclick="rEditQuick('middle')">⊟ Milieu</button>
+            <button type="button" class="v-ghost-btn" onclick="rEditQuick('top')">⬆ Haut</button>
           </div>
         </div>
 
@@ -4456,6 +4466,7 @@ let rReviewSel = new Set();
 let rReelsRunning = false;
 let rCapSel = new Set(), rMusSel = new Set();
 let rFilter = { reelFav:false, capFav:false, musFav:false, capTag:null, musTag:null };
+let rEdit = { align: "center" };   // état de l'éditeur visuel (alignement courant)
 
 function rFmtSize(b){ b=b||0; return b<1024*1024 ? (b/1024).toFixed(0)+" Ko" : b<1024*1024*1024 ? (b/1024/1024).toFixed(1)+" Mo" : (b/1024/1024/1024).toFixed(2)+" Go"; }
 function rFmtDur(d){ if(!d||!isFinite(d)) return ""; const m=Math.floor(d/60), s=Math.round(d%60); return m+":"+String(s).padStart(2,"0"); }
@@ -4593,7 +4604,8 @@ function rCapRender(){
       <div class="ws-cap-foot"><span class="ws-cap-lines">${c.segments.length} seg. · <span class="r-usebadge">▶ ${c.usage_count||0}</span></span>
       <span class="ws-cap-btns">
         <button type="button" class="r-assign-mini" onclick="rCapAssign(${c.id})">assigner</button>
-        <button type="button" class="ws-mini r-live" onclick="rCapOpen(${c.id})">modifier</button>
+        <button type="button" class="ws-mini r-live" onclick="rCapOpen(${c.id})">✎ modifier</button>
+        <button type="button" class="r-assign-mini" onclick="rCapOpen(${c.id})">🎯 position</button>
         <button type="button" class="ws-mini r-live" onclick="rCapDup(${c.id})">dupliquer</button>
         <button type="button" class="ws-mini ws-danger r-live" onclick="rCapDel(${c.id})">suppr.</button>
       </span></div>`;
@@ -4675,18 +4687,29 @@ function rEditSetPreviewReel(){
   const idx=rVal("rEditPreviewReel"); const v=document.getElementById("rEditVideo");
   if(idx!=="" && rReels[+idx]){ v.src=rReels[+idx].url; v.play().catch(()=>{}); } else { v.pause(); v.removeAttribute("src"); }
 }
-// drag caption box
+// Quick position presets (Module 8 UX) — set X/Y (and sensible width/size).
+function rEditQuick(kind){
+  const set=(id,v)=>{ const e=document.getElementById(id); if(e) e.value=v; };
+  if(kind==="center"){ set("rPosX",50); set("rPosY",50); }
+  else if(kind==="tiktok"){ set("rPosX",50); set("rPosY",86); }
+  else if(kind==="middle"){ set("rPosX",50); set("rPosY",50); }
+  else if(kind==="top"){ set("rPosX",50); set("rPosY",14); }
+  rEditPos();
+}
+// drag caption box — Pointer Events (souris + trackpad + tactile).
 (function rEditDrag(){
   const box=document.getElementById("rEditCaption"); if(!box) return;
   let dragging=false;
-  const start=e=>{ dragging=true; box.classList.add("drag"); e.preventDefault(); };
-  const move=e=>{ if(!dragging) return; const stage=document.getElementById("rEditStage"); const rc=stage.getBoundingClientRect();
-    const cx=((e.clientX-rc.left)/rc.width)*100, cy=((e.clientY-rc.top)/rc.height)*100;
-    document.getElementById("rPosX").value=Math.max(0,Math.min(100,Math.round(cx)));
-    document.getElementById("rPosY").value=Math.max(0,Math.min(100,Math.round(cy)));
+  const clampPct=(v)=>Math.max(0,Math.min(100,Math.round(v)));
+  const move=e=>{ if(!dragging) return;
+    const stage=document.getElementById("rEditStage"); const rc=stage.getBoundingClientRect();
+    document.getElementById("rPosX").value=clampPct(((e.clientX-rc.left)/rc.width)*100);
+    document.getElementById("rPosY").value=clampPct(((e.clientY-rc.top)/rc.height)*100);
     rEditPos(); };
-  const end=()=>{ dragging=false; box.classList.remove("drag"); };
-  box.addEventListener("mousedown",start); document.addEventListener("mousemove",move); document.addEventListener("mouseup",end);
+  box.addEventListener("pointerdown", e=>{ dragging=true; box.classList.add("drag"); try{ box.setPointerCapture(e.pointerId); }catch(_){ } e.preventDefault(); });
+  box.addEventListener("pointermove", move);
+  box.addEventListener("pointerup", e=>{ dragging=false; box.classList.remove("drag"); try{ box.releasePointerCapture(e.pointerId); }catch(_){ } });
+  box.addEventListener("pointercancel", ()=>{ dragging=false; box.classList.remove("drag"); });
 })();
 async function rCapSave(){
   const id=document.getElementById("rCapModalId").value;
