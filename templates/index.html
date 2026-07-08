@@ -709,8 +709,12 @@ body {
 @keyframes wsPulse { 0%,100%{opacity:1} 50%{opacity:.35} }
 
 /* 3 panneaux */
-.ws-panels { display:grid; grid-template-columns:1fr 6px 1fr 6px 1fr; gap:0;
-  min-height:460px; height:56vh; }
+/* Layout Reels Studio : GAUCHE = grande galerie reels, DROITE = Captions +
+   Musiques empilés (Module 3). La galerie reels devient la zone principale. */
+.ws-panels { display:grid; grid-template-columns:minmax(0,1.95fr) 6px minmax(0,1fr); gap:0;
+  min-height:520px; height:70vh; }
+.r-side-col { display:flex; flex-direction:column; gap:10px; min-width:0; min-height:0; }
+.r-side-col .ws-panel { flex:1 1 0; min-height:0; }
 .ws-panel { display:flex; flex-direction:column; min-width:0; overflow:hidden;
   background:linear-gradient(180deg, rgba(255,255,255,.028), rgba(255,255,255,.01));
   border:1px solid var(--border); border-radius:12px; }
@@ -739,7 +743,14 @@ body {
 /* Hauteur de miniature FIXE (jamais dépendante du nombre de vidéos). */
 .ws-card video, .ws-card .ws-thumb-ph { width:100%; object-fit:cover; display:block; background:#05060a; }
 .ws-gallery.grid .ws-card video, .ws-gallery.grid .ws-card .ws-thumb-ph { height:190px; }
+/* Galerie Reels = zone principale : miniatures nettement plus grandes (Module 3). */
+#rGalleryReels.grid { grid-template-columns:repeat(auto-fill, minmax(200px,1fr)); gap:12px; }
+#rGalleryReels.grid .ws-card video, #rGalleryReels.grid .ws-card .ws-thumb-ph { height:320px; }
 .ws-thumb-ph { display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:1.6rem; }
+/* Drag & drop bibliothèque → dossier (Module 1) */
+.ws-cap-card[draggable="true"] { cursor:grab; }
+.ws-cap-card.r-dragging { opacity:.45; }
+.r-fchip.r-drop-hot { outline:2px dashed var(--accent); outline-offset:1px; background:rgba(124,92,255,.2); color:#fff; }
 .ws-card-info { padding:6px 8px; }
 .ws-card-name { font-size:.72rem; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ws-card-meta { font-size:.64rem; color:var(--muted); margin-top:2px; display:flex; gap:6px; flex-wrap:wrap; }
@@ -2134,6 +2145,9 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 
     <div class="ws-resizer" data-i="0" title="Glisser pour redimensionner"></div>
 
+    <!-- Colonne DROITE : Captions + Musiques empilés (Module 3) -->
+    <div class="r-side-col">
+
     <!-- Panneau CAPTIONS LIBRARY -->
     <section class="ws-panel">
       <header class="ws-panel-head">
@@ -2149,8 +2163,6 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
       <div class="r-tagbar" id="rCapTagBar"></div>
       <div class="ws-cap-list" id="rCapList"></div>
     </section>
-
-    <div class="ws-resizer" data-i="1" title="Glisser pour redimensionner"></div>
 
     <!-- Panneau MUSIC LIBRARY -->
     <section class="ws-panel">
@@ -2171,6 +2183,8 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
       <div class="r-tagbar" id="rMusTagBar"></div>
       <div class="ws-cap-list" id="rMusList"></div>
     </section>
+
+    </div><!-- /r-side-col -->
 
   </div>
 
@@ -4613,8 +4627,8 @@ function rFolderBar(kind){
   const bar=document.getElementById(kind==="cap"?"rCapFolderBar":"rMusFolderBar"); if(!bar) return;
   const folders=_rFoldersOf(kind), active=_rActiveFolder(kind);
   let h=`<span class="r-fchip ${active==="all"?"on":""}" onclick="rFolderPick('${kind}','all')">📁 Tous <b>${_rFolderCount(kind,"all")}</b></span>`;
-  folders.forEach(f=>{ h+=`<span class="r-fchip ${String(active)===String(f.id)?"on":""}" onclick="rFolderPick('${kind}',${f.id})" ondblclick="rFolderRename('${kind}',${f.id})" title="Double-clic pour renommer">${rEsc(f.name)} <b>${_rFolderCount(kind,f.id)}</b></span>`; });
-  h+=`<span class="r-fchip ${active==="none"?"on":""}" onclick="rFolderPick('${kind}','none')">Sans dossier <b>${_rFolderCount(kind,"none")}</b></span>`;
+  folders.forEach(f=>{ h+=`<span class="r-fchip ${String(active)===String(f.id)?"on":""}" onclick="rFolderPick('${kind}',${f.id})" ondblclick="rFolderRename('${kind}',${f.id})" ondragover="rFolderDragOver(event,'${kind}')" ondragleave="rFolderDragLeave(event)" ondrop="rFolderDrop(event,'${kind}',${f.id})" title="Double-clic pour renommer · glisse un élément ici">${rEsc(f.name)} <b>${_rFolderCount(kind,f.id)}</b></span>`; });
+  h+=`<span class="r-fchip ${active==="none"?"on":""}" onclick="rFolderPick('${kind}','none')" ondragover="rFolderDragOver(event,'${kind}')" ondragleave="rFolderDragLeave(event)" ondrop="rFolderDrop(event,'${kind}','none')">Sans dossier <b>${_rFolderCount(kind,"none")}</b></span>`;
   h+=`<button type="button" class="r-fchip add" onclick="rFolderCreate('${kind}')">＋ dossier</button>`;
   if(active!=="all" && active!=="none"){
     h+=`<button type="button" class="r-fchip mini" onclick="rFolderRename('${kind}',${active})" title="Renommer">✎</button>`;
@@ -4653,19 +4667,49 @@ function rFolderSelectHtml(kind, curId){
   folders.forEach(f=>{ o+=`<option value="${f.id}" ${String(curId)===String(f.id)?"selected":""}>${rEsc(f.name)}</option>`; });
   return o;
 }
+// ── Drag & drop bibliothèque → dossier (Module 1) ──
+let rDragItem = null;   // { kind:"cap"|"mus", id }
+function rCardDragStart(ev, kind, id){
+  // Ne pas déclencher le drag depuis les contrôles audio ou le select dossier.
+  if(ev.target.closest("audio") || ev.target.closest("select")){ ev.preventDefault(); return; }
+  rDragItem={kind, id:+id};
+  try{ ev.dataTransfer.effectAllowed="move"; ev.dataTransfer.setData("text/plain", String(id)); }catch(e){}
+  const card=ev.target.closest(".ws-cap-card"); if(card) card.classList.add("r-dragging");
+}
+function rCardDragEnd(ev){
+  const card=ev.target.closest(".ws-cap-card"); if(card) card.classList.remove("r-dragging");
+  document.querySelectorAll(".r-fchip.r-drop-hot").forEach(c=>c.classList.remove("r-drop-hot"));
+  rDragItem=null;
+}
+function rFolderDragOver(ev, kind){
+  if(!rDragItem || rDragItem.kind!==kind) return;
+  ev.preventDefault(); try{ ev.dataTransfer.dropEffect="move"; }catch(e){}
+  ev.currentTarget.classList.add("r-drop-hot");
+}
+function rFolderDragLeave(ev){ ev.currentTarget.classList.remove("r-drop-hot"); }
+function rFolderDrop(ev, kind, fid){
+  ev.preventDefault(); ev.currentTarget.classList.remove("r-drop-hot");
+  if(!rDragItem || rDragItem.kind!==kind) return;
+  const id=rDragItem.id; const target=(fid==="none")?"":fid;
+  if(kind==="cap") rCapSetFolder(id, target); else rMusSetFolder(id, target);
+  rDragItem=null;
+}
 async function rPresetRefresh(){ try{ const d=await rGet("/reels_pos_preset_list"); rPresets=d.presets||[]; }catch(e){} rPresetRenderBar(); }
 
 function rWireResizers(){
   const panels=document.getElementById("rPanels"); if(!panels) return;
-  try{ const c=sessionStorage.getItem("rCols"); if(c) panels.style.gridTemplateColumns=c; }catch(e){}
-  panels.querySelectorAll(".ws-resizer").forEach(rz=>{
-    rz.addEventListener("mousedown",e=>{ e.preventDefault(); const i=parseInt(rz.dataset.i,10); rz.classList.add("drag");
-      const sx=e.clientX; const secs=[...panels.children].filter(c=>c.classList.contains("ws-panel"));
-      const w0=secs.map(s=>s.getBoundingClientRect().width); const tot=w0.reduce((a,b)=>a+b,0)||1;
-      const mv=ev=>{ const dx=ev.clientX-sx; const w=w0.slice(); w[i]=Math.max(150,w0[i]+dx); w[i+1]=Math.max(150,w0[i+1]-dx); const fr=w.map(x=>(x/tot).toFixed(4)+"fr"); panels.style.gridTemplateColumns=`${fr[0]} 6px ${fr[1]} 6px ${fr[2]}`; };
-      const up=()=>{ rz.classList.remove("drag"); document.removeEventListener("mousemove",mv); document.removeEventListener("mouseup",up); try{ sessionStorage.setItem("rCols",panels.style.gridTemplateColumns);}catch(e){} };
-      document.addEventListener("mousemove",mv); document.addEventListener("mouseup",up);
-    });
+  try{ const c=sessionStorage.getItem("rCols2"); if(c) panels.style.gridTemplateColumns=c; }catch(e){}
+  const rz=panels.querySelector(".ws-resizer"); if(!rz) return;
+  rz.addEventListener("mousedown",e=>{ e.preventDefault(); rz.classList.add("drag");
+    const sx=e.clientX;
+    const cols=[...panels.children].filter(c=>!c.classList.contains("ws-resizer"));
+    if(cols.length<2) return;
+    const w0=[cols[0].getBoundingClientRect().width, cols[1].getBoundingClientRect().width];
+    const tot=w0[0]+w0[1]||1;
+    const mv=ev=>{ const dx=ev.clientX-sx; const a=Math.max(260,w0[0]+dx), b=Math.max(240,w0[1]-dx);
+      panels.style.gridTemplateColumns=`${(a/tot).toFixed(4)}fr 6px ${(b/tot).toFixed(4)}fr`; };
+    const up=()=>{ rz.classList.remove("drag"); document.removeEventListener("mousemove",mv); document.removeEventListener("mouseup",up); try{ sessionStorage.setItem("rCols2",panels.style.gridTemplateColumns);}catch(e){} };
+    document.addEventListener("mousemove",mv); document.addEventListener("mouseup",up);
   });
 }
 function rWireShortcuts(){
@@ -4741,7 +4785,8 @@ function rRenderReels(){
       <button type="button" class="r-assign-mini danger" onclick="event.stopPropagation();rDeleteReel(${i})">🗑</button>
       <span class="r-favmark ${r.fav?'':'off'}" onclick="event.stopPropagation();rReelFav(${i})">★</span>`;
     chk.addEventListener("click",ev=>{ ev.stopPropagation(); r.sel=!r.sel; card.classList.toggle("sel",r.sel); chk.textContent=r.sel?"✓":""; rUpdateInfo(); });
-    card.addEventListener("click",()=>{ if(rPreviewAudio){ rPreviewAudio.pause(); } rPreviewIdx=-1; if(!v.src && v.dataset.src) v.src=v.dataset.src; if(v.paused){ document.querySelectorAll("#rGalleryReels video").forEach(x=>{if(x!==v)x.pause();}); v.play().catch(()=>{}); } else v.pause(); });
+    // Clic sur la carte = preview complète : vidéo (visuel) + musique assignée (Module 2).
+    card.addEventListener("click",()=>{ rReelPreview(i); });
     card.appendChild(chk); card.appendChild(v); card.appendChild(info); card.appendChild(acts);
     g.appendChild(card);
   });
@@ -4860,7 +4905,10 @@ function rCapRender(){
         <button type="button" class="ws-mini r-live" onclick="rCapDup(${c.id})">dupliquer</button>
         <button type="button" class="ws-mini ws-danger r-live" onclick="rCapDel(${c.id})">suppr.</button>
       </span></div>`;
-    card.addEventListener("click",e=>{ if(e.target.closest("button")||e.target.closest(".r-favmark")) return; if(rCapSel.has(c.id))rCapSel.delete(c.id); else rCapSel.add(c.id); card.classList.toggle("sel"); });
+    card.setAttribute("draggable","true");
+    card.addEventListener("dragstart",e=>rCardDragStart(e,"cap",c.id));
+    card.addEventListener("dragend",rCardDragEnd);
+    card.addEventListener("click",e=>{ if(e.target.closest("button")||e.target.closest(".r-favmark")||e.target.closest("select")) return; if(rCapSel.has(c.id))rCapSel.delete(c.id); else rCapSel.add(c.id); card.classList.toggle("sel"); });
     list.appendChild(card);
   });
 }
@@ -5139,7 +5187,10 @@ function rMusRender(){
         <button type="button" class="ws-mini r-live" onclick="rMusRename(${m.id})">renommer</button>
         <button type="button" class="ws-mini ws-danger r-live" onclick="rMusDel(${m.id})">suppr.</button>
       </span></div>`;
-    card.addEventListener("click",e=>{ if(e.target.closest("button")||e.target.closest("audio")||e.target.closest(".r-favmark")) return; if(rMusSel.has(m.id))rMusSel.delete(m.id); else rMusSel.add(m.id); card.classList.toggle("sel"); });
+    card.setAttribute("draggable","true");
+    card.addEventListener("dragstart",e=>rCardDragStart(e,"mus",m.id));
+    card.addEventListener("dragend",rCardDragEnd);
+    card.addEventListener("click",e=>{ if(e.target.closest("button")||e.target.closest("audio")||e.target.closest("select")||e.target.closest(".r-favmark")) return; if(rMusSel.has(m.id))rMusSel.delete(m.id); else rMusSel.add(m.id); card.classList.toggle("sel"); });
     list.appendChild(card);
   });
 }
