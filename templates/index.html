@@ -689,6 +689,104 @@ body {
 }
 .gen-drop-item:hover { background: rgba(67,105,255,.14); color: #b8c8ff; }
 .gen-drop-item:hover .ico-svg { color: #90AAFF; }
+
+/* ═══════════ WORKSPACE BATCH (UI premium — studio pro) ═══════════ */
+.ws-root { display:flex; flex-direction:column; gap:12px; }
+/* Barre d'informations */
+.ws-infobar { display:flex; gap:8px; flex-wrap:wrap; align-items:stretch;
+  background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015));
+  border:1px solid var(--border); border-radius:12px; padding:10px 12px; }
+.ws-stat { display:flex; flex-direction:column; align-items:center; justify-content:center;
+  min-width:92px; padding:6px 14px; border-radius:9px; }
+.ws-stat + .ws-stat { border-left:1px solid var(--border); }
+.ws-stat-v { font-size:1.15rem; font-weight:800; line-height:1.1; color:var(--text); font-variant-numeric:tabular-nums; }
+.ws-stat-l { font-size:.66rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-top:2px; }
+.ws-stat-hi .ws-stat-v { color:var(--accent); }
+.ws-stat-status { flex-direction:row; gap:8px; margin-left:auto; }
+.ws-dot { width:9px; height:9px; border-radius:50%; background:var(--muted); box-shadow:0 0 0 3px rgba(255,255,255,.04); }
+.ws-dot.ready { background:#3ea6ff; } .ws-dot.run { background:#f5b53d; animation:wsPulse 1s infinite; }
+.ws-dot.done { background:var(--success); } .ws-dot.err { background:var(--error); }
+@keyframes wsPulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+/* 3 panneaux */
+.ws-panels { display:grid; grid-template-columns:1fr 6px 1fr 6px 1fr; gap:0;
+  min-height:460px; height:56vh; }
+.ws-panel { display:flex; flex-direction:column; min-width:0; overflow:hidden;
+  background:linear-gradient(180deg, rgba(255,255,255,.028), rgba(255,255,255,.01));
+  border:1px solid var(--border); border-radius:12px; }
+.ws-panel-head { display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:10px 12px; border-bottom:1px solid var(--border);
+  background:rgba(255,255,255,.02); border-radius:12px 12px 0 0; }
+.ws-panel-title { font-size:.86rem; font-weight:700; color:var(--text); display:flex; align-items:center; gap:7px; }
+.ws-panel-ico { font-size:.95rem; }
+.ws-panel-sub { font-size:.68rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+.ws-view-toggle { display:flex; gap:2px; background:rgba(0,0,0,.25); border:1px solid var(--border); border-radius:8px; padding:2px; }
+.ws-vt { width:26px; height:22px; border:0; background:transparent; color:var(--muted); border-radius:6px; cursor:pointer; font-size:.9rem; line-height:1; }
+.ws-vt.active { background:var(--accent); color:#fff; }
+.ws-drop { margin:10px; flex:0 0 auto; }
+.ws-gallery { flex:1 1 auto; overflow-y:auto; padding:0 10px 12px; }
+.ws-gallery.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(120px,1fr)); gap:10px; align-content:start; }
+.ws-gallery.list { display:flex; flex-direction:column; gap:6px; }
+
+/* cartes reels */
+.ws-card { position:relative; border:1px solid var(--border); border-radius:10px; overflow:hidden;
+  background:#0c0e14; cursor:pointer; transition:border-color .12s, transform .08s; }
+.ws-card:hover { border-color:var(--border-strong); }
+.ws-card.sel { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
+.ws-card video, .ws-card .ws-thumb-ph { width:100%; aspect-ratio:9/16; object-fit:cover; display:block; background:#05060a; }
+.ws-thumb-ph { display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:1.6rem; }
+.ws-card-info { padding:6px 8px; }
+.ws-card-name { font-size:.72rem; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ws-card-meta { font-size:.64rem; color:var(--muted); margin-top:2px; display:flex; gap:6px; flex-wrap:wrap; }
+.ws-card-check { position:absolute; top:6px; left:6px; width:18px; height:18px; border-radius:5px;
+  border:1.5px solid rgba(255,255,255,.7); background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; color:#fff; font-size:.7rem; }
+.ws-card.sel .ws-card-check { background:var(--accent); border-color:var(--accent); }
+.ws-card-grip { position:absolute; top:6px; right:6px; color:rgba(255,255,255,.5); font-size:.8rem; cursor:grab; }
+/* list mode */
+.ws-gallery.list .ws-card { display:flex; align-items:center; gap:10px; aspect-ratio:auto; }
+.ws-gallery.list .ws-card video, .ws-gallery.list .ws-card .ws-thumb-ph { width:44px; aspect-ratio:9/16; flex:0 0 auto; border-radius:6px; }
+.ws-gallery.list .ws-card-check, .ws-gallery.list .ws-card-grip { position:static; }
+.ws-gallery.list .ws-card-info { flex:1 1 auto; padding:6px 8px 6px 0; min-width:0; }
+.ws-empty { grid-column:1/-1; color:var(--muted); font-size:.78rem; text-align:center; padding:24px 8px; }
+
+/* panneau captions (préparatoire) */
+.ws-cap-actions { display:flex; gap:4px; }
+.ws-icon-btn { width:26px; height:24px; border:1px solid var(--border); background:rgba(255,255,255,.03); color:var(--muted); border-radius:7px; cursor:not-allowed; font-size:1rem; }
+.ws-cap-hint { font-size:.72rem; color:var(--muted); padding:10px 12px; line-height:1.45; border-bottom:1px solid var(--border); }
+.ws-cap-list { flex:1 1 auto; overflow-y:auto; padding:10px 12px; display:flex; flex-direction:column; gap:8px; }
+.ws-cap-card { border:1px solid var(--border); border-radius:9px; padding:9px 10px; background:rgba(255,255,255,.02); }
+.ws-cap-card.ws-ph { opacity:.72; }
+.ws-cap-name { font-size:.76rem; font-weight:700; color:var(--text); }
+.ws-cap-preview { font-size:.72rem; color:var(--muted); margin:3px 0 7px; font-style:italic; }
+.ws-cap-foot { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.ws-cap-lines { font-size:.64rem; color:var(--muted); }
+.ws-cap-btns { display:flex; gap:4px; }
+.ws-mini { font-size:.62rem; padding:2px 7px; border:1px solid var(--border); background:transparent; color:var(--muted); border-radius:6px; cursor:not-allowed; }
+.ws-mini.ws-danger { color:#e88; border-color:rgba(230,120,120,.3); }
+.ws-ph-empty { display:flex; align-items:center; justify-content:center; min-height:52px; border-style:dashed; color:var(--muted); font-size:.72rem; }
+
+/* séparateurs redimensionnables */
+.ws-resizer { cursor:col-resize; background:transparent; position:relative; }
+.ws-resizer::after { content:""; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:2px; height:34px; border-radius:2px; background:var(--border-strong); transition:background .12s; }
+.ws-resizer:hover::after, .ws-resizer.drag::after { background:var(--accent); }
+
+/* barres bas */
+.ws-settingsbar { border:1px solid var(--border); border-radius:12px; padding:12px 14px;
+  background:linear-gradient(180deg, rgba(255,255,255,.028), rgba(255,255,255,.01)); }
+.ws-settings-title { font-size:.66rem; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); font-weight:700; margin-bottom:8px; }
+.ws-settings-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; font-size:.82rem; font-weight:700; }
+.ws-lbl { color:var(--text); }
+.ws-sep { width:1px; height:18px; background:var(--border); }
+.ws-genbar { display:flex; flex-direction:column; gap:10px; }
+.ws-gen-btn { align-self:flex-start; }
+.ws-progress { margin:0; }
+
+@media (max-width:1000px){
+  .ws-panels { grid-template-columns:1fr !important; height:auto; }
+  .ws-resizer { display:none; }
+  .ws-panel { min-height:280px; }
+}
 </style>
 </head>
 <body>
@@ -1146,79 +1244,139 @@ BATCH MODE
 ══════════════════════════════════════════ -->
 <div id="batchTab" class="tab-content">
 
-<!-- Upload -->
-<div class="card">
-<h2><span class="num">1</span> Sources &amp; cibles</h2>
-<div style="font-size:0.8rem;color:var(--muted);margin:-6px 0 14px;">Choisis ci-dessous le mode de génération — Matrice (toutes les combinaisons A × B) ou Pairing (appariement 1 A ↔ 1 B). Les limites s'adaptent au mode sélectionné.</div>
+<!-- ═══════════ WORKSPACE BATCH — réorganisation UI uniquement.
+     Tous les éléments interactifs (IDs, name, onclick, onchange) sont
+     conservés à l'identique → la logique JS/Batch est INCHANGÉE. ═══════════ -->
+<div class="ws-root">
 
-<div class="matrix-wrap">
-<div class="matrix-grid">
-<div class="matrix-cell"></div><div class="matrix-cell"></div><div class="matrix-cell"></div>
-<div class="matrix-cell"></div><div class="matrix-cell"></div><div class="matrix-cell"></div>
-<div class="matrix-cell"></div><div class="matrix-cell"></div><div class="matrix-cell"></div>
-</div>
-<div class="matrix-readout">
-<div class="formula"><em>N</em> sources × <em>M</em> cibles = <em>N×M</em> résultats</div>
-<div class="note">Mode Batch traite toutes les combinaisons A × B en une seule passe — pensé pour produire un volume, pas une vidéo isolée.</div>
-</div>
-</div>
+  <!-- Barre d'informations (lecture seule, valeurs calculées depuis l'état existant) -->
+  <div class="ws-infobar">
+    <div class="ws-stat"><span class="ws-stat-v" id="wsInfoA">0</span><span class="ws-stat-l">reels A</span></div>
+    <div class="ws-stat"><span class="ws-stat-v" id="wsInfoB">0</span><span class="ws-stat-l">cibles B</span></div>
+    <div class="ws-stat"><span class="ws-stat-v" id="wsInfoCap">0</span><span class="ws-stat-l">captions</span></div>
+    <div class="ws-stat ws-stat-hi"><span class="ws-stat-v" id="wsInfoOut">0</span><span class="ws-stat-l">à générer</span></div>
+    <div class="ws-stat"><span class="ws-stat-v" id="wsInfoEta">—</span><span class="ws-stat-l">temps estimé</span></div>
+    <div class="ws-stat ws-stat-status"><span class="ws-dot" id="wsStatusDot"></span><span class="ws-stat-l" id="wsInfoStatus">Prêt</span></div>
+  </div>
 
-<div class="drop-row">
-<div class="drop-zone upcard" id="bZoneA">
-<input type="file" id="bInputA" accept="video/*" multiple />
-<span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="5" width="9" height="8" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M11.5 8 L15.5 6 V12 L11.5 10 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
-<div class="meta">
-<div class="lbl">Vidéos sources (A)</div>
-<div class="sub" id="bSubA">1 à 50 fichiers</div>
-<div class="fn" id="bNameA"></div>
-</div>
-</div>
-<div class="drop-zone upcard" id="bZoneB">
-<input type="file" id="bInputB" accept="video/*" multiple />
-<span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 13 V4.5 L13.5 3 V11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="5.5" cy="13" r="1.7" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="11.5" r="1.7" stroke="currentColor" stroke-width="1.5"/></svg></span>
-<div class="meta">
-<div class="lbl">Vidéos cibles (B)</div>
-<div class="sub" id="bSubB">1 à 50 fichiers</div>
-<div class="fn" id="bNameB"></div>
-</div>
-</div>
-</div>
-<div style="margin-top:14px;display:flex;gap:14px;flex-wrap:wrap;align-items:center;">
-<span style="font-size:.82rem;font-weight:700;">Mode :</span>
-<label class="v-opt"><input type="radio" name="bStrategy" value="matrix" checked onchange="onBatchStrategyChange()"> Matrice (A × B)</label>
-<label class="v-opt"><input type="radio" name="bStrategy" value="pairing" onchange="onBatchStrategyChange()"> Pairing / Shuffle</label>
-<label class="v-opt"><input type="radio" name="bStrategy" value="variations" onchange="onBatchStrategyChange()"> Variations par A ⭐</label>
-</div>
-<div id="bVarOpts" style="display:none;margin-top:10px;align-items:center;gap:10px;flex-wrap:wrap;">
-<span style="font-size:.82rem;font-weight:600;">Variations par vidéo A :</span>
-<select id="bVarCount" onchange="updateComboPreview(); checkBatchReady();">
-<option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
-<option value="5" selected>5</option><option value="10">10</option><option value="15">15</option><option value="20">20</option>
-</select>
-<span style="font-size:.74rem;color:var(--muted);">A × variations sorties · B distincts par A</span>
-</div>
-<div id="bModeHelper" style="margin-top:10px;padding:10px 12px;border-radius:8px;background:rgba(124,92,255,0.07);border:1px solid var(--border);font-size:.8rem;line-height:1.5;"></div>
-<div style="margin-top:10px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:.82rem;font-weight:700;">
-<span>OCR :</span>
-<label class="v-opt"><input type="radio" name="ocrModeB" value="sonnet" checked> Sonnet ⭐ <span style="font-weight:500;opacity:.7">(Recommandé)</span></label>
-<label class="v-opt"><input type="radio" name="ocrModeB" value="opus"> Opus 👑 <span style="font-weight:500;opacity:.7">(Qualité maximale)</span></label>
-</div>
-<div style="margin-top:10px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:.82rem;font-weight:700;">
-<span>Contour CapCut :</span>
-<label class="v-opt"><input type="radio" name="capcutOutlineB" value="1" checked> Activé</label>
-<label class="v-opt"><input type="radio" name="capcutOutlineB" value="0"> Désactivé</label>
-</div>
-<div id="bPairingOpts" style="display:none;margin-top:10px;display:none;align-items:center;gap:10px;flex-wrap:wrap;">
-<span style="font-size:.82rem;font-weight:600;">Appariement :</span>
-<select id="bPairMode" onchange="updateComboPreview()">
-<option value="random">Aléatoire sans répétition</option>
-<option value="closest">Durée la plus proche</option>
-<option value="bgea">Durée B ≥ A si possible</option>
-</select>
-<span style="font-size:.74rem;color:var(--muted);">min(A, B) sorties · jamais A × B</span>
-</div>
-<div id="bComboPreview" class="batch-combo-preview" style="margin-top:12px;"></div>
-</div>
+  <!-- 3 panneaux redimensionnables -->
+  <div class="ws-panels" id="wsPanels">
+
+    <!-- Panneau 1 : Vidéos A / Sources visuelles -->
+    <section class="ws-panel" id="wsPanelA">
+      <header class="ws-panel-head">
+        <div class="ws-panel-title"><span class="ws-panel-ico">🎬</span> Vidéos A <span class="ws-panel-sub">Sources visuelles</span></div>
+        <div class="ws-view-toggle">
+          <button type="button" class="ws-vt active" data-view="grid" onclick="wsSetView('A','grid')" title="Grandes miniatures">▦</button>
+          <button type="button" class="ws-vt" data-view="list" onclick="wsSetView('A','list')" title="Compacte">≡</button>
+        </div>
+      </header>
+      <div class="drop-zone upcard ws-drop" id="bZoneA">
+        <input type="file" id="bInputA" accept="video/*" multiple />
+        <span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="5" width="9" height="8" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M11.5 8 L15.5 6 V12 L11.5 10 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
+        <div class="meta">
+          <div class="lbl">Ajouter des vidéos A</div>
+          <div class="sub" id="bSubA">1 à 50 fichiers</div>
+          <div class="fn" id="bNameA"></div>
+        </div>
+      </div>
+      <div class="ws-gallery grid" id="wsGalleryA"></div>
+    </section>
+
+    <div class="ws-resizer" data-i="0" title="Glisser pour redimensionner"></div>
+
+    <!-- Panneau 2 : Captions détectées depuis B / aperçu OCR (zone préparatoire, non connectée) -->
+    <section class="ws-panel" id="wsPanelCap">
+      <header class="ws-panel-head">
+        <div class="ws-panel-title"><span class="ws-panel-ico">✏️</span> Captions <span class="ws-panel-sub">aperçu OCR</span></div>
+        <div class="ws-cap-actions">
+          <button type="button" class="ws-icon-btn" title="Ajouter (bientôt)" disabled>＋</button>
+        </div>
+      </header>
+      <div class="ws-cap-hint">Zone préparatoire. Les captions sont détectées automatiquement sur les vidéos B lors de la génération. La bibliothèque de captions manuelles arrivera dans un chantier dédié.</div>
+      <div class="ws-cap-list" id="wsCapList">
+        <div class="ws-cap-card ws-ph"><div class="ws-cap-name">POV caption</div><div class="ws-cap-preview">« when you finally … »</div><div class="ws-cap-foot"><span class="ws-cap-lines">2 lignes</span><span class="ws-cap-btns"><button type="button" class="ws-mini" disabled>modifier</button><button type="button" class="ws-mini" disabled>dupliquer</button><button type="button" class="ws-mini ws-danger" disabled>suppr.</button></span></div></div>
+        <div class="ws-cap-card ws-ph"><div class="ws-cap-name">Hook 1</div><div class="ws-cap-preview">« 3 types of men … »</div><div class="ws-cap-foot"><span class="ws-cap-lines">4 lignes</span><span class="ws-cap-btns"><button type="button" class="ws-mini" disabled>modifier</button><button type="button" class="ws-mini" disabled>dupliquer</button><button type="button" class="ws-mini ws-danger" disabled>suppr.</button></span></div></div>
+        <div class="ws-cap-card ws-ph ws-ph-empty"><span>Aperçu — non connecté</span></div>
+      </div>
+    </section>
+
+    <div class="ws-resizer" data-i="1" title="Glisser pour redimensionner"></div>
+
+    <!-- Panneau 3 : Vidéos B / Cibles audio + texte -->
+    <section class="ws-panel" id="wsPanelB">
+      <header class="ws-panel-head">
+        <div class="ws-panel-title"><span class="ws-panel-ico">🎵</span> Vidéos B <span class="ws-panel-sub">Cibles audio + texte</span></div>
+        <div class="ws-view-toggle">
+          <button type="button" class="ws-vt active" data-view="grid" onclick="wsSetView('B','grid')" title="Grandes miniatures">▦</button>
+          <button type="button" class="ws-vt" data-view="list" onclick="wsSetView('B','list')" title="Compacte">≡</button>
+        </div>
+      </header>
+      <div class="drop-zone upcard ws-drop" id="bZoneB">
+        <input type="file" id="bInputB" accept="video/*" multiple />
+        <span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 13 V4.5 L13.5 3 V11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="5.5" cy="13" r="1.7" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="11.5" r="1.7" stroke="currentColor" stroke-width="1.5"/></svg></span>
+        <div class="meta">
+          <div class="lbl">Ajouter des vidéos B</div>
+          <div class="sub" id="bSubB">1 à 50 fichiers</div>
+          <div class="fn" id="bNameB"></div>
+        </div>
+      </div>
+      <div class="ws-gallery grid" id="wsGalleryB"></div>
+    </section>
+
+  </div>
+
+  <!-- Barre de paramètres de génération (contrôles existants relocalisés — IDs inchangés) -->
+  <div class="ws-settingsbar">
+    <div class="ws-settings-title">Paramètres de génération</div>
+    <div class="ws-settings-row">
+      <span class="ws-lbl">Mode :</span>
+      <label class="v-opt"><input type="radio" name="bStrategy" value="matrix" checked onchange="onBatchStrategyChange()"> Matrice (A × B)</label>
+      <label class="v-opt"><input type="radio" name="bStrategy" value="pairing" onchange="onBatchStrategyChange()"> Pairing / Shuffle</label>
+      <label class="v-opt"><input type="radio" name="bStrategy" value="variations" onchange="onBatchStrategyChange()"> Variations par A ⭐</label>
+      <span class="ws-sep"></span>
+      <span class="ws-lbl">OCR :</span>
+      <label class="v-opt"><input type="radio" name="ocrModeB" value="sonnet" checked> Sonnet ⭐ <span style="font-weight:500;opacity:.7">(Recommandé)</span></label>
+      <label class="v-opt"><input type="radio" name="ocrModeB" value="opus"> Opus 👑 <span style="font-weight:500;opacity:.7">(Qualité maximale)</span></label>
+      <span class="ws-sep"></span>
+      <span class="ws-lbl">Contour CapCut :</span>
+      <label class="v-opt"><input type="radio" name="capcutOutlineB" value="1" checked> Activé</label>
+      <label class="v-opt"><input type="radio" name="capcutOutlineB" value="0"> Désactivé</label>
+    </div>
+    <div id="bVarOpts" style="display:none;margin-top:10px;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:.82rem;font-weight:600;">Variations par vidéo A :</span>
+      <select id="bVarCount" onchange="updateComboPreview(); checkBatchReady();">
+        <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
+        <option value="5" selected>5</option><option value="10">10</option><option value="15">15</option><option value="20">20</option>
+      </select>
+      <span style="font-size:.74rem;color:var(--muted);">A × variations sorties · B distincts par A</span>
+    </div>
+    <div id="bPairingOpts" style="display:none;margin-top:10px;display:none;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:.82rem;font-weight:600;">Appariement :</span>
+      <select id="bPairMode" onchange="updateComboPreview()">
+        <option value="random">Aléatoire sans répétition</option>
+        <option value="closest">Durée la plus proche</option>
+        <option value="bgea">Durée B ≥ A si possible</option>
+      </select>
+      <span style="font-size:.74rem;color:var(--muted);">min(A, B) sorties · jamais A × B</span>
+    </div>
+    <div id="bModeHelper" style="margin-top:10px;padding:10px 12px;border-radius:8px;background:rgba(124,92,255,0.07);border:1px solid var(--border);font-size:.8rem;line-height:1.5;"></div>
+    <div id="bComboPreview" class="batch-combo-preview" style="margin-top:10px;"></div>
+  </div>
+
+  <!-- Barre de génération -->
+  <div class="ws-genbar">
+    <button id="bLaunchBtn" class="primary-btn ws-gen-btn" onclick="runBatch()" disabled><svg class="ico-svg sm" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 2 L4.5 10.5 H8.3 L7.4 16 L13.5 7 H9.5 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="currentColor" fill-opacity=".18"/></svg> Lancer le Batch</button>
+    <div class="card ws-progress" id="bProgressCard">
+      <h2 id="bProgressTitle"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Génération des combinaisons…</h2>
+      <div class="pbar"><div class="pbar-fill" id="bGlobalFill"></div></div>
+      <div id="bGlobalStatus" style="font-size:.85rem;color:var(--muted);margin-bottom:14px"></div>
+      <div id="bResultsList"></div>
+      <button class="zip-btn" id="bZipBtn" onclick="downloadZip()"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span> Télécharger tout en ZIP</button>
+    </div>
+  </div>
+
+</div><!-- /ws-root -->
 
 {% if current_user %}
 {% set _batch_row = (dashboard_usage_by_mode | selectattr('mode', 'equalto', 'batch') | list | first) %}
@@ -1242,18 +1400,6 @@ BATCH MODE
 {% endif %}
 </div>
 {% endif %}
-
-<button id="bLaunchBtn" class="primary-btn" onclick="runBatch()" disabled><svg class="ico-svg sm" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 2 L4.5 10.5 H8.3 L7.4 16 L13.5 7 H9.5 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="currentColor" fill-opacity=".18"/></svg> Lancer le Batch</button>
-
-<!-- Progress + per-video results -->
-<div class="card" id="bProgressCard">
-<h2 id="bProgressTitle"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Génération des combinaisons…</h2>
-<div style="font-size:0.8rem;color:var(--muted);margin:-6px 0 14px;">Suivi en temps réel de la progression et du résultat de chaque combinaison générée.</div>
-<div class="pbar"><div class="pbar-fill" id="bGlobalFill"></div></div>
-<div id="bGlobalStatus" style="font-size:.85rem;color:var(--muted);margin-bottom:14px"></div>
-<div id="bResultsList"></div>
-<button class="zip-btn" id="bZipBtn" onclick="downloadZip()"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span> Télécharger tout en ZIP</button>
-</div>
 
 </div><!-- /batchTab -->
 
@@ -3868,6 +4014,142 @@ async function runOptimizeVideo() {
     btn.disabled = false; btn.textContent = "Optimiser la vidéo";
   }
 }
+
+// ═══════════ WORKSPACE BATCH — présentation UNIQUEMENT (lecture seule).
+// Ne touche à aucune logique de génération : lit seulement l'état déjà géré
+// par le code Batch (bFilesA / bFilesB / bRunning / bResults) et remplit
+// galeries + barre d'infos, + gère le redimensionnement des panneaux. ═══════════
+const WS_THUMB_CAP = 48;   // au-delà : cartes compactes sans <video> (perf)
+
+function wsSetView(which, view){
+  const g = document.getElementById(which === "A" ? "wsGalleryA" : "wsGalleryB");
+  if (!g) return;
+  g.classList.toggle("grid", view === "grid");
+  g.classList.toggle("list", view === "list");
+  const panel = g.closest(".ws-panel");
+  if (panel){ const t = panel.querySelector(".ws-view-toggle"); if (t) t.querySelectorAll(".ws-vt").forEach(b => b.classList.toggle("active", b.dataset.view === view)); }
+  try { sessionStorage.setItem("wsView" + which, view); } catch(e){}
+  if (typeof window.wsForceRender === "function") window.wsForceRender();
+}
+
+(function wsInit(){
+  const panels = document.getElementById("wsPanels");
+  if (!panels) return;
+
+  try { const c = sessionStorage.getItem("wsCols"); if (c) panels.style.gridTemplateColumns = c; } catch(e){}
+
+  // Séparateurs redimensionnables (ajustent les 2 panneaux adjacents).
+  panels.querySelectorAll(".ws-resizer").forEach(rz => {
+    rz.addEventListener("mousedown", e => {
+      e.preventDefault();
+      const i = parseInt(rz.dataset.i, 10);
+      rz.classList.add("drag");
+      const startX = e.clientX;
+      const secs = [...panels.children].filter(c => c.classList.contains("ws-panel"));
+      const w0 = secs.map(s => s.getBoundingClientRect().width);
+      const total = w0.reduce((a,b) => a+b, 0) || 1;
+      const onMove = ev => {
+        const dx = ev.clientX - startX;
+        const w = w0.slice();
+        w[i]   = Math.max(140, w0[i]   + dx);
+        w[i+1] = Math.max(140, w0[i+1] - dx);
+        const fr = w.map(x => (x/total).toFixed(4) + "fr");
+        panels.style.gridTemplateColumns = `${fr[0]} 6px ${fr[1]} 6px ${fr[2]}`;
+      };
+      const onUp = () => {
+        rz.classList.remove("drag");
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        try { sessionStorage.setItem("wsCols", panels.style.gridTemplateColumns); } catch(e){}
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+  });
+
+  const sigOf = files => (files || []).map(f => f.name + "|" + f.size).join("~");
+  const state = { A: null, B: null };
+  const urls  = { A: [], B: [] };
+  const fmtSize = b => b < 1024*1024 ? (b/1024).toFixed(0)+" Ko" : b < 1024*1024*1024 ? (b/1024/1024).toFixed(1)+" Mo" : (b/1024/1024/1024).toFixed(2)+" Go";
+
+  function renderGallery(which){
+    const files = (which === "A" ? (typeof bFilesA !== "undefined" ? bFilesA : []) : (typeof bFilesB !== "undefined" ? bFilesB : [])) || [];
+    const g = document.getElementById(which === "A" ? "wsGalleryA" : "wsGalleryB");
+    if (!g) return;
+    urls[which].forEach(u => { try { URL.revokeObjectURL(u); } catch(e){} });
+    urls[which] = [];
+    g.innerHTML = "";
+    if (!files.length){ g.innerHTML = `<div class="ws-empty">Aucune vidéo ${which}. Glisse tes fichiers ou clique la zone ci-dessus.</div>`; return; }
+    const withThumb = files.length <= WS_THUMB_CAP;
+    files.forEach((f, idx) => {
+      const card = document.createElement("div"); card.className = "ws-card"; card.dataset.i = idx;
+      const chk = document.createElement("div"); chk.className = "ws-card-check";
+      const grip = document.createElement("div"); grip.className = "ws-card-grip"; grip.textContent = "⠿";
+      const info = document.createElement("div"); info.className = "ws-card-info";
+      const name = document.createElement("div"); name.className = "ws-card-name"; name.textContent = f.name; name.title = f.name;
+      const meta = document.createElement("div"); meta.className = "ws-card-meta"; meta.innerHTML = `<span>${fmtSize(f.size)}</span>`;
+      info.appendChild(name); info.appendChild(meta);
+      let media;
+      if (withThumb){
+        const url = URL.createObjectURL(f); urls[which].push(url);
+        media = document.createElement("video");
+        media.src = url; media.preload = "metadata"; media.muted = true; media.playsInline = true;
+        media.addEventListener("loadedmetadata", () => {
+          const d = media.duration, mm = Math.floor(d/60), ss = Math.round(d%60);
+          const res = (media.videoWidth && media.videoHeight) ? media.videoWidth+"×"+media.videoHeight : "";
+          meta.innerHTML = `<span>${isFinite(d) ? mm+":"+String(ss).padStart(2,"0") : ""}</span><span>${res}</span><span>${fmtSize(f.size)}</span>`;
+        });
+        card.addEventListener("click", () => {
+          if (media.paused){ document.querySelectorAll(".ws-card video").forEach(v => { if (v !== media) v.pause(); }); media.play().catch(()=>{}); }
+          else media.pause();
+        });
+      } else {
+        media = document.createElement("div"); media.className = "ws-thumb-ph"; media.textContent = "🎞";
+      }
+      chk.addEventListener("click", ev => { ev.stopPropagation(); card.classList.toggle("sel"); chk.textContent = card.classList.contains("sel") ? "✓" : ""; });
+      card.appendChild(chk); card.appendChild(grip); card.appendChild(media); card.appendChild(info);
+      g.appendChild(card);
+    });
+  }
+
+  function computeOutputs(nA, nB){
+    let strat = "matrix"; try { strat = getBatchStrategy(); } catch(e){}
+    if (strat === "variations"){ let v = 5; try { v = getBatchVariations(); } catch(e){} return nA * v; }
+    if (strat === "pairing") return Math.min(nA, nB);
+    return nA * nB;
+  }
+  const fmtEta = sec => !sec ? "—" : (Math.floor(sec/60) > 0 ? `${Math.floor(sec/60)} min ${Math.round(sec%60)}s` : `${Math.round(sec)}s`);
+
+  function tick(){
+    const A = (typeof bFilesA !== "undefined" ? bFilesA : []) || [];
+    const B = (typeof bFilesB !== "undefined" ? bFilesB : []) || [];
+    const sA = sigOf(A), sB = sigOf(B);
+    if (sA !== state.A){ state.A = sA; renderGallery("A"); }
+    if (sB !== state.B){ state.B = sB; renderGallery("B"); }
+    const out = computeOutputs(A.length, B.length);
+    const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+    set("wsInfoA", A.length); set("wsInfoB", B.length); set("wsInfoCap", B.length);
+    set("wsInfoOut", out); set("wsInfoEta", fmtEta(out * 8));
+    const dot = document.getElementById("wsStatusDot"), lbl = document.getElementById("wsInfoStatus");
+    let st = "ready", txt = "Prêt";
+    try {
+      if (typeof bRunning !== "undefined" && bRunning){ st = "run"; txt = "Génération…"; }
+      else if (typeof bResults !== "undefined" && bResults.length){
+        const ok = bResults.filter(r => r.status === "done").length;
+        const err = bResults.filter(r => r.status === "error").length;
+        st = (err && !ok) ? "err" : "done";
+        txt = `Terminé · ${ok} OK${err ? ` · ${err} err` : ""}`;
+      }
+    } catch(e){}
+    if (dot) dot.className = "ws-dot " + st;
+    if (lbl) lbl.textContent = txt;
+  }
+  window.wsForceRender = function(){ state.A = null; state.B = null; tick(); };
+
+  ["A","B"].forEach(w => { try { const v = sessionStorage.getItem("wsView" + w); if (v) wsSetView(w, v); } catch(e){} });
+  setInterval(tick, 500);
+  tick();
+})();
 </script>
 </body>
 </html>
