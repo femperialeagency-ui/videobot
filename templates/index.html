@@ -2020,9 +2020,9 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
         <div class="ws-panel-title"><span class="ws-panel-ico">🎵</span> Musiques <span class="ws-panel-sub">bibliothèque</span></div>
       </header>
       <div class="drop-zone upcard ws-drop" id="rZoneMus">
-        <input type="file" id="rMusInput" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus" multiple />
+        <input type="file" id="rMusInput" accept="audio/*,video/*,.mp3,.m4a,.aac,.wav,.ogg,.opus,.mp4,.mov,.webm,.m4v,.mkv" multiple />
         <span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2 V11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M9 2 L13.5 3.7 V6.5 L9 4.8 Z" fill="currentColor"/><circle cx="6.5" cy="11.5" r="2.6" stroke="currentColor" stroke-width="1.6"/></svg></span>
-        <div class="meta"><div class="lbl">Ajouter des musiques</div><div class="sub">.mp3 .m4a .wav .ogg</div><div class="fn" id="rMusName"></div></div>
+        <div class="meta"><div class="lbl">Ajouter des musiques</div><div class="sub">Audio ou vidéo — on extrait l'audio automatiquement</div><div class="fn" id="rMusName"></div></div>
       </div>
       <div class="r-search"><input type="text" id="rMusSearch" placeholder="Rechercher une musique…" oninput="rMusRender()"></div>
       <div class="ws-cap-list" id="rMusList"></div>
@@ -4438,9 +4438,14 @@ function rCapAssign(id){ const targets=rReels.filter(r=>r.sel); (targets.length?
 
 // ── Music library ──
 async function rUploadMusic(files){
-  const audio=files.filter(f=> f.type.startsWith("audio/") || /\.(mp3|m4a|aac|wav|ogg|opus)$/i.test(f.name));
+  const ok=files.filter(f=> f.type.startsWith("audio/") || f.type.startsWith("video/") || /\.(mp3|m4a|aac|wav|ogg|opus|mp4|mov|webm|m4v|mkv|avi)$/i.test(f.name));
   const nameEl=document.getElementById("rMusName");
-  for(const f of audio){ if(nameEl) nameEl.textContent="⏳ "+f.name; const fd=new FormData(); fd.append("file",f); try{ await rPost("/reels_music_upload",fd,true); }catch(e){} }
+  for(const f of ok){
+    const isVid = f.type.startsWith("video/") || /\.(mp4|mov|webm|m4v|mkv|avi)$/i.test(f.name);
+    if(nameEl) nameEl.textContent=(isVid?"🎬 extraction audio… ":"⏳ ")+f.name;
+    const fd=new FormData(); fd.append("file",f);
+    try{ const d=await rPost("/reels_music_upload",fd,true); if(d && d.error) alert("« "+f.name+" » : "+d.error); }catch(e){ alert("Erreur upload : "+e.message); }
+  }
   if(nameEl) nameEl.textContent="";
   await rRefreshMusic();
 }
@@ -4452,8 +4457,9 @@ function rMusRender(){
   if(!items.length){ list.innerHTML='<div class="ws-empty">Aucune musique. Ajoute des fichiers audio ci-dessus.</div>'; return; }
   items.forEach(m=>{
     const d=m.duration||0, mm=Math.floor(d/60), ss=Math.round(d%60);
+    const vidBadge = (m.source_type==="video_extracted") ? ` <span class="r-badge mus on" style="display:inline-block;">🎬 extrait vidéo</span>` : "";
     const card=document.createElement("div"); card.className="ws-cap-card";
-    card.innerHTML=`<div class="ws-cap-name">${rEsc(m.name)}</div>
+    card.innerHTML=`<div class="ws-cap-name">${rEsc(m.name)}${vidBadge}</div>
       <div class="r-audiorow"><audio controls preload="none" src="/reels_music_file/${m.id}"></audio></div>
       <div class="ws-cap-foot"><span class="ws-cap-lines">${isFinite(d)?mm+":"+String(ss).padStart(2,"0"):""} · ${rFmtSize(m.size||0)}</span>
       <span class="ws-cap-btns">

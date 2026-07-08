@@ -5458,15 +5458,23 @@ def _migrate_reels_tables():
                 )""")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS reels_music (
-                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id    INTEGER,
-                    name       TEXT NOT NULL,
-                    filename   TEXT NOT NULL,
-                    ext        TEXT,
-                    size       INTEGER,
-                    duration   REAL,
-                    created_at TEXT
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id     INTEGER,
+                    name        TEXT NOT NULL,
+                    filename    TEXT NOT NULL,
+                    ext         TEXT,
+                    size        INTEGER,
+                    duration    REAL,
+                    source_type TEXT DEFAULT 'audio',
+                    created_at  TEXT
                 )""")
+            # Idempotent add for pre-existing installs (column may not exist yet).
+            try:
+                cols = [r[1] for r in conn.execute("PRAGMA table_info(reels_music)").fetchall()]
+                if "source_type" not in cols:
+                    conn.execute("ALTER TABLE reels_music ADD COLUMN source_type TEXT DEFAULT 'audio'")
+            except Exception:
+                pass
     except Exception as e:
         print(f"[reels] migrate WARNING: {e}")
 
@@ -5611,8 +5619,23 @@ def reels_caption_delete():
 
 # ── MODULE 2 — MUSIC LIBRARY ──────────────────────────────────────
 def _reels_music_row(row):
+    try:
+        st = row["source_type"] or "audio"
+    except Exception:
+        st = "audio"
     return {"id": row["id"], "name": row["name"], "ext": row["ext"],
-            "size": row["size"], "duration": row["duration"]}
+            "size": row["size"], "duration": row["duration"], "source_type": st}
+
+
+def _reels_has_audio(path):
+    """True if the media file has at least one audio stream (ffprobe)."""
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a",
+                            "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(path)],
+                           capture_output=True, text=True, timeout=20)
+        return "audio" in (r.stdout or "")
+    except Exception:
+        return False
 
 
 @app.route("/reels_music_list", methods=["GET"])
@@ -5634,12 +5657,45 @@ def reels_music_upload():
         f = request.files["file"]
         orig = f.filename or "musique"
         ext = os.path.splitext(orig)[1].lower()
-        if ext not in REELS_MUSIC_EXT:
-            return jsonify({"error": f"Format audio non supporté ({ext or 'inconnu'})"}), 400
+        is_audio = ext in REELS_MUSIC_EXT
+        is_video = ext in REELS_VIDEO_EXT
+        if not (is_audio or is_video):
+            return jsonify({"error": f"Format non supporté ({ext or 'inconnu'}) — audio ou vidéo attendu"}), 400
+
         uid = _reels_uid()
-        stored = f"{uid or 0}_{uuid.uuid4().hex}{ext}"
-        path = REELS_MUSIC_DIR / stored
-        f.save(str(path))
+        name = os.path.splitext(os.path.basename(orig))[0][:120] or "musique"
+        source_type = "audio"
+
+        if is_audio:
+            # ── Audio direct (comportement inchangé) ──
+            stored = f"{uid or 0}_{uuid.uuid4().hex}{ext}"
+            path = REELS_MUSIC_DIR / stored
+            f.save(str(path))
+            final_ext = ext
+        else:
+            # ── Vidéo : extraire UNIQUEMENT l'audio (FFmpeg only, 0 Claude, 0 OCR) ──
+            tmp_in = REELS_MUSIC_DIR / f"_tmp_{uuid.uuid4().hex}{ext}"
+            f.save(str(tmp_in))
+            try:
+                if not _reels_has_audio(tmp_in):
+                    return jsonify({"error": "Cette vidéo ne contient aucune piste audio."}), 400
+                final_ext = ".m4a"
+                stored = f"{uid or 0}_{uuid.uuid4().hex}{final_ext}"
+                path = REELS_MUSIC_DIR / stored
+                cmd = ["ffmpeg", "-y", "-i", str(tmp_in), "-vn",
+                       "-c:a", "aac", "-b:a", "192k", "-loglevel", "error", str(path)]
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                if proc.returncode != 0 or not path.exists():
+                    try: path.unlink(missing_ok=True)
+                    except Exception: pass
+                    err = (proc.stderr or "extraction audio échouée")[-400:]
+                    return jsonify({"error": f"Extraction audio impossible : {err}"}), 400
+                source_type = "video_extracted"
+            finally:
+                try: tmp_in.unlink(missing_ok=True)
+                except Exception: pass
+                gc.collect()
+
         size = path.stat().st_size
         dur = 0.0
         try:
@@ -5648,11 +5704,11 @@ def reels_music_upload():
             dur = float(json.loads(r.stdout)["format"]["duration"])
         except Exception:
             dur = 0.0
-        name = os.path.splitext(os.path.basename(orig))[0][:120] or "musique"
+
         with _users_db() as conn:
             cur = conn.execute(
-                "INSERT INTO reels_music (user_id, name, filename, ext, size, duration, created_at) VALUES (?,?,?,?,?,?,?)",
-                (uid, name, stored, ext, size, dur, _reels_now()))
+                "INSERT INTO reels_music (user_id, name, filename, ext, size, duration, source_type, created_at) VALUES (?,?,?,?,?,?,?,?)",
+                (uid, name, stored, final_ext, size, dur, source_type, _reels_now()))
             row = conn.execute("SELECT * FROM reels_music WHERE id=?", (cur.lastrowid,)).fetchone()
         return jsonify({"music": _reels_music_row(row)})
     except Exception as e:
