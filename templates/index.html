@@ -857,6 +857,31 @@ body {
 .r-fchip.danger { color:#ff8f8f; border-color:rgba(255,120,120,.4); }
 .r-cardfolder { display:flex; align-items:center; gap:5px; padding:2px 0 6px; font-size:.7rem; color:var(--muted); }
 .r-folder-sel { flex:1; min-width:0; font-size:.68rem; padding:3px 6px; border:1px solid var(--border); background:rgba(255,255,255,.03); color:var(--text); border-radius:7px; cursor:pointer; }
+/* Gestion des tags (Modules 1 & 2) */
+.r-tag-lbl { font-size:.72rem; color:var(--muted); }
+.r-tag b { font-weight:700; opacity:.65; }
+.r-tag.add { color:var(--accent); border:1px solid rgba(124,92,255,.45); background:transparent; padding:2px 8px; border-radius:20px; cursor:pointer; font-size:.62rem; }
+.r-tag.mini { padding:2px 7px; cursor:pointer; }
+.r-tag.danger { color:#ff8f8f; border:1px solid rgba(255,120,120,.4); background:transparent; }
+/* Captions/musiques assignées sur la carte reel (Modules 3/4/7) */
+.r-asg { padding:2px 8px 4px; display:flex; flex-direction:column; gap:3px; }
+.r-asg-line { display:flex; gap:4px; flex-wrap:wrap; align-items:center; }
+.r-asg-count { font-size:.6rem; font-weight:700; color:var(--muted); background:rgba(255,255,255,.04); border:1px solid var(--border); padding:1px 6px; border-radius:20px; }
+.r-asg-chip { font-size:.6rem; padding:1px 6px; border-radius:20px; display:inline-flex; align-items:center; gap:4px; border:1px solid var(--border); }
+.r-asg-chip.cap { color:#bda6ff; border-color:rgba(124,92,255,.4); background:rgba(124,92,255,.1); }
+.r-asg-chip.mus { color:#7fe0c0; border-color:rgba(60,200,160,.35); background:rgba(60,200,160,.1); }
+.r-asg-chip b { cursor:pointer; font-weight:700; opacity:.7; }
+.r-asg-chip b:hover { opacity:1; color:#ff8f8f; }
+.r-asg-empty { font-size:.6rem; color:var(--border-strong); }
+.r-reel-acts { display:flex; gap:6px; align-items:center; flex-wrap:wrap; padding:0 8px 7px; }
+.r-assign-mini.danger { color:#ff8f8f; border-color:rgba(255,120,120,.4); }
+/* Contrôleur de preview flottant (Module 5) */
+.r-preview-ctl { display:none; position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:9000; gap:10px; align-items:center; padding:9px 14px; border-radius:12px; background:rgba(20,20,28,.96); border:1px solid var(--border-strong); box-shadow:0 8px 30px rgba(0,0,0,.5); }
+.r-pv-name { font-size:.72rem; font-weight:700; color:var(--text); max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.r-pv-mus { font-size:.68rem; color:#7fe0c0; }
+.r-pv-btn { border:1px solid var(--border); background:rgba(255,255,255,.05); color:var(--text); border-radius:8px; padding:3px 9px; cursor:pointer; font-size:.8rem; }
+.r-pv-btn:disabled { opacity:.4; cursor:default; }
+.r-pv-btn.danger { color:#ff8f8f; border-color:rgba(255,120,120,.4); }
 
 /* éditeur visuel */
 .r-edit-box { width:min(1180px,97vw); }
@@ -2079,14 +2104,20 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
       <div class="r-assign-bar">
         <button type="button" class="v-ghost-btn r-accent" onclick="rAssignOpen()">✨ Assignation intelligente</button>
         <button type="button" class="v-ghost-btn" onclick="rSelectAllReels()">☑ Tout sélect.</button>
+        <button type="button" class="v-ghost-btn ws-danger" onclick="rDeleteSelectedReels()">🗑 Supprimer sélection</button>
         <button type="button" class="v-ghost-btn" onclick="rClearAssign()">✕ Vider assign.</button>
       </div>
       <div class="r-assign-bar r-quickbar">
-        <span class="r-quicklbl">⚡ En un clic :</span>
-        <button type="button" class="v-ghost-btn" onclick="rQuickAssign('cap')">✏️ Toutes les captions → reels</button>
-        <button type="button" class="v-ghost-btn" onclick="rQuickAssign('mus')">🎵 Toutes les musiques → reels</button>
-        <button type="button" class="v-ghost-btn" onclick="rQuickAssign('both')">✨ Captions + musiques auto</button>
-        <button type="button" class="v-ghost-btn ws-danger" onclick="rClearAssign()">🧹 Vider toutes les assignations</button>
+        <span class="r-quicklbl">⚡ Toutes → tous :</span>
+        <button type="button" class="v-ghost-btn" onclick="rQuickAssign('cap')">✏️ Toutes les captions</button>
+        <button type="button" class="v-ghost-btn" onclick="rQuickAssign('mus')">🎵 Toutes les musiques</button>
+        <button type="button" class="v-ghost-btn" onclick="rQuickAssign('both')">✨ Captions + musiques</button>
+      </div>
+      <div class="r-assign-bar r-quickbar">
+        <span class="r-quicklbl">🎯 Sélection → sélection :</span>
+        <button type="button" class="v-ghost-btn" onclick="rAssignSelected('cap')">✏️ Captions sélect.</button>
+        <button type="button" class="v-ghost-btn" onclick="rAssignSelected('mus')">🎵 Musiques sélect.</button>
+        <button type="button" class="v-ghost-btn ws-danger" onclick="rClearAssign()">🧹 Vider assignations</button>
       </div>
       <div class="r-toolbar">
         <input type="text" id="rReelSearch" class="r-tool-input" placeholder="Rechercher un reel…" oninput="rRenderReels()">
@@ -4527,7 +4558,7 @@ function wsSetView(which, view){
 })();
 
 // ═══════════ REELS PRODUCTION STUDIO — front-end (pipeline séparé, 0 OCR) ═══════════
-let rReels = [];       // {file,url,capId,musId,sel,fav}
+let rReels = [];       // {file,url,capIds:[],musIds:[],sel,fav}
 let rCaptions = [];
 let rMusic = [];
 let rPresets = [];
@@ -4661,7 +4692,7 @@ function rWireShortcuts(){
 
 function rIsVideo(f){ return f.type.startsWith("video/") || /\.(mp4|mov|avi|mkv|webm|m4v)$/i.test(f.name); }
 function rAddReels(files){
-  files.filter(rIsVideo).forEach(f=>{ rReels.push({file:f, url:URL.createObjectURL(f), capId:null, musId:null, sel:false, fav:false}); });
+  files.filter(rIsVideo).forEach(f=>{ rReels.push({file:f, url:URL.createObjectURL(f), capIds:[], musIds:[], sel:false, fav:false}); });
   const n=rReels.length; const el=document.getElementById("rNameReels"); if(el) el.textContent = n? `✓ ${n} reel${n>1?"s":""}` : "";
   rRenderReels(); rUpdateInfo(); rEditFillPreviewReels();
 }
@@ -4676,7 +4707,7 @@ function rSortedReels(){
   let a=rReels.map((r,i)=>({r,i})).filter(x=>rMatchReel(x.r));
   const s=rVal("rReelSort");
   if(s==="name") a.sort((x,y)=>x.r.file.name.localeCompare(y.r.file.name));
-  else if(s==="assigned") a.sort((x,y)=>((y.r.capId?1:0)+(y.r.musId?1:0))-((x.r.capId?1:0)+(x.r.musId?1:0)));
+  else if(s==="assigned") a.sort((x,y)=>(y.r.capIds.length+y.r.musIds.length)-(x.r.capIds.length+x.r.musIds.length));
   return a;
 }
 function rRenderReels(){
@@ -4692,28 +4723,110 @@ function rRenderReels(){
     const meta=document.createElement("div"); meta.className="ws-card-meta"; meta.innerHTML=`<span>${rFmtSize(r.file.size)}</span>`;
     v.addEventListener("loadedmetadata",()=>{ meta.innerHTML=`<span>${rFmtDur(v.duration)}</span><span>${v.videoWidth?v.videoWidth+"×"+v.videoHeight:""}</span><span>${rFmtSize(r.file.size)}</span>`; });
     info.appendChild(nm); info.appendChild(meta);
-    const badges=document.createElement("div"); badges.className="r-badges";
-    const cb=document.createElement("div"); cb.className="r-badge cap"+(r.capId?" on":""); cb.textContent="✏️ "+(r.capId?rCapNameOf(r.capId):"—");
-    const mb=document.createElement("div"); mb.className="r-badge mus"+(r.musId?" on":""); mb.textContent="🎵 "+(r.musId?rMusNameOf(r.musId):"—");
-    badges.appendChild(cb); badges.appendChild(mb);
-    const acts=document.createElement("div"); acts.style.cssText="display:flex;gap:6px;align-items:center;padding:0 8px 7px;";
-    acts.innerHTML=`<button type="button" class="r-assign-mini" onclick="event.stopPropagation();rReelPreview(${i})">👁 aperçu${r.musId?" 🎵":""}</button><span class="r-favmark ${r.fav?'':'off'}" onclick="event.stopPropagation();rReelFav(${i})">★</span>`;
+    // Captions/musiques assignées (Module 3/4/7) — chips retirables.
+    const asg=document.createElement("div"); asg.className="r-asg";
+    const capChips = r.capIds.length
+      ? r.capIds.map(id=>`<span class="r-asg-chip cap">✏️ ${rEsc(rCapNameOf(id))}<b onclick="event.stopPropagation();rReelRemoveCap(${i},${id})">✕</b></span>`).join("")
+      : `<span class="r-asg-empty">✏️ aucune caption</span>`;
+    const musChips = r.musIds.length
+      ? r.musIds.map(id=>`<span class="r-asg-chip mus">🎵 ${rEsc(rMusNameOf(id))}<b onclick="event.stopPropagation();rReelRemoveMus(${i},${id})">✕</b></span>`).join("")
+      : `<span class="r-asg-empty">🎵 aucune musique</span>`;
+    asg.innerHTML=`<div class="r-asg-line"><span class="r-asg-count">${r.capIds.length} caption${r.capIds.length>1?"s":""}</span>${capChips}</div>
+                   <div class="r-asg-line"><span class="r-asg-count">${r.musIds.length} musique${r.musIds.length>1?"s":""}</span>${musChips}</div>`;
+    info.appendChild(asg);
+    const acts=document.createElement("div"); acts.className="r-reel-acts";
+    acts.innerHTML=`<button type="button" class="r-assign-mini" onclick="event.stopPropagation();rReelPreview(${i})">👁 aperçu${r.musIds.length?" 🎵":""}</button>
+      <button type="button" class="r-assign-mini" onclick="event.stopPropagation();rReelPickCap(${i})">✏️ caption</button>
+      <button type="button" class="r-assign-mini" onclick="event.stopPropagation();rReelPickMus(${i})">🎵 musique</button>
+      <button type="button" class="r-assign-mini danger" onclick="event.stopPropagation();rDeleteReel(${i})">🗑</button>
+      <span class="r-favmark ${r.fav?'':'off'}" onclick="event.stopPropagation();rReelFav(${i})">★</span>`;
     chk.addEventListener("click",ev=>{ ev.stopPropagation(); r.sel=!r.sel; card.classList.toggle("sel",r.sel); chk.textContent=r.sel?"✓":""; rUpdateInfo(); });
     card.addEventListener("click",()=>{ if(rPreviewAudio){ rPreviewAudio.pause(); } rPreviewIdx=-1; if(!v.src && v.dataset.src) v.src=v.dataset.src; if(v.paused){ document.querySelectorAll("#rGalleryReels video").forEach(x=>{if(x!==v)x.pause();}); v.play().catch(()=>{}); } else v.pause(); });
-    card.appendChild(chk); card.appendChild(v); card.appendChild(info); card.appendChild(badges); card.appendChild(acts);
+    card.appendChild(chk); card.appendChild(v); card.appendChild(info); card.appendChild(acts);
     g.appendChild(card);
   });
   rUpdateInfo();
 }
 function rReelFav(i){ if(rReels[i]){ rReels[i].fav=!rReels[i].fav; rRenderReels(); } }
 function rSelectAllReels(){ const any=rReels.some(r=>!r.sel); rReels.forEach(r=>r.sel=any); rRenderReels(); rUpdateInfo(); }
+// ── Assignation multi (Modules 3 & 4) ──
+function _rAddId(arr, id){ id=+id; if(!arr.includes(id)) arr.push(id); }
+function rReelRemoveCap(i, id){ const r=rReels[i]; if(!r) return; r.capIds=r.capIds.filter(x=>x!==+id); rRenderReels(); rUpdateInfo(); }
+function rReelRemoveMus(i, id){ const r=rReels[i]; if(!r) return; r.musIds=r.musIds.filter(x=>x!==+id); rRenderReels(); rUpdateInfo(); }
+function rReelPickCap(i){
+  const r=rReels[i]; if(!r) return;
+  if(!rCaptions.length){ alert("Aucune caption dans la bibliothèque."); return; }
+  const list=rCaptions.map((c,k)=>`${k+1}. ${c.name}`).join("\n");
+  const s=prompt(`Caption à ajouter au reel (numéro) :\n${list}`,""); if(!s) return;
+  const k=parseInt(s,10)-1; if(k>=0 && k<rCaptions.length){ _rAddId(r.capIds, rCaptions[k].id); rRenderReels(); rUpdateInfo(); }
+}
+function rReelPickMus(i){
+  const r=rReels[i]; if(!r) return;
+  if(!rMusic.length){ alert("Aucune musique dans la bibliothèque."); return; }
+  const list=rMusic.map((m,k)=>`${k+1}. ${m.name}`).join("\n");
+  const s=prompt(`Musique à ajouter au reel (numéro) :\n${list}`,""); if(!s) return;
+  const k=parseInt(s,10)-1; if(k>=0 && k<rMusic.length){ _rAddId(r.musIds, rMusic[k].id); rRenderReels(); rUpdateInfo(); }
+}
+// ── Suppression reels (Module 6) — purement local (fichiers navigateur) ──
+function rDeleteReel(i){
+  const r=rReels[i]; if(!r) return;
+  if(!confirm(`Supprimer le reel « ${r.file.name} » ?`)) return;
+  try{ URL.revokeObjectURL(r.url); }catch(e){}
+  rReels.splice(i,1);
+  const el=document.getElementById("rNameReels"); if(el) el.textContent = rReels.length? `✓ ${rReels.length} reel${rReels.length>1?"s":""}` : "";
+  rRenderReels(); rUpdateInfo(); rEditFillPreviewReels();
+}
+function rDeleteSelectedReels(){
+  const sel=rReels.filter(r=>r.sel);
+  if(!sel.length){ alert("Sélectionne au moins un reel (coche en haut à gauche des cartes)."); return; }
+  if(!confirm(`Supprimer ${sel.length} reel${sel.length>1?"s":""} sélectionné${sel.length>1?"s":""} ?`)) return;
+  sel.forEach(r=>{ try{ URL.revokeObjectURL(r.url); }catch(e){} });
+  rReels = rReels.filter(r=>!r.sel);
+  const el=document.getElementById("rNameReels"); if(el) el.textContent = rReels.length? `✓ ${rReels.length} reel${rReels.length>1?"s":""}` : "";
+  rRenderReels(); rUpdateInfo(); rEditFillPreviewReels();
+}
 
 // ── Captions library ──
-function rCapTagBar(){
-  const bar=document.getElementById("rCapTagBar"); if(!bar) return;
-  const tags=[...new Set(rCaptions.flatMap(c=>c.tags||[]))];
-  bar.innerHTML = tags.map(t=>`<span class="r-tag ${rFilter.capTag===t?'on':''}" onclick="rFilterTag('cap','${rEsc(t)}')">${rEsc(t)}</span>`).join("");
+function rCapTagBar(){ rTagBar("cap"); }
+// Barre de tags générique (Modules 1 & 2) — chips filtrantes + « + tag »
+// + renommage/suppression du tag actif.
+function rTagBar(kind){
+  const bar=document.getElementById(kind==="cap"?"rCapTagBar":"rMusTagBar"); if(!bar) return;
+  const items=kind==="cap"?rCaptions:rMusic;
+  const active=kind==="cap"?rFilter.capTag:rFilter.musTag;
+  const tags=[...new Set(items.flatMap(x=>x.tags||[]))].sort((a,b)=>a.localeCompare(b));
+  let h=`<span class="r-tag-lbl">🏷</span>`;
+  h+=tags.map(t=>{ const n=items.filter(x=>(x.tags||[]).includes(t)).length; return `<span class="r-tag ${active===t?'on':''}" onclick="rFilterTag('${kind}','${rEsc(t)}')" ondblclick="rTagRename('${kind}','${rEsc(t)}')" title="Double-clic pour renommer">${rEsc(t)} <b>${n}</b></span>`; }).join("");
+  h+=`<button type="button" class="r-tag add" onclick="rTagAdd('${kind}')">＋ tag</button>`;
+  if(active){ h+=`<button type="button" class="r-tag mini" onclick="rTagRename('${kind}','${rEsc(active)}')" title="Renommer">✎</button><button type="button" class="r-tag mini danger" onclick="rTagDelete('${kind}','${rEsc(active)}')" title="Supprimer">🗑</button>`; }
+  bar.innerHTML=h;
 }
+// Ajoute un tag aux éléments SÉLECTIONNÉS de la bibliothèque (sans éditeur).
+async function rTagAdd(kind){
+  const selSet=kind==="cap"?rCapSel:rMusSel; const items=kind==="cap"?rCaptions:rMusic;
+  if(!selSet.size){ alert("Sélectionne d'abord une ou plusieurs "+(kind==="cap"?"captions":"musiques")+" (clique les cartes), puis « + tag »."); return; }
+  const tag=prompt("Nom du tag à ajouter aux éléments sélectionnés :",""); if(!tag||!tag.trim()) return;
+  const t=tag.trim();
+  const url=kind==="cap"?"/reels_caption_update":"/reels_music_update";
+  for(const id of selSet){ const it=items.find(x=>x.id===id); if(!it) continue; const tags=[...new Set([...(it.tags||[]), t])]; try{ await rPost(url,{id, tags}); }catch(e){} }
+  if(kind==="cap"){ await rRefreshCaptions(); } else { await rRefreshMusic(); }
+}
+// Renomme un tag partout où il apparaît.
+async function rTagRename(kind, oldTag){
+  const name=prompt("Renommer le tag « "+oldTag+" » en :",oldTag); if(!name||!name.trim()||name.trim()===oldTag) return;
+  const nt=name.trim(); const items=kind==="cap"?rCaptions:rMusic; const url=kind==="cap"?"/reels_caption_update":"/reels_music_update";
+  for(const it of items){ if(!(it.tags||[]).includes(oldTag)) continue; const tags=[...new Set(it.tags.map(x=>x===oldTag?nt:x))]; try{ await rPost(url,{id:it.id, tags}); }catch(e){} }
+  if(kind==="cap"){ if(rFilter.capTag===oldTag) rFilter.capTag=nt; await rRefreshCaptions(); } else { if(rFilter.musTag===oldTag) rFilter.musTag=nt; await rRefreshMusic(); }
+}
+// Supprime un tag partout où il apparaît.
+async function rTagDelete(kind, tag){
+  if(!confirm("Supprimer le tag « "+tag+" » de tous les éléments ?")) return;
+  const items=kind==="cap"?rCaptions:rMusic; const url=kind==="cap"?"/reels_caption_update":"/reels_music_update";
+  for(const it of items){ if(!(it.tags||[]).includes(tag)) continue; const tags=it.tags.filter(x=>x!==tag); try{ await rPost(url,{id:it.id, tags}); }catch(e){} }
+  if(kind==="cap"){ if(rFilter.capTag===tag) rFilter.capTag=null; await rRefreshCaptions(); } else { if(rFilter.musTag===tag) rFilter.musTag=null; await rRefreshMusic(); }
+}
+// Édite les tags d'un seul élément depuis sa carte.
+async function rCapTags(id){ const c=rCaptions.find(x=>x.id===id); const t=prompt("Tags de cette caption (séparés par des virgules) :",(c&&c.tags||[]).join(", ")); if(t===null) return; const tags=t.split(",").map(s=>s.trim()).filter(Boolean); try{ await rPost("/reels_caption_update",{id,tags}); await rRefreshCaptions(); }catch(e){} }
 function rMatchCap(c){
   const q=(rVal("rCapSearch")||"").toLowerCase();
   if(q && !(c.name.toLowerCase().includes(q) || (c.segments||[]).some(s=>(s.text||"").toLowerCase().includes(q)))) return false;
@@ -4741,6 +4854,7 @@ function rCapRender(){
       <div class="ws-cap-foot"><span class="ws-cap-lines">${c.segments.length} seg. · <span class="r-usebadge">▶ ${c.usage_count||0}</span></span>
       <span class="ws-cap-btns">
         <button type="button" class="r-assign-mini" onclick="rCapAssign(${c.id})">assigner</button>
+        <button type="button" class="ws-mini r-live" onclick="rCapTags(${c.id})">🏷 tags</button>
         <button type="button" class="ws-mini r-live" onclick="rCapOpen(${c.id})">✎ modifier</button>
         <button type="button" class="r-assign-mini" onclick="rCapOpen(${c.id})">🎯 position</button>
         <button type="button" class="ws-mini r-live" onclick="rCapDup(${c.id})">dupliquer</button>
@@ -4751,7 +4865,7 @@ function rCapRender(){
   });
 }
 async function rCapFav(id,fav){ try{ await rPost("/reels_caption_favorite",{id,favorite:fav}); await rRefreshCaptions(); }catch(e){} }
-function rCapAssign(id){ const t=rReels.filter(r=>r.sel); (t.length?t:rReels).forEach(r=>r.capId=id); rRenderReels(); rUpdateInfo(); }
+function rCapAssign(id){ const t=rReels.filter(r=>r.sel); (t.length?t:rReels).forEach(r=>_rAddId(r.capIds,id)); rRenderReels(); rUpdateInfo(); }
 
 // ── Visual caption editor (Modules 1 & 2) ──
 function rEditFillPreviewReels(){
@@ -4957,7 +5071,7 @@ async function rCapSave(keepOpen){
   }catch(e){ alert("Erreur: "+e.message); return null; }
 }
 async function rCapDup(id){ try{ await rPost("/reels_caption_duplicate",{id}); await rRefreshCaptions(); }catch(e){} }
-async function rCapDel(id){ if(!confirm("Supprimer cette caption ?"))return; try{ await rPost("/reels_caption_delete",{id}); rReels.forEach(r=>{ if(r.capId===id) r.capId=null; }); rCapSel.delete(id); await rRefreshCaptions(); rRenderReels(); rUpdateInfo(); }catch(e){} }
+async function rCapDel(id){ if(!confirm("Supprimer cette caption ?"))return; try{ await rPost("/reels_caption_delete",{id}); rReels.forEach(r=>{ r.capIds=r.capIds.filter(x=>x!==id); }); rCapSel.delete(id); await rRefreshCaptions(); rRenderReels(); rUpdateInfo(); }catch(e){} }
 
 // ── Position presets (Module 2) ──
 function rPresetRenderBar(){
@@ -4992,11 +5106,7 @@ async function rUploadMusic(files){
   if(nameEl) nameEl.textContent="";
   await rRefreshMusic();
 }
-function rMusTagBar(){
-  const bar=document.getElementById("rMusTagBar"); if(!bar) return;
-  const tags=[...new Set(rMusic.flatMap(m=>m.tags||[]))];
-  bar.innerHTML = tags.map(t=>`<span class="r-tag ${rFilter.musTag===t?'on':''}" onclick="rFilterTag('mus','${rEsc(t)}')">${rEsc(t)}</span>`).join("");
-}
+function rMusTagBar(){ rTagBar("mus"); }
 function rMatchMus(m){
   const q=(rVal("rMusSearch")||"").toLowerCase();
   if(q && !m.name.toLowerCase().includes(q)) return false;
@@ -5033,11 +5143,11 @@ function rMusRender(){
     list.appendChild(card);
   });
 }
-function rMusAssign(id){ const t=rReels.filter(r=>r.sel); (t.length?t:rReels).forEach(r=>r.musId=id); rRenderReels(); rUpdateInfo(); }
+function rMusAssign(id){ const t=rReels.filter(r=>r.sel); (t.length?t:rReels).forEach(r=>_rAddId(r.musIds,id)); rRenderReels(); rUpdateInfo(); }
 async function rMusFav(id,fav){ try{ await rPost("/reels_music_favorite",{id,favorite:fav}); await rRefreshMusic(); }catch(e){} }
 async function rMusRename(id){ const m=rMusic.find(x=>x.id===id); const name=prompt("Nouveau nom :",m?m.name:""); if(!name) return; try{ await rPost("/reels_music_update",{id,name}); await rRefreshMusic(); }catch(e){} }
 async function rMusTags(id){ const m=rMusic.find(x=>x.id===id); const t=prompt("Tags (séparés par des virgules) :",(m&&m.tags||[]).join(", ")); if(t===null) return; const tags=t.split(",").map(s=>s.trim()).filter(Boolean); try{ await rPost("/reels_music_update",{id,tags}); await rRefreshMusic(); }catch(e){} }
-async function rMusDel(id){ if(!confirm("Supprimer cette musique ?"))return; try{ await rPost("/reels_music_delete",{id}); rReels.forEach(r=>{ if(r.musId===id) r.musId=null; }); rMusSel.delete(id); await rRefreshMusic(); rRenderReels(); rUpdateInfo(); }catch(e){} }
+async function rMusDel(id){ if(!confirm("Supprimer cette musique ?"))return; try{ await rPost("/reels_music_delete",{id}); rReels.forEach(r=>{ r.musIds=r.musIds.filter(x=>x!==id); }); rMusSel.delete(id); await rRefreshMusic(); rRenderReels(); rUpdateInfo(); }catch(e){} }
 
 // ── Filtres tag/fav ──
 function rToggleFavFilter(kind){
@@ -5054,7 +5164,7 @@ function rFilterTag(kind,tag){
 function rAssignOpen(){ document.getElementById("rAssignModal").style.display="flex"; }
 function rAssignClose(){ document.getElementById("rAssignModal").style.display="none"; }
 function rAssignClear(){ rClearAssign(); }
-function rClearAssign(){ rReels.forEach(r=>{ r.capId=null; r.musId=null; }); rRenderReels(); rUpdateInfo(); }
+function rClearAssign(){ rReels.forEach(r=>{ r.capIds=[]; r.musIds=[]; }); rRenderReels(); rUpdateInfo(); }
 function _rPool(kind){
   const which=document.querySelector(`input[name="rAssign${kind}Pool"]:checked`)?.value||"all";
   const src=kind==="Cap"?rCaptions:rMusic;
@@ -5078,18 +5188,20 @@ function rAssignApply(){
     else if(mode==="balanced"){ const counts=new Map(pool.map(p=>[p.id,0])); targets.forEach(r=>{ if(isFill&&_rGet(r,setter)) return; let best=pool[0].id,bc=Infinity; pool.forEach(p=>{ const c=counts.get(p.id); if(c<bc){bc=c;best=p.id;} }); counts.set(best,counts.get(best)+1); setter(r,best); }); }
     else { /* norepeat or fill */ let bag=shuffle(pool); targets.forEach(r=>{ if(isFill&&_rGet(r,setter)) return; if(!bag.length) bag=shuffle(pool); setter(r, bag.pop().id); }); }
   }
-  const setCap=(r,v)=>{ r.capId=v; }, setMus=(r,v)=>{ r.musId=v; };
+  // Modèle multi : le distributeur REMPLACE l'assignation du reel ([] ou [id]).
+  const setCap=(r,v)=>{ r.capIds = v==null?[]:[+v]; }, setMus=(r,v)=>{ r.musIds = v==null?[]:[+v]; };
   const isFill=(mode==="fill");
   if(!noCap || !isFill) assignPool(caps, setCap, isFill);
   if(!noMus || !isFill) assignPool(mus, setMus, isFill);
   rAssignClose(); rRenderReels(); rUpdateInfo();
 }
-function _rGet(r,setter){ return setter===undefined?null:(setter.name.includes("Cap")?r.capId:r.musId); }
+function _rGet(r,setter){ return setter===undefined?false:((setter.name||"").includes("Cap")?r.capIds.length:r.musIds.length); }
 
-// ── Preview reel + musique assignée (Module 3) ──
-// La vidéo reste visuelle (muette) ; l'audio vient de la musique assignée.
-// Une seule preview joue à la fois (vidéos + audio de preview stoppés).
-let rPreviewAudio=null, rPreviewIdx=-1;
+// ── Preview reel + musique assignée (Module 5) ──
+// La vidéo (carte) sert de visuel ; l'audio vient de la musique assignée.
+// Une seule preview joue à la fois. Contrôleur flottant : mute/unmute,
+// sélecteur si plusieurs musiques, stop.
+let rPreviewAudio=null, rPreviewIdx=-1, rPreviewMusIdx=0, rPreviewMuted=false;
 function rEnsurePreviewAudio(){
   if(!rPreviewAudio){ rPreviewAudio=document.createElement("audio"); rPreviewAudio.id="rPreviewAudio"; rPreviewAudio.style.display="none"; document.body.appendChild(rPreviewAudio); }
   return rPreviewAudio;
@@ -5098,48 +5210,74 @@ function rStopPreview(){
   if(rPreviewAudio){ rPreviewAudio.pause(); }
   document.querySelectorAll("#rGalleryReels video").forEach(v=>v.pause());
   rPreviewIdx=-1;
+  const ctl=document.getElementById("rPreviewCtl"); if(ctl) ctl.style.display="none";
 }
 function rReelPreview(i){
   const r=rReels[i]; if(!r) return;
-  // Toggle : reclic sur le même reel → stop.
-  if(rPreviewIdx===i){ rStopPreview(); return; }
+  if(rPreviewIdx===i){ rStopPreview(); return; }   // toggle
   rStopPreview();
+  rPreviewIdx=i; rPreviewMusIdx=0;
   const card=document.querySelector(`#rGalleryReels .ws-card[data-i="${i}"]`);
   const v=card?card.querySelector("video"):null;
   if(v){ if(!v.src && v.dataset.src) v.src=v.dataset.src; v.muted=true; try{ v.currentTime=0; }catch(e){} v.play().catch(()=>{}); }
-  if(r.musId){
-    const a=rEnsurePreviewAudio(); a.src=`/reels_music_file/${r.musId}`; try{ a.currentTime=0; }catch(e){} a.play().catch(()=>{});
-  } else if(rPreviewAudio){ rPreviewAudio.pause(); rPreviewAudio.removeAttribute("src"); }
-  rPreviewIdx=i;
+  rPreviewPlayMusic();
+  rPreviewRenderCtl();
+}
+function rPreviewPlayMusic(){
+  const r=rReels[rPreviewIdx]; if(!r) return;
+  const a=rEnsurePreviewAudio();
+  if(r.musIds.length){
+    if(rPreviewMusIdx>=r.musIds.length) rPreviewMusIdx=0;
+    const mid=r.musIds[rPreviewMusIdx];
+    a.src=`/reels_music_file/${mid}`; a.muted=rPreviewMuted; try{ a.currentTime=0; }catch(e){}
+    a.play().catch(()=>{});
+  } else { a.pause(); a.removeAttribute("src"); }
+}
+function rPreviewToggleMute(){ rPreviewMuted=!rPreviewMuted; if(rPreviewAudio) rPreviewAudio.muted=rPreviewMuted; rPreviewRenderCtl(); }
+function rPreviewNextMusic(step){
+  const r=rReels[rPreviewIdx]; if(!r||!r.musIds.length) return;
+  rPreviewMusIdx=(rPreviewMusIdx+step+r.musIds.length)%r.musIds.length;
+  rPreviewPlayMusic(); rPreviewRenderCtl();
+}
+function rPreviewRenderCtl(){
+  let ctl=document.getElementById("rPreviewCtl");
+  if(!ctl){ ctl=document.createElement("div"); ctl.id="rPreviewCtl"; ctl.className="r-preview-ctl"; document.body.appendChild(ctl); }
+  const r=rReels[rPreviewIdx]; if(!r){ ctl.style.display="none"; return; }
+  const hasMus=r.musIds.length>0;
+  const musName=hasMus?rMusNameOf(r.musIds[rPreviewMusIdx]):"aucune musique";
+  const multi=r.musIds.length>1;
+  ctl.style.display="flex";
+  ctl.innerHTML=`<span class="r-pv-name">👁 ${rEsc(r.file.name)}</span>
+    <span class="r-pv-mus">🎵 ${rEsc(musName)}${multi?` (${rPreviewMusIdx+1}/${r.musIds.length})`:""}</span>
+    ${multi?`<button type="button" class="r-pv-btn" onclick="rPreviewNextMusic(-1)">‹</button><button type="button" class="r-pv-btn" onclick="rPreviewNextMusic(1)">›</button>`:""}
+    <button type="button" class="r-pv-btn" onclick="rPreviewToggleMute()" ${hasMus?"":"disabled"}>${rPreviewMuted?"🔇":"🔊"}</button>
+    <button type="button" class="r-pv-btn danger" onclick="rStopPreview()">✕</button>`;
 }
 
 // ── Assignation "tout croiser" (Module 1) — nombre de vidéos ──
 function rGenMode(){ return rVal("rGenMode") || "assigned"; }
+// Un reel avec plusieurs captions → 1 vidéo par caption (× musiques). Le mode
+// choisit si on croise avec TOUTE la bibliothèque ou juste les assignations.
+function _rJobCaps(r,mode){ return (mode==="cap_all"||mode==="full") ? (rCaptions.length?rCaptions.map(c=>c.id):[null]) : (r.capIds.length?r.capIds.slice():[null]); }
+function _rJobMus(r,mode){ return (mode==="mus_all"||mode==="full") ? (rMusic.length?rMusic.map(m=>m.id):[null]) : (r.musIds.length?r.musIds.slice():[null]); }
 function rGenCount(){
-  const nR=rReels.length, nC=rCaptions.length, nM=rMusic.length; const mode=rGenMode();
-  if(!nR) return 0;
-  if(mode==="cap_all") return nR * Math.max(1,nC);
-  if(mode==="mus_all") return nR * Math.max(1,nM);
-  if(mode==="full")    return nR * Math.max(1,nC) * Math.max(1,nM);
-  return nR; // assigned : 1 sortie par reel
+  const mode=rGenMode(); if(!rReels.length) return 0;
+  let total=0; rReels.forEach(r=>{ total += _rJobCaps(r,mode).length * _rJobMus(r,mode).length; });
+  return total;
 }
 // Construit la liste des jobs (reelIndex, capId, musId, name) selon le mode.
 function rBuildJobs(){
   const mode=rGenMode(); const jobs=[];
   rReels.forEach((r,i)=>{
     const base=(r.file.name.replace(/\.[^.]+$/,"")||`reel_${i+1}`);
-    if(mode==="cap_all"){
-      const caps=rCaptions.length?rCaptions:[null];
-      caps.forEach((c,ci)=>jobs.push({i, capId:c?c.id:null, musId:r.musId, name:`${base}_cap${ci+1}`}));
-    } else if(mode==="mus_all"){
-      const mus=rMusic.length?rMusic:[null];
-      mus.forEach((m,mi)=>jobs.push({i, capId:r.capId, musId:m?m.id:null, name:`${base}_mus${mi+1}`}));
-    } else if(mode==="full"){
-      const caps=rCaptions.length?rCaptions:[null], mus=rMusic.length?rMusic:[null];
-      caps.forEach((c,ci)=>mus.forEach((m,mi)=>jobs.push({i, capId:c?c.id:null, musId:m?m.id:null, name:`${base}_c${ci+1}_m${mi+1}`})));
-    } else {
-      jobs.push({i, capId:r.capId, musId:r.musId, name:`${base}_reel`});
-    }
+    const caps=_rJobCaps(r,mode), mus=_rJobMus(r,mode);
+    caps.forEach((cid,ci)=>mus.forEach((mid,mi)=>{
+      let name=base;
+      if(caps.length>1) name+=`_c${ci+1}`;
+      if(mus.length>1) name+=`_m${mi+1}`;
+      if(caps.length<=1 && mus.length<=1) name+=`_reel`;
+      jobs.push({i, capId:cid, musId:mid, name});
+    }));
   });
   return jobs;
 }
@@ -5154,16 +5292,30 @@ function rUpdateInfo(){
   const dot=document.getElementById("rStatusDot"), lbl=document.getElementById("rInfoStatus");
   if(dot && !rReelsRunning){ if(rReview.length){ dot.className="ws-dot done"; if(lbl)lbl.textContent="Terminé · "+rReview.length; } else { dot.className="ws-dot ready"; if(lbl)lbl.textContent="Prêt"; } }
 }
-// ── Assignation rapide (Module 2) — rotation sur TOUS les reels ──
+// ── Assignation rapide (Modules 3 & 4) — TOUTES les captions/musiques
+//    sur TOUS les reels (chaque reel reçoit toute la bibliothèque). ──
 function rQuickAssign(kind){
   if(!rReels.length){ alert("Ajoute d'abord des reels."); return; }
   if((kind==="cap"||kind==="both")){
     if(!rCaptions.length){ if(kind==="cap"){ alert("Aucune caption dans la bibliothèque."); return; } }
-    else rReels.forEach((r,i)=>{ r.capId=rCaptions[i%rCaptions.length].id; });
+    else rReels.forEach(r=>{ r.capIds=rCaptions.map(c=>c.id); });
   }
   if((kind==="mus"||kind==="both")){
     if(!rMusic.length){ if(kind==="mus"){ alert("Aucune musique dans la bibliothèque."); return; } }
-    else rReels.forEach((r,i)=>{ r.musId=rMusic[i%rMusic.length].id; });
+    else rReels.forEach(r=>{ r.musIds=rMusic.map(m=>m.id); });
+  }
+  rRenderReels(); rUpdateInfo();
+}
+// Assigner les captions SÉLECTIONNÉES (biblio) aux reels SÉLECTIONNÉS (Module 3).
+function rAssignSelected(kind){
+  const reels=rReels.filter(r=>r.sel); const tgt=reels.length?reels:rReels;
+  if(!tgt.length){ alert("Ajoute des reels."); return; }
+  if(kind==="cap"){
+    if(!rCapSel.size){ alert("Sélectionne des captions dans la bibliothèque (clique les cartes)."); return; }
+    tgt.forEach(r=>rCapSel.forEach(id=>_rAddId(r.capIds,id)));
+  } else {
+    if(!rMusSel.size){ alert("Sélectionne des musiques dans la bibliothèque (clique les cartes)."); return; }
+    tgt.forEach(r=>rMusSel.forEach(id=>_rAddId(r.musIds,id)));
   }
   rRenderReels(); rUpdateInfo();
 }
