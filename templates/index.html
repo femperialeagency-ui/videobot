@@ -841,8 +841,21 @@ body {
 .r-favmark.off { color:var(--border-strong); }
 
 /* éditeur visuel */
-.r-edit-box { width:min(920px,96vw); }
-.r-edit-grid { display:grid; grid-template-columns:300px 1fr; gap:18px; }
+.r-edit-box { width:min(1180px,97vw); }
+.r-edit3 { display:grid; grid-template-columns:300px 1fr 300px; gap:16px; align-items:start; }
+.r-edit-left { display:flex; flex-direction:column; gap:8px; }
+.r-edit-center { min-width:0; }
+.r-edit-right { min-width:0; max-height:72vh; overflow-y:auto; }
+.r-active-label { font-size:.74rem; font-weight:700; color:var(--accent); padding:6px 10px; border:1px solid var(--border); border-radius:8px; background:rgba(124,92,255,.08); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.r-reelswitch { display:flex; align-items:center; gap:6px; }
+.r-reelswitch select { flex:1 1 auto; min-width:0; background:rgba(0,0,0,.25); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:5px 7px; font-size:.74rem; }
+.r-nav-btn { width:28px; height:28px; border:1px solid var(--border); background:rgba(255,255,255,.03); color:var(--text); border-radius:8px; cursor:pointer; font-size:1rem; line-height:1; }
+.r-reelcount { font-size:.66rem; color:var(--muted); min-width:34px; text-align:right; }
+.r-cap-pick { max-height:170px; overflow-y:auto; border:1px solid var(--border); border-radius:9px; }
+.r-cap-pick-item { padding:7px 9px; font-size:.76rem; color:var(--text); cursor:pointer; border-bottom:1px solid var(--border); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.r-cap-pick-item:last-child { border-bottom:0; }
+.r-cap-pick-item:hover { background:rgba(255,255,255,.04); }
+.r-cap-pick-item.active { background:rgba(124,92,255,.16); color:#cdbcff; font-weight:600; }
 .r-edit-preview { display:flex; flex-direction:column; gap:8px; }
 .r-stage { position:relative; width:100%; aspect-ratio:9/16; background:linear-gradient(135deg,#2b2f3a,#12141b); border-radius:12px; overflow:hidden; border:1px solid var(--border); }
 .r-stage video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
@@ -2137,24 +2150,28 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
       </span>
     </div>
     <input type="hidden" id="rCapModalId" value="">
-    <div class="r-edit-grid">
-      <!-- Preview visuel 9:16 -->
-      <div class="r-edit-preview">
+    <div class="r-edit3">
+      <!-- ZONE GAUCHE : preview + choix du reel -->
+      <div class="r-edit-left">
+        <div class="r-active-label" id="rActiveLabel">Segment actif : —</div>
         <div class="r-stage" id="rEditStage">
           <video id="rEditVideo" muted playsinline loop></video>
           <div class="r-safe" id="rEditSafe" style="display:none;"></div>
           <div class="r-cap-box" id="rEditCaption"><span id="rEditCaptionText">Caption</span></div>
         </div>
-        <div class="r-edit-hint">Glisse la caption pour la positionner · aperçu temps réel</div>
+        <div class="r-reelswitch">
+          <button type="button" class="r-nav-btn" onclick="rEditPrevReel()" title="Reel précédent">‹</button>
+          <select id="rEditPreviewReel" onchange="rEditSetPreviewReel()" title="Reel de prévisualisation"><option value="">Fond neutre</option></select>
+          <button type="button" class="r-nav-btn" onclick="rEditNextReel()" title="Reel suivant">›</button>
+          <span class="r-reelcount" id="rReelCounter"></span>
+        </div>
         <div class="r-edit-line"><label class="r-chk"><input type="checkbox" id="rEditSafeChk" onchange="rEditToggleSafe()"> Zone de sécurité</label>
-          <select id="rEditPreviewReel" onchange="rEditSetPreviewReel()" title="Reel de prévisualisation"><option value="">Fond neutre</option></select></div>
+          <span class="r-edit-hint">Glisse le texte pour positionner le segment actif</span></div>
       </div>
-      <!-- Contrôles -->
-      <div class="r-edit-controls">
-        <div class="r-modal-field"><label>Nom</label><input type="text" id="rCapName" placeholder="Nom de la caption" maxlength="120"></div>
-        <div class="r-modal-field"><label>Tags (séparés par des virgules)</label><input type="text" id="rCapTags" placeholder="viral, pov, hook"></div>
 
-        <div class="r-modal-field"><label>Position &amp; style</label>
+      <!-- ZONE CENTRE : réglages -->
+      <div class="r-edit-center">
+        <div class="r-modal-field"><label>Position du segment actif</label>
           <div class="r-pos-grid">
             <div class="r-pos-ctl">X <input type="range" id="rPosX" min="0" max="100" value="50" oninput="rEditPos()"><span class="r-pos-v" id="rPosXV">50%</span></div>
             <div class="r-pos-ctl">Y <input type="range" id="rPosY" min="0" max="100" value="78" oninput="rEditPos()"><span class="r-pos-v" id="rPosYV">78%</span></div>
@@ -2173,24 +2190,29 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
             <button type="button" class="v-ghost-btn" onclick="rEditQuick('top')">⬆ Haut</button>
           </div>
           <div class="r-quick-row">
-            <button type="button" class="v-ghost-btn r-accent" onclick="rEditApplyAll()">⇄ Appliquer cette position à tous les segments</button>
-            <button type="button" class="v-ghost-btn" onclick="rEditResetSeg()">↺ Réinitialiser position du segment</button>
+            <button type="button" class="v-ghost-btn r-accent" onclick="rEditApplyAll()">⇄ Appliquer à tous les segments</button>
+            <button type="button" class="v-ghost-btn" onclick="rEditResetSeg()">↺ Réinitialiser ce segment</button>
           </div>
-          <div class="r-edit-hint" style="text-align:left;margin-top:4px;">Le segment <b>actif</b> (sélectionné dans la liste ci-dessous) est celui que tu déplaces. Chaque segment garde sa propre position.</div>
         </div>
-
         <div class="r-modal-field"><label>Presets de position</label>
           <div class="r-preset-bar" id="rPresetBar"></div>
-          <div class="r-preset-add"><input type="text" id="rPresetName" placeholder="Nom du preset"><button type="button" class="v-ghost-btn" onclick="rPresetSaveCurrent()">💾 Enregistrer position</button></div>
+          <div class="r-preset-add"><input type="text" id="rPresetName" placeholder="Nom du preset"><button type="button" class="v-ghost-btn" onclick="rPresetSaveCurrent()">💾 Position</button></div>
         </div>
-
-        <div class="r-modal-field"><label>Segments (texte)</label><div id="rCapSegs"></div>
-          <button type="button" class="v-ghost-btn" onclick="rCapAddSeg()">＋ Ajouter un segment</button></div>
-
         <div class="r-modal-actions">
-          <button type="button" class="v-ghost-btn" onclick="rCapClose()">Annuler</button>
-          <button type="button" class="primary-btn" onclick="rCapSave()">Enregistrer la caption</button>
+          <button type="button" class="v-ghost-btn" onclick="rCapClose()">Fermer</button>
+          <button type="button" class="primary-btn" onclick="rCapSave()">💾 Enregistrer la caption</button>
         </div>
+      </div>
+
+      <!-- ZONE DROITE : liste captions + segments -->
+      <div class="r-edit-right">
+        <div class="r-modal-field"><label>Toutes les captions</label>
+          <div class="r-cap-pick" id="rCapPickList"></div></div>
+        <div class="r-modal-field"><label>Nom</label><input type="text" id="rCapName" placeholder="Nom de la caption" maxlength="120"></div>
+        <div class="r-modal-field"><label>Tags (séparés par des virgules)</label><input type="text" id="rCapTags" placeholder="viral, pov, hook"></div>
+        <div class="r-modal-field"><label>Segments — clique « Positionner » pour éditer un segment</label>
+          <div id="rCapSegs"></div>
+          <button type="button" class="v-ghost-btn" onclick="rCapAddSeg();rSegSelect(document.querySelector('#rCapSegs .r-seg:last-child'))">＋ Ajouter un segment</button></div>
       </div>
     </div>
   </div>
@@ -4638,6 +4660,27 @@ function rEditFillPreviewReels(){
 let rActiveSegRow = null;                                  // segment en cours d'édition
 let rGlobalPos = { cx:50, cy:78, w:86, size:5, align:"center" };   // position globale (fallback) de la caption
 function rCapOpen(id, previewReelIdx){
+  rEditFillPreviewReels();
+  const pv=document.getElementById("rEditPreviewReel"); if(previewReelIdx!=null){ pv.value=String(previewReelIdx); } rEditSetPreviewReel();
+  rPresetRenderBar();
+  rCapLoad(id||null);
+  document.getElementById("rCapModal").style.display="flex";
+}
+// Liste de TOUTES les captions (zone droite) — cliquable sans fermer le modal.
+function rCapPickRender(){
+  const box=document.getElementById("rCapPickList"); if(!box) return;
+  const cur=document.getElementById("rCapModalId").value;
+  box.innerHTML = rCaptions.length
+    ? rCaptions.map(c=>`<div class="r-cap-pick-item ${String(c.id)===String(cur)?'active':''}" onclick="rCapPick(${c.id})">${c.favorite?'★ ':''}${rEsc(c.name)} <span style="opacity:.55">(${c.segments.length})</span></div>`).join("")
+    : '<div class="r-cap-pick-item" style="cursor:default;color:var(--muted)">Aucune caption — clique ＋ pour en créer.</div>';
+}
+async function rCapPick(id){
+  const curId=document.getElementById("rCapModalId").value;
+  // enregistre la caption en cours (sans fermer) avant de charger la suivante
+  if(curId || (document.getElementById("rCapName").value||"").trim() || rCapCollect().length){ try{ await rCapSave(true); }catch(e){} }
+  rCapLoad(id);
+}
+function rCapLoad(id){
   document.getElementById("rCapModalId").value=id||"";
   document.getElementById("rCapModalTitle").textContent=id?"Éditeur de caption":"Nouvelle caption";
   const segsBox=document.getElementById("rCapSegs"); segsBox.innerHTML=""; rActiveSegRow=null;
@@ -4645,16 +4688,12 @@ function rCapOpen(id, previewReelIdx){
   document.getElementById("rCapName").value=c?c.name:"";
   document.getElementById("rCapTags").value=c&&c.tags?c.tags.join(", "):"";
   const fav=c?!!c.favorite:false; const fb=document.getElementById("rCapFav"); fb.textContent=fav?"★":"☆"; fb.classList.toggle("off",!fav); fb.dataset.on=fav?"1":"0";
-  // position globale (fallback) de la caption
   rGlobalPos={ cx:Math.round((c?c.cx_pct:0.5)*100), cy:Math.round((c?c.cy_pct:0.78)*100),
                w:Math.round((c?c.width_pct:0.86)*100), size:+(((c?c.fontsize_pct:0.05)*100).toFixed(1)),
                align:(c?c.align:"center") };
   (c&&c.segments||[]).forEach(s=>rCapAddSeg(s)); if(!(c&&c.segments&&c.segments.length)) rCapAddSeg();
-  rEditFillPreviewReels();
-  const pv=document.getElementById("rEditPreviewReel"); if(previewReelIdx!=null){ pv.value=String(previewReelIdx); } rEditSetPreviewReel();
-  rPresetRenderBar();
-  const first=document.querySelector("#rCapSegs .r-seg"); if(first) rSegSelect(first);
-  document.getElementById("rCapModal").style.display="flex";
+  const first=document.querySelector("#rCapSegs .r-seg"); if(first) rSegSelect(first); else rEditRenderText();
+  rCapPickRender();
 }
 function rCapClose(){ const v=document.getElementById("rEditVideo"); if(v){v.pause();v.removeAttribute("src");} document.getElementById("rCapModal").style.display="none"; }
 function rCapToggleFav(){ const fb=document.getElementById("rCapFav"); const on=fb.dataset.on!=="1"; fb.dataset.on=on?"1":"0"; fb.textContent=on?"★":"☆"; fb.classList.toggle("off",!on); }
@@ -4668,7 +4707,7 @@ function rCapAddSeg(s){
   row.dataset.w  = Math.round(((hasPos?s.width_pct:rGlobalPos.w/100))*100);
   row.dataset.size = (((hasPos?s.fontsize_pct:rGlobalPos.size/100))*100).toFixed(1);
   row.dataset.align = (hasPos && s.align) ? s.align : rGlobalPos.align;
-  row.innerHTML=`<div class="r-seg-head"><button type="button" class="r-seg-active" onclick="rSegSelect(this.closest('.r-seg'))">◉ éditer la position</button><span class="r-seg-posbadge"></span></div>
+  row.innerHTML=`<div class="r-seg-head"><button type="button" class="r-seg-active" onclick="rSegSelect(this.closest('.r-seg'))">🎯 Positionner ce segment</button><span class="r-seg-posbadge"></span></div>
     <textarea placeholder="Texte (retour à la ligne = nouvelle ligne)" oninput="rSegSelect(this.closest('.r-seg'));rEditRenderText()">${rEsc((s&&s.text)||"")}</textarea>
     <div class="r-seg-times">start <input type="number" step="0.1" min="0" class="r-seg-start" value="${s&&s.start_time!=null?s.start_time:""}">
     end <input type="number" step="0.1" min="0" class="r-seg-end" value="${s&&s.end_time!=null?s.end_time:""}">
@@ -4689,7 +4728,16 @@ function rSegSelect(row){
   document.getElementById("rPosSize").value=row.dataset.size;
   rEdit.align=(["left","center","right"].includes(row.dataset.align)?row.dataset.align:"center");
   document.querySelectorAll(".r-align-btn").forEach(b=>b.classList.toggle("active",b.dataset.al===rEdit.align));
+  rUpdateActiveLabel();
   rEditApplyToBox();
+}
+function rUpdateActiveLabel(){
+  const lbl=document.getElementById("rActiveLabel"); if(!lbl) return;
+  const rows=[...document.querySelectorAll("#rCapSegs .r-seg")];
+  const i=rows.indexOf(rActiveSegRow);
+  if(i<0){ lbl.textContent="Segment actif : —"; return; }
+  const txt=(rActiveSegRow.querySelector("textarea").value||"").split("\n")[0].slice(0,32);
+  lbl.textContent=`Segment actif : ${i+1}/${rows.length} — ${txt||"(vide)"}`;
 }
 function rCapCollect(){
   const segs=[];
@@ -4705,6 +4753,7 @@ function rCapCollect(){
 function rEditRenderText(){
   const row=rActiveSegRow; const t=(row&&row.querySelector("textarea").value.trim())||"Caption";
   document.getElementById("rEditCaptionText").innerHTML=rEsc(t).replace(/\n/g,"<br>");
+  rUpdateActiveLabel();
 }
 // Applique les valeurs des sliders à la BOX de preview (sans écrire dans le segment).
 function rEditApplyToBox(){
@@ -4739,7 +4788,26 @@ function rEditToggleSafe(){ document.getElementById("rEditSafe").style.display=d
 function rEditSetPreviewReel(){
   const idx=rVal("rEditPreviewReel"); const v=document.getElementById("rEditVideo");
   if(idx!=="" && rReels[+idx]){ v.src=rReels[+idx].url; v.play().catch(()=>{}); } else { v.pause(); v.removeAttribute("src"); }
+  rUpdateReelCounter();
 }
+function rUpdateReelCounter(){
+  const c=document.getElementById("rReelCounter"); if(!c) return;
+  const sel=document.getElementById("rEditPreviewReel"); const idx=sel?sel.value:"";
+  if(idx===""||!rReels.length){ c.textContent=rReels.length?"Fond neutre":"Aucun reel"; }
+  else { c.textContent=`${(+idx)+1}/${rReels.length}`; }
+}
+// prev / next reel de prévisualisation (cycle : Fond neutre → reel 0 → … → dernier → Fond).
+function rEditStepReel(dir){
+  const sel=document.getElementById("rEditPreviewReel"); if(!sel||!rReels.length) return;
+  const n=rReels.length; // valeurs possibles : "" puis 0..n-1  → n+1 états
+  let cur=sel.value===""? -1 : (+sel.value);
+  let nx=cur+dir;
+  if(nx< -1) nx=n-1; else if(nx>n-1) nx=-1;
+  sel.value = nx<0 ? "" : String(nx);
+  rEditSetPreviewReel();
+}
+function rEditPrevReel(){ rEditStepReel(-1); }
+function rEditNextReel(){ rEditStepReel(1); }
 // Quick position presets (Module 8 UX) — set X/Y (and sensible width/size).
 function rEditQuick(kind){
   const set=(id,v)=>{ const e=document.getElementById(id); if(e) e.value=v; };
@@ -4764,7 +4832,7 @@ function rEditQuick(kind){
   box.addEventListener("pointerup", e=>{ dragging=false; box.classList.remove("drag"); try{ box.releasePointerCapture(e.pointerId); }catch(_){ } });
   box.addEventListener("pointercancel", ()=>{ dragging=false; box.classList.remove("drag"); });
 })();
-async function rCapSave(){
+async function rCapSave(keepOpen){
   const id=document.getElementById("rCapModalId").value;
   const name=(document.getElementById("rCapName").value||"").trim()||"Caption";
   const segments=rCapCollect();
@@ -4776,10 +4844,14 @@ async function rCapSave(){
                    : { cx_pct:(+rVal("rPosX"))/100, cy_pct:(+rVal("rPosY"))/100, width_pct:(+rVal("rPosW"))/100, fontsize_pct:(+rVal("rPosSize"))/100, align:rEdit.align };
   const body=Object.assign({name,segments,tags,favorite}, gp);
   try{
-    if(id){ body.id=parseInt(id,10); await rPost("/reels_caption_update",body); }
-    else await rPost("/reels_caption_create",body);
-    rCapClose(); await rRefreshCaptions(); rRenderReels(); rUpdateInfo();
-  }catch(e){ alert("Erreur: "+e.message); }
+    let savedId=id?parseInt(id,10):null;
+    if(id){ body.id=savedId; await rPost("/reels_caption_update",body); }
+    else { const res=await rPost("/reels_caption_create",body); if(res&&res.caption&&res.caption.id){ savedId=res.caption.id; document.getElementById("rCapModalId").value=String(savedId); } }
+    await rRefreshCaptions(); rRenderReels(); rUpdateInfo();
+    if(keepOpen){ rCapPickRender(); }
+    else { rCapClose(); }
+    return savedId;
+  }catch(e){ alert("Erreur: "+e.message); return null; }
 }
 async function rCapDup(id){ try{ await rPost("/reels_caption_duplicate",{id}); await rRefreshCaptions(); }catch(e){} }
 async function rCapDel(id){ if(!confirm("Supprimer cette caption ?"))return; try{ await rPost("/reels_caption_delete",{id}); rReels.forEach(r=>{ if(r.capId===id) r.capId=null; }); rCapSel.delete(id); await rRefreshCaptions(); rRenderReels(); rUpdateInfo(); }catch(e){} }
