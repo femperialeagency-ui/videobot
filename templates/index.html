@@ -854,6 +854,13 @@ body {
 .r-cap-box.drag { cursor:grabbing; outline:1px dashed rgba(255,255,255,.8); }
 .r-quick-row { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
 .r-quick-row .v-ghost-btn { font-size:.7rem; padding:4px 9px; }
+.r-seg { transition:border-color .12s, background .12s; }
+.r-seg.active { border-color:var(--accent); background:rgba(124,92,255,.08); }
+.r-seg-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
+.r-seg-active { font-size:.66rem; padding:3px 9px; border:1px solid var(--border); background:transparent; color:var(--muted); border-radius:7px; cursor:pointer; }
+.r-seg.active .r-seg-active { border-color:var(--accent); color:var(--accent); }
+.r-seg-posbadge { font-size:.62rem; color:var(--muted); }
+.r-seg-posbadge.own { color:#bda6ff; }
 .r-safe { position:absolute; inset:6% 6% 12% 6%; border:1px dashed rgba(255,255,255,.35); border-radius:6px; pointer-events:none; }
 .r-edit-hint { font-size:.68rem; color:var(--muted); text-align:center; }
 .r-edit-line { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:.72rem; }
@@ -2165,6 +2172,11 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
             <button type="button" class="v-ghost-btn" onclick="rEditQuick('middle')">⊟ Milieu</button>
             <button type="button" class="v-ghost-btn" onclick="rEditQuick('top')">⬆ Haut</button>
           </div>
+          <div class="r-quick-row">
+            <button type="button" class="v-ghost-btn r-accent" onclick="rEditApplyAll()">⇄ Appliquer cette position à tous les segments</button>
+            <button type="button" class="v-ghost-btn" onclick="rEditResetSeg()">↺ Réinitialiser position du segment</button>
+          </div>
+          <div class="r-edit-hint" style="text-align:left;margin-top:4px;">Le segment <b>actif</b> (sélectionné dans la liste ci-dessous) est celui que tu déplaces. Chaque segment garde sa propre position.</div>
         </div>
 
         <div class="r-modal-field"><label>Presets de position</label>
@@ -4623,25 +4635,25 @@ function rEditFillPreviewReels(){
   sel.innerHTML='<option value="">Fond neutre</option>'+rReels.map((r,i)=>`<option value="${i}">${rEsc(r.file.name)}</option>`).join("");
   sel.value=cur;
 }
+let rActiveSegRow = null;                                  // segment en cours d'édition
+let rGlobalPos = { cx:50, cy:78, w:86, size:5, align:"center" };   // position globale (fallback) de la caption
 function rCapOpen(id, previewReelIdx){
   document.getElementById("rCapModalId").value=id||"";
   document.getElementById("rCapModalTitle").textContent=id?"Éditeur de caption":"Nouvelle caption";
-  const segsBox=document.getElementById("rCapSegs"); segsBox.innerHTML="";
+  const segsBox=document.getElementById("rCapSegs"); segsBox.innerHTML=""; rActiveSegRow=null;
   let c=id?rCaptions.find(x=>x.id===id):null;
   document.getElementById("rCapName").value=c?c.name:"";
   document.getElementById("rCapTags").value=c&&c.tags?c.tags.join(", "):"";
   const fav=c?!!c.favorite:false; const fb=document.getElementById("rCapFav"); fb.textContent=fav?"★":"☆"; fb.classList.toggle("off",!fav); fb.dataset.on=fav?"1":"0";
+  // position globale (fallback) de la caption
+  rGlobalPos={ cx:Math.round((c?c.cx_pct:0.5)*100), cy:Math.round((c?c.cy_pct:0.78)*100),
+               w:Math.round((c?c.width_pct:0.86)*100), size:+(((c?c.fontsize_pct:0.05)*100).toFixed(1)),
+               align:(c?c.align:"center") };
   (c&&c.segments||[]).forEach(s=>rCapAddSeg(s)); if(!(c&&c.segments&&c.segments.length)) rCapAddSeg();
-  // position
-  document.getElementById("rPosX").value=Math.round((c?c.cx_pct:0.5)*100);
-  document.getElementById("rPosY").value=Math.round((c?c.cy_pct:0.78)*100);
-  document.getElementById("rPosW").value=Math.round((c?c.width_pct:0.86)*100);
-  document.getElementById("rPosSize").value=((c?c.fontsize_pct:0.05)*100).toFixed(1);
-  rEditAlign(c?c.align:"center", true);
   rEditFillPreviewReels();
   const pv=document.getElementById("rEditPreviewReel"); if(previewReelIdx!=null){ pv.value=String(previewReelIdx); } rEditSetPreviewReel();
   rPresetRenderBar();
-  rEditPos();
+  const first=document.querySelector("#rCapSegs .r-seg"); if(first) rSegSelect(first);
   document.getElementById("rCapModal").style.display="flex";
 }
 function rCapClose(){ const v=document.getElementById("rEditVideo"); if(v){v.pause();v.removeAttribute("src");} document.getElementById("rCapModal").style.display="none"; }
@@ -4649,39 +4661,80 @@ function rCapToggleFav(){ const fb=document.getElementById("rCapFav"); const on=
 function rCapAddSeg(s){
   const box=document.getElementById("rCapSegs");
   const row=document.createElement("div"); row.className="r-seg";
-  row.innerHTML=`<textarea placeholder="Texte (retour à la ligne = nouvelle ligne)" oninput="rEditRenderText()">${rEsc((s&&s.text)||"")}</textarea>
+  const hasPos = s && s.cx_pct!=null && s.cy_pct!=null;
+  row.dataset.haspos = hasPos ? "1" : "0";
+  row.dataset.cx = Math.round(((hasPos?s.cx_pct:rGlobalPos.cx/100))*100);
+  row.dataset.cy = Math.round(((hasPos?s.cy_pct:rGlobalPos.cy/100))*100);
+  row.dataset.w  = Math.round(((hasPos?s.width_pct:rGlobalPos.w/100))*100);
+  row.dataset.size = (((hasPos?s.fontsize_pct:rGlobalPos.size/100))*100).toFixed(1);
+  row.dataset.align = (hasPos && s.align) ? s.align : rGlobalPos.align;
+  row.innerHTML=`<div class="r-seg-head"><button type="button" class="r-seg-active" onclick="rSegSelect(this.closest('.r-seg'))">◉ éditer la position</button><span class="r-seg-posbadge"></span></div>
+    <textarea placeholder="Texte (retour à la ligne = nouvelle ligne)" oninput="rSegSelect(this.closest('.r-seg'));rEditRenderText()">${rEsc((s&&s.text)||"")}</textarea>
     <div class="r-seg-times">start <input type="number" step="0.1" min="0" class="r-seg-start" value="${s&&s.start_time!=null?s.start_time:""}">
     end <input type="number" step="0.1" min="0" class="r-seg-end" value="${s&&s.end_time!=null?s.end_time:""}">
-    <button type="button" class="r-seg-del" onclick="this.closest('.r-seg').remove();rEditRenderText()">retirer</button></div>`;
-  box.appendChild(row); rEditRenderText();
+    <button type="button" class="r-seg-del" onclick="rSegDelete(this.closest('.r-seg'))">retirer</button></div>`;
+  box.appendChild(row); rSegBadge(row);
+  return row;
+}
+function rSegDelete(row){ const wasActive=(row===rActiveSegRow); row.remove(); if(wasActive){ const n=document.querySelector("#rCapSegs .r-seg"); rActiveSegRow=null; if(n) rSegSelect(n); else rEditRenderText(); } }
+function rSegBadge(row){ const b=row.querySelector(".r-seg-posbadge"); if(!b) return; b.textContent = row.dataset.haspos==="1" ? `⟐ ${row.dataset.cx}% · ${row.dataset.cy}%` : "hérite position globale"; b.classList.toggle("own", row.dataset.haspos==="1"); }
+function rSegSelect(row){
+  if(!row) return;
+  rActiveSegRow=row;
+  document.querySelectorAll("#rCapSegs .r-seg").forEach(r=>r.classList.toggle("active", r===row));
+  // charge la position effective du segment dans les sliders
+  document.getElementById("rPosX").value=row.dataset.cx;
+  document.getElementById("rPosY").value=row.dataset.cy;
+  document.getElementById("rPosW").value=row.dataset.w;
+  document.getElementById("rPosSize").value=row.dataset.size;
+  rEdit.align=(["left","center","right"].includes(row.dataset.align)?row.dataset.align:"center");
+  document.querySelectorAll(".r-align-btn").forEach(b=>b.classList.toggle("active",b.dataset.al===rEdit.align));
+  rEditApplyToBox();
 }
 function rCapCollect(){
   const segs=[];
   document.querySelectorAll("#rCapSegs .r-seg").forEach(row=>{
     const text=(row.querySelector("textarea").value||"").trim(); if(!text) return;
     const st=row.querySelector(".r-seg-start").value, en=row.querySelector(".r-seg-end").value;
-    segs.push({text, start_time: st===""?null:parseFloat(st), end_time: en===""?null:parseFloat(en)});
+    const seg={text, start_time: st===""?null:parseFloat(st), end_time: en===""?null:parseFloat(en)};
+    if(row.dataset.haspos==="1"){ seg.cx_pct=(+row.dataset.cx)/100; seg.cy_pct=(+row.dataset.cy)/100; seg.width_pct=(+row.dataset.w)/100; seg.fontsize_pct=(+row.dataset.size)/100; seg.align=row.dataset.align; }
+    segs.push(seg);
   });
   return segs;
 }
 function rEditRenderText(){
-  const segs=rCapCollect();
-  const t=(segs[0]&&segs[0].text)||"Caption";
+  const row=rActiveSegRow; const t=(row&&row.querySelector("textarea").value.trim())||"Caption";
   document.getElementById("rEditCaptionText").innerHTML=rEsc(t).replace(/\n/g,"<br>");
 }
-function rEditPos(){
+// Applique les valeurs des sliders à la BOX de preview (sans écrire dans le segment).
+function rEditApplyToBox(){
   const x=+rVal("rPosX"), y=+rVal("rPosY"), w=+rVal("rPosW"), sz=+rVal("rPosSize");
   document.getElementById("rPosXV").textContent=x+"%"; document.getElementById("rPosYV").textContent=y+"%";
   document.getElementById("rPosWV").textContent=w+"%"; document.getElementById("rPosSizeV").textContent=sz.toFixed(1)+"%";
   const box=document.getElementById("rEditCaption"); const stage=document.getElementById("rEditStage");
   box.style.left=x+"%"; box.style.top=y+"%"; box.style.width=w+"%";
-  const fs=Math.max(9, stage.clientHeight*(sz/100)); box.style.fontSize=fs+"px";
+  box.style.fontSize=Math.max(9, stage.clientHeight*(sz/100))+"px";
   box.style.textAlign=rEdit.align;
   rEditRenderText();
 }
-function rEditAlign(al, silent){ rEdit.align=(["left","center","right"].includes(al)?al:"center");
+// Édition (slider/drag/align/quick) → écrit dans le SEGMENT ACTIF (crée un override).
+function rEditPos(){
+  const row=rActiveSegRow;
+  if(row){ row.dataset.haspos="1"; row.dataset.cx=Math.round(+rVal("rPosX")); row.dataset.cy=Math.round(+rVal("rPosY")); row.dataset.w=Math.round(+rVal("rPosW")); row.dataset.size=(+rVal("rPosSize")).toFixed(1); row.dataset.align=rEdit.align; rSegBadge(row); }
+  rEditApplyToBox();
+}
+function rEditAlign(al){ rEdit.align=(["left","center","right"].includes(al)?al:"center");
   document.querySelectorAll(".r-align-btn").forEach(b=>b.classList.toggle("active",b.dataset.al===rEdit.align));
-  if(!silent) rEditPos(); }
+  rEditPos(); }
+function rEditApplyAll(){
+  const cx=Math.round(+rVal("rPosX")), cy=Math.round(+rVal("rPosY")), w=Math.round(+rVal("rPosW")), size=(+rVal("rPosSize")).toFixed(1), al=rEdit.align;
+  document.querySelectorAll("#rCapSegs .r-seg").forEach(r=>{ r.dataset.haspos="1"; r.dataset.cx=cx; r.dataset.cy=cy; r.dataset.w=w; r.dataset.size=size; r.dataset.align=al; rSegBadge(r); });
+}
+function rEditResetSeg(){
+  const row=rActiveSegRow; if(!row) return;
+  row.dataset.haspos="0"; row.dataset.cx=rGlobalPos.cx; row.dataset.cy=rGlobalPos.cy; row.dataset.w=rGlobalPos.w; row.dataset.size=rGlobalPos.size.toFixed?rGlobalPos.size.toFixed(1):rGlobalPos.size; row.dataset.align=rGlobalPos.align;
+  rSegBadge(row); rSegSelect(row);
+}
 function rEditToggleSafe(){ document.getElementById("rEditSafe").style.display=document.getElementById("rEditSafeChk").checked?"block":"none"; }
 function rEditSetPreviewReel(){
   const idx=rVal("rEditPreviewReel"); const v=document.getElementById("rEditVideo");
@@ -4717,8 +4770,11 @@ async function rCapSave(){
   const segments=rCapCollect();
   const tags=(document.getElementById("rCapTags").value||"").split(",").map(s=>s.trim()).filter(Boolean);
   const favorite=document.getElementById("rCapFav").dataset.on==="1";
-  const position={ cx_pct:(+rVal("rPosX"))/100, cy_pct:(+rVal("rPosY"))/100, width_pct:(+rVal("rPosW"))/100, fontsize_pct:(+rVal("rPosSize"))/100, align:rEdit.align };
-  const body=Object.assign({name,segments,tags,favorite}, position);
+  // Position GLOBALE (fallback) = 1er segment positionné, sinon les sliders courants.
+  const first=document.querySelector("#rCapSegs .r-seg");
+  const gp = first ? { cx_pct:(+first.dataset.cx)/100, cy_pct:(+first.dataset.cy)/100, width_pct:(+first.dataset.w)/100, fontsize_pct:(+first.dataset.size)/100, align:first.dataset.align }
+                   : { cx_pct:(+rVal("rPosX"))/100, cy_pct:(+rVal("rPosY"))/100, width_pct:(+rVal("rPosW"))/100, fontsize_pct:(+rVal("rPosSize"))/100, align:rEdit.align };
+  const body=Object.assign({name,segments,tags,favorite}, gp);
   try{
     if(id){ body.id=parseInt(id,10); await rPost("/reels_caption_update",body); }
     else await rPost("/reels_caption_create",body);

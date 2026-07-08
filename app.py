@@ -5539,8 +5539,12 @@ def _reels_sanitize_segments(raw):
                 return f if f >= 0 else None
             except Exception:
                 return None
-        out.append({"text": text[:2000], "start_time": _t(s.get("start_time")),
-                    "end_time": _t(s.get("end_time"))})
+        seg = {"text": text[:2000], "start_time": _t(s.get("start_time")),
+               "end_time": _t(s.get("end_time"))}
+        # Optional PER-SEGMENT position override (only keys actually present are
+        # stored; missing keys inherit the caption's global position at render).
+        seg.update(_reels_sanitize_pos(s))
+        out.append(seg)
     return out
 
 
@@ -6147,8 +6151,12 @@ def reels_mix_run():
                     en = (dur if dur > 0 else st + 3.0) if en is None else float(en)
                     if en <= st:
                         en = st + max(0.5, 2.0)
-                    block = {"text": text, "cx_pct": _cx, "cy_pct": _cy,
-                             "fontsize_pct": _fp, "width_pct": _wp, "align": _al}
+                    # Per-segment override (Module segments) → falls back per-key
+                    # to the caption's global position when a key is absent.
+                    block = {"text": text,
+                             "cx_pct": s.get("cx_pct", _cx), "cy_pct": s.get("cy_pct", _cy),
+                             "fontsize_pct": s.get("fontsize_pct", _fp), "width_pct": s.get("width_pct", _wp),
+                             "align": s.get("align", _al)}
                     png = render_text_overlay([block], wa, ha, wa, ha, capcut_outline=capcut_outline)
                     _ov_paths.append(png)
                     overlay_specs.append((png, round(st, 3), round(en, 3)))
