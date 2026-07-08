@@ -5468,13 +5468,38 @@ def _migrate_reels_tables():
                     source_type TEXT DEFAULT 'audio',
                     created_at  TEXT
                 )""")
-            # Idempotent add for pre-existing installs (column may not exist yet).
-            try:
-                cols = [r[1] for r in conn.execute("PRAGMA table_info(reels_music)").fetchall()]
-                if "source_type" not in cols:
-                    conn.execute("ALTER TABLE reels_music ADD COLUMN source_type TEXT DEFAULT 'audio'")
-            except Exception:
-                pass
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS reels_pos_presets (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id      INTEGER,
+                    name         TEXT NOT NULL,
+                    cx_pct       REAL DEFAULT 0.5,
+                    cy_pct       REAL DEFAULT 0.78,
+                    width_pct    REAL DEFAULT 0.86,
+                    fontsize_pct REAL DEFAULT 0.05,
+                    align        TEXT DEFAULT 'center',
+                    created_at   TEXT
+                )""")
+
+            def _addcol(table, col, decl):
+                try:
+                    cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+                    if col not in cols:
+                        conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+                except Exception:
+                    pass
+
+            # Idempotent columns (pre-existing installs).
+            _addcol("reels_music", "source_type", "TEXT DEFAULT 'audio'")
+            for col, decl in [("tags", "TEXT DEFAULT '[]'"), ("favorite", "INTEGER DEFAULT 0"),
+                              ("usage_count", "INTEGER DEFAULT 0"), ("last_used_at", "TEXT")]:
+                _addcol("reels_music", col, decl)
+            for col, decl in [("cx_pct", "REAL DEFAULT 0.5"), ("cy_pct", "REAL DEFAULT 0.78"),
+                              ("width_pct", "REAL DEFAULT 0.86"), ("fontsize_pct", "REAL DEFAULT 0.05"),
+                              ("align", "TEXT DEFAULT 'center'"), ("tags", "TEXT DEFAULT '[]'"),
+                              ("favorite", "INTEGER DEFAULT 0"), ("usage_count", "INTEGER DEFAULT 0"),
+                              ("last_used_at", "TEXT")]:
+                _addcol("reels_captions", col, decl)
     except Exception as e:
         print(f"[reels] migrate WARNING: {e}")
 
@@ -5519,6 +5544,44 @@ def _reels_sanitize_segments(raw):
     return out
 
 
+def _reels_col(row, key, default=None):
+    try:
+        return row[key]
+    except Exception:
+        return default
+
+
+def _reels_clamp(v, lo, hi, default):
+    try:
+        f = float(v)
+        return max(lo, min(hi, f))
+    except Exception:
+        return default
+
+
+def _reels_sanitize_pos(data):
+    """Position payload → clamped % values. Missing keys → None (keep current)."""
+    out = {}
+    if "cx_pct" in data:       out["cx_pct"] = _reels_clamp(data.get("cx_pct"), 0.0, 1.0, 0.5)
+    if "cy_pct" in data:       out["cy_pct"] = _reels_clamp(data.get("cy_pct"), 0.0, 1.0, 0.78)
+    if "width_pct" in data:    out["width_pct"] = _reels_clamp(data.get("width_pct"), 0.2, 1.0, 0.86)
+    if "fontsize_pct" in data: out["fontsize_pct"] = _reels_clamp(data.get("fontsize_pct"), 0.02, 0.14, 0.05)
+    if "align" in data:        out["align"] = data.get("align") if data.get("align") in ("left", "center", "right") else "center"
+    return out
+
+
+def _reels_sanitize_tags(raw):
+    if not isinstance(raw, list):
+        return []
+    seen, out = set(), []
+    for t in raw:
+        t = str(t).strip()[:40]
+        k = t.lower()
+        if t and k not in seen:
+            seen.add(k); out.append(t)
+    return out[:20]
+
+
 def _reels_caption_row(row):
     try:
         segs = json.loads(row["segments_json"])
@@ -5526,8 +5589,17 @@ def _reels_caption_row(row):
         segs = []
     if not isinstance(segs, list):
         segs = []
+    try:
+        tags = json.loads(_reels_col(row, "tags", "[]") or "[]")
+    except Exception:
+        tags = []
     return {"id": row["id"], "name": row["name"], "segments": segs,
             "line_count": sum(len((s.get("text") or "").splitlines()) or 1 for s in segs),
+            "cx_pct": _reels_col(row, "cx_pct", 0.5), "cy_pct": _reels_col(row, "cy_pct", 0.78),
+            "width_pct": _reels_col(row, "width_pct", 0.86), "fontsize_pct": _reels_col(row, "fontsize_pct", 0.05),
+            "align": _reels_col(row, "align", "center"),
+            "tags": tags if isinstance(tags, list) else [], "favorite": _reels_col(row, "favorite", 0) or 0,
+            "usage_count": _reels_col(row, "usage_count", 0) or 0,
             "updated_at": row["updated_at"]}
 
 
@@ -5551,12 +5623,19 @@ def reels_caption_create():
         data = request.get_json(force=True) or {}
         name = (data.get("name") or "Caption").strip()[:120] or "Caption"
         segs = _reels_sanitize_segments(data.get("segments"))
+        pos = _reels_sanitize_pos(data)
+        tags = _reels_sanitize_tags(data.get("tags", []))
         now = _reels_now()
         uid = _reels_uid()
         with _users_db() as conn:
             cur = conn.execute(
-                "INSERT INTO reels_captions (user_id, name, segments_json, created_at, updated_at) VALUES (?,?,?,?,?)",
-                (uid, name, json.dumps(segs, ensure_ascii=False), now, now))
+                """INSERT INTO reels_captions
+                   (user_id, name, segments_json, cx_pct, cy_pct, width_pct, fontsize_pct, align, tags, favorite, usage_count, created_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (uid, name, json.dumps(segs, ensure_ascii=False),
+                 pos.get("cx_pct", 0.5), pos.get("cy_pct", 0.78), pos.get("width_pct", 0.86),
+                 pos.get("fontsize_pct", 0.05), pos.get("align", "center"),
+                 json.dumps(tags, ensure_ascii=False), 1 if data.get("favorite") else 0, 0, now, now))
             cid = cur.lastrowid
             row = conn.execute("SELECT * FROM reels_captions WHERE id=?", (cid,)).fetchone()
         return jsonify({"caption": _reels_caption_row(row)})
@@ -5576,8 +5655,20 @@ def reels_caption_update():
                 return jsonify({"error": "Caption introuvable"}), 404
             name = (data.get("name") if data.get("name") is not None else row["name"]).strip()[:120] or row["name"]
             segs = _reels_sanitize_segments(data.get("segments")) if data.get("segments") is not None else json.loads(row["segments_json"])
-            conn.execute("UPDATE reels_captions SET name=?, segments_json=?, updated_at=? WHERE id=? AND user_id IS ?",
-                         (name, json.dumps(segs, ensure_ascii=False), _reels_now(), cid, uid))
+            pos = _reels_sanitize_pos(data)
+            cx = pos.get("cx_pct", _reels_col(row, "cx_pct", 0.5))
+            cy = pos.get("cy_pct", _reels_col(row, "cy_pct", 0.78))
+            wp = pos.get("width_pct", _reels_col(row, "width_pct", 0.86))
+            fp = pos.get("fontsize_pct", _reels_col(row, "fontsize_pct", 0.05))
+            al = pos.get("align", _reels_col(row, "align", "center"))
+            if data.get("tags") is not None:
+                tg = json.dumps(_reels_sanitize_tags(data.get("tags")), ensure_ascii=False)
+            else:
+                tg = _reels_col(row, "tags", "[]")
+            fav = (1 if data.get("favorite") else 0) if data.get("favorite") is not None else (_reels_col(row, "favorite", 0) or 0)
+            conn.execute("""UPDATE reels_captions SET name=?, segments_json=?, cx_pct=?, cy_pct=?, width_pct=?,
+                            fontsize_pct=?, align=?, tags=?, favorite=?, updated_at=? WHERE id=? AND user_id IS ?""",
+                         (name, json.dumps(segs, ensure_ascii=False), cx, cy, wp, fp, al, tg, fav, _reels_now(), cid, uid))
             row = conn.execute("SELECT * FROM reels_captions WHERE id=?", (cid,)).fetchone()
         return jsonify({"caption": _reels_caption_row(row)})
     except Exception as e:
@@ -5617,14 +5708,133 @@ def reels_caption_delete():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/reels_caption_favorite", methods=["POST"])
+def reels_caption_favorite():
+    try:
+        data = request.get_json(force=True) or {}
+        cid = int(data.get("id", 0))
+        fav = 1 if data.get("favorite") else 0
+        uid = _reels_uid()
+        with _users_db() as conn:
+            conn.execute("UPDATE reels_captions SET favorite=? WHERE id=? AND user_id IS ?", (fav, cid, uid))
+        return jsonify({"ok": True, "favorite": fav})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_caption_apply_position", methods=["POST"])
+def reels_caption_apply_position():
+    """Bulk-apply a position to caption ids (or ALL of the user's captions)."""
+    try:
+        data = request.get_json(force=True) or {}
+        pos = _reels_sanitize_pos(data.get("position") or {})
+        if not pos:
+            return jsonify({"error": "Position invalide"}), 400
+        uid = _reels_uid()
+        ids = data.get("ids")
+        with _users_db() as conn:
+            if data.get("all"):
+                rows = conn.execute("SELECT id FROM reels_captions WHERE user_id IS ?", (uid,)).fetchall()
+                ids = [r["id"] for r in rows]
+            ids = [int(x) for x in (ids or [])]
+            sets, vals = [], []
+            for k in ("cx_pct", "cy_pct", "width_pct", "fontsize_pct", "align"):
+                if k in pos:
+                    sets.append(f"{k}=?"); vals.append(pos[k])
+            if sets and ids:
+                q = f"UPDATE reels_captions SET {', '.join(sets)}, updated_at=? WHERE id=? AND user_id IS ?"
+                now = _reels_now()
+                for cid in ids:
+                    conn.execute(q, (*vals, now, cid, uid))
+        return jsonify({"ok": True, "count": len(ids)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ── MODULE 2 — POSITION PRESETS ───────────────────────────────────
+def _reels_preset_row(row):
+    return {"id": row["id"], "name": row["name"], "cx_pct": row["cx_pct"], "cy_pct": row["cy_pct"],
+            "width_pct": row["width_pct"], "fontsize_pct": row["fontsize_pct"], "align": row["align"]}
+
+
+@app.route("/reels_pos_preset_list", methods=["GET"])
+def reels_pos_preset_list():
+    try:
+        uid = _reels_uid()
+        with _users_db() as conn:
+            rows = conn.execute("SELECT * FROM reels_pos_presets WHERE user_id IS ? ORDER BY id ASC", (uid,)).fetchall()
+        return jsonify({"presets": [_reels_preset_row(r) for r in rows]})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_pos_preset_create", methods=["POST"])
+def reels_pos_preset_create():
+    try:
+        data = request.get_json(force=True) or {}
+        name = (data.get("name") or "Preset").strip()[:80] or "Preset"
+        pos = _reels_sanitize_pos(data)
+        uid = _reels_uid()
+        with _users_db() as conn:
+            cur = conn.execute(
+                "INSERT INTO reels_pos_presets (user_id, name, cx_pct, cy_pct, width_pct, fontsize_pct, align, created_at) VALUES (?,?,?,?,?,?,?,?)",
+                (uid, name, pos.get("cx_pct", 0.5), pos.get("cy_pct", 0.78), pos.get("width_pct", 0.86),
+                 pos.get("fontsize_pct", 0.05), pos.get("align", "center"), _reels_now()))
+            row = conn.execute("SELECT * FROM reels_pos_presets WHERE id=?", (cur.lastrowid,)).fetchone()
+        return jsonify({"preset": _reels_preset_row(row)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_pos_preset_update", methods=["POST"])
+def reels_pos_preset_update():
+    try:
+        data = request.get_json(force=True) or {}
+        pid = int(data.get("id", 0))
+        uid = _reels_uid()
+        with _users_db() as conn:
+            row = conn.execute("SELECT * FROM reels_pos_presets WHERE id=? AND user_id IS ?", (pid, uid)).fetchone()
+            if not row:
+                return jsonify({"error": "Preset introuvable"}), 404
+            pos = _reels_sanitize_pos(data)
+            name = (data.get("name") if data.get("name") is not None else row["name"]).strip()[:80] or row["name"]
+            conn.execute("""UPDATE reels_pos_presets SET name=?, cx_pct=?, cy_pct=?, width_pct=?, fontsize_pct=?, align=?
+                            WHERE id=? AND user_id IS ?""",
+                         (name, pos.get("cx_pct", row["cx_pct"]), pos.get("cy_pct", row["cy_pct"]),
+                          pos.get("width_pct", row["width_pct"]), pos.get("fontsize_pct", row["fontsize_pct"]),
+                          pos.get("align", row["align"]), pid, uid))
+            row = conn.execute("SELECT * FROM reels_pos_presets WHERE id=?", (pid,)).fetchone()
+        return jsonify({"preset": _reels_preset_row(row)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_pos_preset_delete", methods=["POST"])
+def reels_pos_preset_delete():
+    try:
+        data = request.get_json(force=True) or {}
+        pid = int(data.get("id", 0))
+        uid = _reels_uid()
+        with _users_db() as conn:
+            conn.execute("DELETE FROM reels_pos_presets WHERE id=? AND user_id IS ?", (pid, uid))
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ── MODULE 2 — MUSIC LIBRARY ──────────────────────────────────────
 def _reels_music_row(row):
     try:
-        st = row["source_type"] or "audio"
+        tags = json.loads(_reels_col(row, "tags", "[]") or "[]")
     except Exception:
-        st = "audio"
+        tags = []
     return {"id": row["id"], "name": row["name"], "ext": row["ext"],
-            "size": row["size"], "duration": row["duration"], "source_type": st}
+            "size": row["size"], "duration": row["duration"],
+            "source_type": _reels_col(row, "source_type", "audio") or "audio",
+            "tags": tags if isinstance(tags, list) else [],
+            "favorite": _reels_col(row, "favorite", 0) or 0,
+            "usage_count": _reels_col(row, "usage_count", 0) or 0,
+            "created_at": _reels_col(row, "created_at", "")}
 
 
 def _reels_has_audio(path):
@@ -5720,16 +5930,30 @@ def reels_music_update():
     try:
         data = request.get_json(force=True) or {}
         mid = int(data.get("id", 0))
-        name = (data.get("name") or "").strip()[:120]
-        if not name:
-            return jsonify({"error": "Nom requis"}), 400
         uid = _reels_uid()
         with _users_db() as conn:
-            conn.execute("UPDATE reels_music SET name=? WHERE id=? AND user_id IS ?", (name, mid, uid))
             row = conn.execute("SELECT * FROM reels_music WHERE id=? AND user_id IS ?", (mid, uid)).fetchone()
-        if not row:
-            return jsonify({"error": "Musique introuvable"}), 404
+            if not row:
+                return jsonify({"error": "Musique introuvable"}), 404
+            name = (data.get("name") if data.get("name") is not None else row["name"]).strip()[:120] or row["name"]
+            tg = json.dumps(_reels_sanitize_tags(data.get("tags")), ensure_ascii=False) if data.get("tags") is not None else _reels_col(row, "tags", "[]")
+            conn.execute("UPDATE reels_music SET name=?, tags=? WHERE id=? AND user_id IS ?", (name, tg, mid, uid))
+            row = conn.execute("SELECT * FROM reels_music WHERE id=? AND user_id IS ?", (mid, uid)).fetchone()
         return jsonify({"music": _reels_music_row(row)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_music_favorite", methods=["POST"])
+def reels_music_favorite():
+    try:
+        data = request.get_json(force=True) or {}
+        mid = int(data.get("id", 0))
+        fav = 1 if data.get("favorite") else 0
+        uid = _reels_uid()
+        with _users_db() as conn:
+            conn.execute("UPDATE reels_music SET favorite=? WHERE id=? AND user_id IS ?", (fav, mid, uid))
+        return jsonify({"ok": True, "favorite": fav})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -5907,6 +6131,12 @@ def reels_mix_run():
                     segs = []
                 wa, ha = get_video_dims(reel_path)
                 dur = _get_video_duration_seconds(reel_path) or 0.0
+                # Saved visual position (Module 1) — falls back to sensible defaults.
+                _cx = _reels_col(crow, "cx_pct", 0.5) or 0.5
+                _cy = _reels_col(crow, "cy_pct", 0.78) or 0.78
+                _wp = _reels_col(crow, "width_pct", 0.86) or 0.86
+                _fp = _reels_col(crow, "fontsize_pct", 0.05) or 0.05
+                _al = _reels_col(crow, "align", "center") or "center"
                 for s in segs:
                     text = (s.get("text") or "").strip()
                     if not text:
@@ -5917,8 +6147,8 @@ def reels_mix_run():
                     en = (dur if dur > 0 else st + 3.0) if en is None else float(en)
                     if en <= st:
                         en = st + max(0.5, 2.0)
-                    block = {"text": text, "cx_pct": 0.5, "cy_pct": 0.78,
-                             "fontsize_pct": 0.05, "width_pct": 0.86, "align": "center"}
+                    block = {"text": text, "cx_pct": _cx, "cy_pct": _cy,
+                             "fontsize_pct": _fp, "width_pct": _wp, "align": _al}
                     png = render_text_overlay([block], wa, ha, wa, ha, capcut_outline=capcut_outline)
                     _ov_paths.append(png)
                     overlay_specs.append((png, round(st, 3), round(en, 3)))
@@ -5952,6 +6182,17 @@ def reels_mix_run():
                             success=ok, claude_requests=0)
         except Exception as e:
             print(f"[reels_mixer] usage log WARNING: {e}")
+
+        # ── Usage counters (Modules 7/8) ──
+        if ok:
+            try:
+                with _users_db() as conn:
+                    if cid:
+                        conn.execute("UPDATE reels_captions SET usage_count=COALESCE(usage_count,0)+1, last_used_at=? WHERE id=? AND user_id IS ?", (_reels_now(), cid, uid))
+                    if mid:
+                        conn.execute("UPDATE reels_music SET usage_count=COALESCE(usage_count,0)+1, last_used_at=? WHERE id=? AND user_id IS ?", (_reels_now(), mid, uid))
+            except Exception:
+                pass
 
         if not ok:
             err = (proc.stderr or "ffmpeg a échoué")[-500:]
