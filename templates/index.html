@@ -792,6 +792,39 @@ body {
   .ws-resizer { display:none; }
   .ws-panel { min-height:280px; }
 }
+
+/* ── Reels Studio specifics ── */
+.r-assign-bar { display:flex; gap:6px; flex-wrap:wrap; padding:8px 10px 4px; }
+.r-assign-bar .v-ghost-btn { font-size:.72rem; padding:4px 9px; }
+.r-search { padding:8px 10px; }
+.r-search input { width:100%; box-sizing:border-box; background:rgba(0,0,0,.25); border:1px solid var(--border);
+  color:var(--text); border-radius:8px; padding:7px 10px; font-size:.8rem; }
+.r-live { cursor:pointer !important; color:var(--text) !important; }
+.ws-card .r-badges { display:flex; flex-direction:column; gap:2px; padding:0 8px 7px; }
+.r-badge { font-size:.62rem; padding:2px 6px; border-radius:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  border:1px solid var(--border); color:var(--muted); background:rgba(255,255,255,.02); }
+.r-badge.cap.on { color:#bda6ff; border-color:rgba(124,92,255,.4); }
+.r-badge.mus.on { color:#7fe3b0; border-color:rgba(60,180,120,.4); }
+.ws-cap-card .ws-cap-btns .ws-mini.r-live { cursor:pointer; color:var(--muted); }
+.ws-cap-card.r-usable .ws-mini { cursor:pointer; }
+.r-assign-mini { font-size:.62rem; padding:2px 7px; border:1px solid var(--accent); background:transparent; color:var(--accent); border-radius:6px; cursor:pointer; }
+.r-audiorow { display:flex; align-items:center; gap:8px; }
+.r-audiorow audio { height:26px; max-width:150px; }
+/* modal */
+.r-modal { position:fixed; inset:0; z-index:250; background:rgba(0,0,0,.62); display:flex; align-items:center; justify-content:center; padding:16px; }
+.r-modal-box { width:min(560px,94vw); max-height:88vh; overflow:auto; background:var(--card,#16181d);
+  border:1px solid var(--border-strong); border-radius:14px; padding:18px; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+.r-modal-head { display:flex; align-items:center; justify-content:space-between; font-weight:700; font-size:.95rem; margin-bottom:14px; }
+.r-modal-field { margin-bottom:14px; }
+.r-modal-field > label { display:block; font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin-bottom:6px; }
+.r-modal-field input[type=text] { width:100%; box-sizing:border-box; background:rgba(0,0,0,.25); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px 10px; font-size:.85rem; }
+.r-seg { border:1px solid var(--border); border-radius:9px; padding:9px; margin-bottom:8px; background:rgba(255,255,255,.02); }
+.r-seg textarea { width:100%; box-sizing:border-box; background:rgba(0,0,0,.25); border:1px solid var(--border); color:var(--text); border-radius:7px; padding:7px; font-size:.82rem; resize:vertical; min-height:44px; }
+.r-seg-times { display:flex; gap:8px; align-items:center; margin-top:6px; font-size:.72rem; color:var(--muted); }
+.r-seg-times input { width:70px; background:rgba(0,0,0,.25); border:1px solid var(--border); color:var(--text); border-radius:6px; padding:4px 6px; font-size:.76rem; }
+.r-seg-del { margin-left:auto; font-size:.68rem; padding:3px 8px; border:1px solid rgba(230,120,120,.3); color:#e88; background:transparent; border-radius:6px; cursor:pointer; }
+.r-modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:6px; }
+.r-review-bar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
 </style>
 </head>
 <body>
@@ -862,6 +895,10 @@ Mode Simple
 <button class="tab-btn nav-item" data-tab="batch" onclick="switchTab('batch')">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
 Mode Batch
+</button>
+<button class="tab-btn nav-item" data-tab="reels" onclick="switchTab('reels')">
+<span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="3" width="13" height="12" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 6.5 H15.5 M6 3 L7.5 6.5 M10 3 L11.5 6.5" stroke="currentColor" stroke-width="1.3"/><path d="M8 9 L11 10.7 L8 12.4 Z" fill="currentColor"/></svg></span>
+Reels Studio
 </button>
 <button class="tab-btn nav-item" data-tab="variation" onclick="switchTab('variation')">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span>
@@ -1927,6 +1964,106 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 
 </div><!-- /optimizerTab -->
 
+<!-- ═══════════ REELS PRODUCTION STUDIO (pipeline low-cost, 0 OCR / 0 Claude) ═══════════ -->
+<div id="reelsTab" class="tab-content">
+<div class="ws-root">
+
+  <div class="ws-infobar">
+    <div class="ws-stat"><span class="ws-stat-v" id="rInfoReels">0</span><span class="ws-stat-l">reels</span></div>
+    <div class="ws-stat"><span class="ws-stat-v" id="rInfoCap">0</span><span class="ws-stat-l">captions</span></div>
+    <div class="ws-stat"><span class="ws-stat-v" id="rInfoMus">0</span><span class="ws-stat-l">musiques</span></div>
+    <div class="ws-stat ws-stat-hi"><span class="ws-stat-v" id="rInfoOut">0</span><span class="ws-stat-l">à générer</span></div>
+    <div class="ws-stat ws-stat-status"><span class="ws-dot" id="rStatusDot"></span><span class="ws-stat-l" id="rInfoStatus">Prêt</span></div>
+  </div>
+
+  <div class="ws-panels" id="rPanels">
+
+    <!-- Panneau REELS -->
+    <section class="ws-panel">
+      <header class="ws-panel-head">
+        <div class="ws-panel-title"><span class="ws-panel-ico">🎬</span> Reels <span class="ws-panel-sub">bibliothèque</span></div>
+        <div class="ws-view-toggle">
+          <button type="button" class="ws-vt active" data-view="grid" onclick="rSetView('grid')" title="Grandes miniatures">▦</button>
+          <button type="button" class="ws-vt" data-view="list" onclick="rSetView('list')" title="Compacte">≡</button>
+        </div>
+      </header>
+      <div class="r-assign-bar">
+        <button type="button" class="v-ghost-btn" onclick="rAssignRandom(false)">🎲 Assigner aléatoire</button>
+        <button type="button" class="v-ghost-btn" onclick="rAssignRandom(true)">🔀 Sans répétition</button>
+        <button type="button" class="v-ghost-btn" onclick="rClearAssign()">✕ Vider</button>
+      </div>
+      <div class="drop-zone upcard ws-drop" id="rZoneReels">
+        <input type="file" id="rInputReels" accept="video/*" multiple />
+        <span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="5" width="9" height="8" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M11.5 8 L15.5 6 V12 L11.5 10 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
+        <div class="meta"><div class="lbl">Ajouter des reels</div><div class="sub">vidéos verticales</div><div class="fn" id="rNameReels"></div></div>
+      </div>
+      <div class="ws-gallery grid" id="rGalleryReels"></div>
+    </section>
+
+    <div class="ws-resizer" data-i="0" title="Glisser pour redimensionner"></div>
+
+    <!-- Panneau CAPTIONS LIBRARY -->
+    <section class="ws-panel">
+      <header class="ws-panel-head">
+        <div class="ws-panel-title"><span class="ws-panel-ico">✏️</span> Captions <span class="ws-panel-sub">bibliothèque</span></div>
+        <button type="button" class="ws-icon-btn r-live" title="Nouvelle caption" onclick="rCapOpen()">＋</button>
+      </header>
+      <div class="r-search"><input type="text" id="rCapSearch" placeholder="Rechercher une caption…" oninput="rCapRender()"></div>
+      <div class="ws-cap-list" id="rCapList"></div>
+    </section>
+
+    <div class="ws-resizer" data-i="1" title="Glisser pour redimensionner"></div>
+
+    <!-- Panneau MUSIC LIBRARY -->
+    <section class="ws-panel">
+      <header class="ws-panel-head">
+        <div class="ws-panel-title"><span class="ws-panel-ico">🎵</span> Musiques <span class="ws-panel-sub">bibliothèque</span></div>
+      </header>
+      <div class="drop-zone upcard ws-drop" id="rZoneMus">
+        <input type="file" id="rMusInput" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus" multiple />
+        <span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2 V11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M9 2 L13.5 3.7 V6.5 L9 4.8 Z" fill="currentColor"/><circle cx="6.5" cy="11.5" r="2.6" stroke="currentColor" stroke-width="1.6"/></svg></span>
+        <div class="meta"><div class="lbl">Ajouter des musiques</div><div class="sub">.mp3 .m4a .wav .ogg</div><div class="fn" id="rMusName"></div></div>
+      </div>
+      <div class="r-search"><input type="text" id="rMusSearch" placeholder="Rechercher une musique…" oninput="rMusRender()"></div>
+      <div class="ws-cap-list" id="rMusList"></div>
+    </section>
+
+  </div>
+
+  <!-- Barre de génération + review -->
+  <div class="ws-genbar">
+    <button id="rGenBtn" class="primary-btn ws-gen-btn" onclick="reelsGenerate()" disabled>▶ Générer les reels</button>
+    <div class="card ws-progress" id="rProgressCard" style="display:none;">
+      <h2 id="rProgressTitle">Génération des reels…</h2>
+      <div class="pbar"><div class="pbar-fill" id="rGenFill"></div></div>
+      <div id="rGenStatus" style="font-size:.85rem;color:var(--muted);margin-bottom:14px"></div>
+      <div class="r-review-bar">
+        <button type="button" class="zip-btn" id="rZipBtn" onclick="rDownloadZip(false)" style="display:none;">📦 Tout télécharger (ZIP)</button>
+        <button type="button" class="zip-btn" id="rZipSelBtn" onclick="rDownloadZip(true)" style="display:none;background:transparent;color:var(--text);">📦 ZIP de la sélection</button>
+      </div>
+      <div class="ws-gallery grid" id="rReview" style="max-height:none;"></div>
+    </div>
+  </div>
+
+</div><!-- /ws-root reels -->
+
+<!-- Éditeur de caption (modal) -->
+<div id="rCapModal" class="r-modal" style="display:none;">
+  <div class="r-modal-box">
+    <div class="r-modal-head"><span id="rCapModalTitle">Nouvelle caption</span><button type="button" class="ws-icon-btn r-live" onclick="rCapClose()">✕</button></div>
+    <input type="hidden" id="rCapModalId" value="">
+    <div class="r-modal-field"><label>Nom</label><input type="text" id="rCapName" placeholder="Nom de la caption" maxlength="120"></div>
+    <div class="r-modal-field"><label>Segments</label><div id="rCapSegs"></div>
+      <button type="button" class="v-ghost-btn" onclick="rCapAddSeg()">＋ Ajouter un segment</button></div>
+    <div class="r-modal-actions">
+      <button type="button" class="v-ghost-btn" onclick="rCapClose()">Annuler</button>
+      <button type="button" class="primary-btn" onclick="rCapSave()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /reelsTab -->
+
 </main>
 </div><!-- /app-main -->
 </div><!-- /app-shell -->
@@ -1948,6 +2085,8 @@ document.getElementById('variationMultiTab').classList.toggle('active', tab === 
 document.getElementById('audioTab').classList.toggle('active', tab === 'audio');
 document.getElementById('photoTab').classList.toggle('active', tab === 'photo');
 document.getElementById('optimizerTab').classList.toggle('active', tab === 'optimizer');
+document.getElementById('reelsTab').classList.toggle('active', tab === 'reels');
+if (tab === 'reels' && typeof reelsOnOpen === 'function') reelsOnOpen();
 }
 
 function toggleGenDrop(e) {
@@ -4155,6 +4294,264 @@ function wsSetView(which, view){
   setInterval(tick, 500);
   tick();
 })();
+
+// ═══════════ REELS PRODUCTION STUDIO — front-end (pipeline séparé, 0 OCR) ═══════════
+let rReels = [];      // {file, url, capId, musId, sel}
+let rCaptions = [];   // from /reels_caption_list
+let rMusic = [];      // from /reels_music_list
+let rMixJobId = null;
+let rReview = [];     // {job_id, filename}
+let rReviewSel = new Set();
+let rLoaded = false;
+let rReelsRunning = false;
+
+function rFmtSize(b){ return b<1024*1024 ? (b/1024).toFixed(0)+" Ko" : b<1024*1024*1024 ? (b/1024/1024).toFixed(1)+" Mo" : (b/1024/1024/1024).toFixed(2)+" Go"; }
+function rEsc(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+async function rGet(url){ const r=await fetch(url); return r.json(); }
+async function rPost(url, body, isForm){ const opt={method:"POST"}; if(isForm){opt.body=body;} else {opt.headers={"Content-Type":"application/json"};opt.body=JSON.stringify(body||{});} const r=await fetch(url,opt); return r.json(); }
+
+async function reelsOnOpen(){
+  if (!rLoaded){ rLoaded = true; }
+  await Promise.all([rRefreshCaptions(), rRefreshMusic()]);
+  rRenderReels(); rRenderReview(); rUpdateInfo();
+}
+async function rRefreshCaptions(){ try{ const d=await rGet("/reels_caption_list"); rCaptions=d.captions||[]; }catch(e){} rCapRender(); }
+async function rRefreshMusic(){ try{ const d=await rGet("/reels_music_list"); rMusic=d.music||[]; }catch(e){} rMusRender(); }
+
+// ── Reels panel ──
+(function rInitInputs(){
+  const inp=document.getElementById("rInputReels");
+  if(inp) inp.addEventListener("change", e=>{ rAddReels(Array.from(e.target.files)); e.target.value=""; });
+  const z=document.getElementById("rZoneReels");
+  if(z){ z.addEventListener("dragover",e=>{e.preventDefault();z.classList.add("drag-over");});
+    z.addEventListener("dragleave",()=>z.classList.remove("drag-over"));
+    z.addEventListener("drop",e=>{e.preventDefault();z.classList.remove("drag-over");rAddReels(Array.from(e.dataTransfer.files));}); }
+  const mi=document.getElementById("rMusInput");
+  if(mi) mi.addEventListener("change", async e=>{ const fs=Array.from(e.target.files); e.target.value=""; await rUploadMusic(fs); });
+  const mz=document.getElementById("rZoneMus");
+  if(mz){ mz.addEventListener("dragover",e=>{e.preventDefault();mz.classList.add("drag-over");});
+    mz.addEventListener("dragleave",()=>mz.classList.remove("drag-over"));
+    mz.addEventListener("drop", async e=>{e.preventDefault();mz.classList.remove("drag-over");await rUploadMusic(Array.from(e.dataTransfer.files));}); }
+})();
+
+function rIsVideo(f){ return f.type.startsWith("video/") || /\.(mp4|mov|avi|mkv|webm|m4v)$/i.test(f.name); }
+function rAddReels(files){
+  files.filter(rIsVideo).forEach(f=>{ rReels.push({file:f, url:URL.createObjectURL(f), capId:null, musId:null, sel:false}); });
+  const n=rReels.length; const el=document.getElementById("rNameReels"); if(el) el.textContent = n? `✓ ${n} reel${n>1?"s":""}` : "";
+  rRenderReels(); rUpdateInfo();
+}
+function rSetView(v){
+  const g=document.getElementById("rGalleryReels"); if(!g) return;
+  g.classList.toggle("grid", v==="grid"); g.classList.toggle("list", v==="list");
+  const t=g.closest(".ws-panel").querySelector(".ws-view-toggle"); if(t) t.querySelectorAll(".ws-vt").forEach(b=>b.classList.toggle("active",b.dataset.view===v));
+  rRenderReels();
+}
+function rCapName(id){ const c=rCaptions.find(x=>x.id===id); return c?c.name:""; }
+function rMusName(id){ const m=rMusic.find(x=>x.id===id); return m?m.name:""; }
+function rRenderReels(){
+  const g=document.getElementById("rGalleryReels"); if(!g) return;
+  g.innerHTML="";
+  if(!rReels.length){ g.innerHTML='<div class="ws-empty">Aucun reel. Glisse tes vidéos verticales ci-dessus.</div>'; return; }
+  rReels.forEach((r,idx)=>{
+    const card=document.createElement("div"); card.className="ws-card"+(r.sel?" sel":""); card.dataset.i=idx;
+    const chk=document.createElement("div"); chk.className="ws-card-check"; chk.textContent=r.sel?"✓":"";
+    const v=document.createElement("video"); v.src=r.url; v.preload="metadata"; v.muted=true; v.playsInline=true;
+    const info=document.createElement("div"); info.className="ws-card-info";
+    const nm=document.createElement("div"); nm.className="ws-card-name"; nm.textContent=r.file.name; nm.title=r.file.name;
+    const meta=document.createElement("div"); meta.className="ws-card-meta"; meta.innerHTML=`<span>${rFmtSize(r.file.size)}</span>`;
+    v.addEventListener("loadedmetadata",()=>{ const d=v.duration,mm=Math.floor(d/60),ss=Math.round(d%60); const res=(v.videoWidth&&v.videoHeight)?v.videoWidth+"×"+v.videoHeight:""; meta.innerHTML=`<span>${isFinite(d)?mm+":"+String(ss).padStart(2,"0"):""}</span><span>${res}</span><span>${rFmtSize(r.file.size)}</span>`; });
+    info.appendChild(nm); info.appendChild(meta);
+    const badges=document.createElement("div"); badges.className="r-badges";
+    const cb=document.createElement("div"); cb.className="r-badge cap"+(r.capId?" on":""); cb.textContent="✏️ "+(r.capId?rCapName(r.capId):"—");
+    const mb=document.createElement("div"); mb.className="r-badge mus"+(r.musId?" on":""); mb.textContent="🎵 "+(r.musId?rMusName(r.musId):"—");
+    badges.appendChild(cb); badges.appendChild(mb);
+    chk.addEventListener("click",ev=>{ ev.stopPropagation(); r.sel=!r.sel; card.classList.toggle("sel",r.sel); chk.textContent=r.sel?"✓":""; });
+    card.addEventListener("click",()=>{ if(v.paused){ document.querySelectorAll("#rGalleryReels video").forEach(x=>{if(x!==v)x.pause();}); v.play().catch(()=>{}); } else v.pause(); });
+    card.appendChild(chk); card.appendChild(v); card.appendChild(info); card.appendChild(badges);
+    g.appendChild(card);
+  });
+}
+
+// ── Captions library ──
+function rCapRender(){
+  const list=document.getElementById("rCapList"); if(!list) return;
+  const q=(document.getElementById("rCapSearch")?.value||"").toLowerCase();
+  list.innerHTML="";
+  const items=rCaptions.filter(c=> !q || c.name.toLowerCase().includes(q));
+  if(!items.length){ list.innerHTML='<div class="ws-empty">Aucune caption. Clique ＋ pour en créer une.</div>'; return; }
+  items.forEach(c=>{
+    const prev=(c.segments&&c.segments[0]&&c.segments[0].text||"").split("\n")[0].slice(0,60);
+    const card=document.createElement("div"); card.className="ws-cap-card r-usable";
+    card.innerHTML=`<div class="ws-cap-name">${rEsc(c.name)}</div>
+      <div class="ws-cap-preview">${rEsc(prev)||"(vide)"}</div>
+      <div class="ws-cap-foot"><span class="ws-cap-lines">${c.segments.length} segment(s)</span>
+      <span class="ws-cap-btns">
+        <button type="button" class="r-assign-mini" onclick="rCapAssign(${c.id})">assigner</button>
+        <button type="button" class="ws-mini r-live" onclick="rCapOpen(${c.id})">modifier</button>
+        <button type="button" class="ws-mini r-live" onclick="rCapDup(${c.id})">dupliquer</button>
+        <button type="button" class="ws-mini ws-danger r-live" onclick="rCapDel(${c.id})">suppr.</button>
+      </span></div>`;
+    list.appendChild(card);
+  });
+}
+function rCapOpen(id){
+  const modal=document.getElementById("rCapModal");
+  document.getElementById("rCapModalId").value = id||"";
+  document.getElementById("rCapModalTitle").textContent = id?"Modifier la caption":"Nouvelle caption";
+  const segsBox=document.getElementById("rCapSegs"); segsBox.innerHTML="";
+  if(id){ const c=rCaptions.find(x=>x.id===id); document.getElementById("rCapName").value=c?c.name:""; (c?.segments||[]).forEach(s=>rCapAddSeg(s)); if(!(c?.segments||[]).length) rCapAddSeg(); }
+  else { document.getElementById("rCapName").value=""; rCapAddSeg(); }
+  modal.style.display="flex";
+}
+function rCapClose(){ document.getElementById("rCapModal").style.display="none"; }
+function rCapAddSeg(s){
+  const box=document.getElementById("rCapSegs");
+  const row=document.createElement("div"); row.className="r-seg";
+  row.innerHTML=`<textarea placeholder="Texte de la caption (retour à la ligne = nouvelle ligne)">${rEsc((s&&s.text)||"")}</textarea>
+    <div class="r-seg-times">start <input type="number" step="0.1" min="0" class="r-seg-start" value="${s&&s.start_time!=null?s.start_time:""}">
+    end <input type="number" step="0.1" min="0" class="r-seg-end" value="${s&&s.end_time!=null?s.end_time:""}">
+    <button type="button" class="r-seg-del" onclick="this.closest('.r-seg').remove()">retirer</button></div>`;
+  box.appendChild(row);
+}
+function rCapCollect(){
+  const segs=[];
+  document.querySelectorAll("#rCapSegs .r-seg").forEach(row=>{
+    const text=(row.querySelector("textarea").value||"").trim(); if(!text) return;
+    const st=row.querySelector(".r-seg-start").value, en=row.querySelector(".r-seg-end").value;
+    segs.push({text, start_time: st===""?null:parseFloat(st), end_time: en===""?null:parseFloat(en)});
+  });
+  return segs;
+}
+async function rCapSave(){
+  const id=document.getElementById("rCapModalId").value;
+  const name=(document.getElementById("rCapName").value||"").trim()||"Caption";
+  const segments=rCapCollect();
+  try{
+    if(id) await rPost("/reels_caption_update",{id:parseInt(id,10),name,segments});
+    else await rPost("/reels_caption_create",{name,segments});
+    rCapClose(); await rRefreshCaptions(); rRenderReels(); rUpdateInfo();
+  }catch(e){ alert("Erreur: "+e.message); }
+}
+async function rCapDup(id){ try{ await rPost("/reels_caption_duplicate",{id}); await rRefreshCaptions(); }catch(e){} }
+async function rCapDel(id){ if(!confirm("Supprimer cette caption ?"))return; try{ await rPost("/reels_caption_delete",{id}); rReels.forEach(r=>{ if(r.capId===id) r.capId=null; }); await rRefreshCaptions(); rRenderReels(); rUpdateInfo(); }catch(e){} }
+function rCapAssign(id){ const targets=rReels.filter(r=>r.sel); (targets.length?targets:rReels).forEach(r=>r.capId=id); rRenderReels(); rUpdateInfo(); }
+
+// ── Music library ──
+async function rUploadMusic(files){
+  const audio=files.filter(f=> f.type.startsWith("audio/") || /\.(mp3|m4a|aac|wav|ogg|opus)$/i.test(f.name));
+  const nameEl=document.getElementById("rMusName");
+  for(const f of audio){ if(nameEl) nameEl.textContent="⏳ "+f.name; const fd=new FormData(); fd.append("file",f); try{ await rPost("/reels_music_upload",fd,true); }catch(e){} }
+  if(nameEl) nameEl.textContent="";
+  await rRefreshMusic();
+}
+function rMusRender(){
+  const list=document.getElementById("rMusList"); if(!list) return;
+  const q=(document.getElementById("rMusSearch")?.value||"").toLowerCase();
+  list.innerHTML="";
+  const items=rMusic.filter(m=> !q || m.name.toLowerCase().includes(q));
+  if(!items.length){ list.innerHTML='<div class="ws-empty">Aucune musique. Ajoute des fichiers audio ci-dessus.</div>'; return; }
+  items.forEach(m=>{
+    const d=m.duration||0, mm=Math.floor(d/60), ss=Math.round(d%60);
+    const card=document.createElement("div"); card.className="ws-cap-card";
+    card.innerHTML=`<div class="ws-cap-name">${rEsc(m.name)}</div>
+      <div class="r-audiorow"><audio controls preload="none" src="/reels_music_file/${m.id}"></audio></div>
+      <div class="ws-cap-foot"><span class="ws-cap-lines">${isFinite(d)?mm+":"+String(ss).padStart(2,"0"):""} · ${rFmtSize(m.size||0)}</span>
+      <span class="ws-cap-btns">
+        <button type="button" class="r-assign-mini" onclick="rMusAssign(${m.id})">assigner</button>
+        <button type="button" class="ws-mini r-live" onclick="rMusRename(${m.id})">renommer</button>
+        <button type="button" class="ws-mini ws-danger r-live" onclick="rMusDel(${m.id})">suppr.</button>
+      </span></div>`;
+    list.appendChild(card);
+  });
+}
+function rMusAssign(id){ const targets=rReels.filter(r=>r.sel); (targets.length?targets:rReels).forEach(r=>r.musId=id); rRenderReels(); rUpdateInfo(); }
+async function rMusRename(id){ const m=rMusic.find(x=>x.id===id); const name=prompt("Nouveau nom :", m?m.name:""); if(!name) return; try{ await rPost("/reels_music_update",{id,name}); await rRefreshMusic(); }catch(e){} }
+async function rMusDel(id){ if(!confirm("Supprimer cette musique ?"))return; try{ await rPost("/reels_music_delete",{id}); rReels.forEach(r=>{ if(r.musId===id) r.musId=null; }); await rRefreshMusic(); rRenderReels(); rUpdateInfo(); }catch(e){} }
+
+// ── Assignation ──
+function rAssignRandom(noRepeat){
+  const targets=(rReels.filter(r=>r.sel).length?rReels.filter(r=>r.sel):rReels);
+  if(!targets.length) return;
+  const pick=(arr,used)=>{ if(!arr.length) return null; if(noRepeat){ const avail=arr.filter(x=>!used.has(x.id)); const pool=avail.length?avail:arr; if(avail.length===0) used.clear(); const c=pool[Math.floor(Math.random()*pool.length)]; used.add(c.id); return c.id; } return arr[Math.floor(Math.random()*arr.length)].id; };
+  const uc=new Set(), um=new Set();
+  targets.forEach(r=>{ r.capId=pick(rCaptions,uc); r.musId=pick(rMusic,um); });
+  rRenderReels(); rUpdateInfo();
+}
+function rClearAssign(){ rReels.forEach(r=>{ r.capId=null; r.musId=null; }); rRenderReels(); rUpdateInfo(); }
+
+// ── Info bar ──
+function rUpdateInfo(){
+  const set=(id,v)=>{ const e=document.getElementById(id); if(e) e.textContent=v; };
+  set("rInfoReels", rReels.length); set("rInfoCap", rCaptions.length); set("rInfoMus", rMusic.length);
+  set("rInfoOut", rReels.length);
+  const gen=document.getElementById("rGenBtn"); if(gen) gen.disabled = rReels.length===0 || rReelsRunning;
+}
+
+// ── Génération (low-cost, séparé) ──
+async function reelsGenerate(){
+  if(rReelsRunning || !rReels.length) return;
+  rReelsRunning=true; rMixJobId=null; rReview=[]; rReviewSel.clear();
+  const gen=document.getElementById("rGenBtn"); gen.disabled=true;
+  const card=document.getElementById("rProgressCard"); card.style.display="block";
+  document.getElementById("rZipBtn").style.display="none"; document.getElementById("rZipSelBtn").style.display="none";
+  const title=document.getElementById("rProgressTitle"), status=document.getElementById("rGenStatus"), fill=document.getElementById("rGenFill");
+  const setDot=(s,t)=>{ const d=document.getElementById("rStatusDot"); if(d)d.className="ws-dot "+s; const l=document.getElementById("rInfoStatus"); if(l)l.textContent=t; };
+  setDot("run","Génération…");
+  try{
+    // 1. stage
+    title.textContent="📤 Envoi des reels…";
+    for(let i=0;i<rReels.length;i++){
+      const fd=new FormData(); fd.append("file",rReels[i].file); fd.append("index",i); if(rMixJobId) fd.append("job_id",rMixJobId);
+      const d=await rPost("/reels_mix_stage",fd,true); if(d.error) throw new Error(d.error); rMixJobId=d.job_id;
+      fill.style.width=Math.round((i+1)/rReels.length*30)+"%";
+    }
+    // 2. render each
+    title.textContent="⚙️ Génération des reels…";
+    let ok=0, err=0;
+    for(let i=0;i<rReels.length;i++){
+      const r=rReels[i];
+      const fd=new FormData(); fd.append("job_id",rMixJobId); fd.append("index",i);
+      if(r.capId) fd.append("caption_id",r.capId); if(r.musId) fd.append("music_id",r.musId);
+      fd.append("out_name", r.file.name.replace(/\.[^.]+$/,"")+"_reel");
+      try{ const d=await rPost("/reels_mix_run",fd,true); if(d.ok){ ok++; rReview.push({job_id:rMixJobId, filename:d.filename}); } else err++; }catch(e){ err++; }
+      fill.style.width=(30+Math.round((i+1)/rReels.length*70))+"%";
+      status.textContent=`${i+1}/${rReels.length} · ✅ ${ok} · ❌ ${err}`;
+      rRenderReview();
+    }
+    title.textContent="✅ Reels terminés";
+    setDot(err&&!ok?"err":"done", `Terminé · ${ok} OK${err?` · ${err} err`:""}`);
+    if(ok>0){ document.getElementById("rZipBtn").style.display="inline-flex"; document.getElementById("rZipSelBtn").style.display="inline-flex"; }
+  }catch(e){ title.textContent="❌ Erreur"; alert("Erreur génération reels : "+e.message); setDot("err","Erreur"); }
+  rReelsRunning=false; document.getElementById("rGenBtn").disabled=false;
+}
+function rRenderReview(){
+  const g=document.getElementById("rReview"); if(!g) return; g.innerHTML="";
+  if(!rReview.length){ return; }
+  rReview.forEach(it=>{
+    const url=`/reels_mix_file/${it.job_id}/${encodeURIComponent(it.filename)}`;
+    const card=document.createElement("div"); card.className="ws-card"+(rReviewSel.has(it.filename)?" sel":"");
+    const chk=document.createElement("div"); chk.className="ws-card-check"; chk.textContent=rReviewSel.has(it.filename)?"✓":"";
+    const v=document.createElement("video"); v.src=url; v.preload="metadata"; v.controls=false; v.muted=true; v.playsInline=true;
+    const info=document.createElement("div"); info.className="ws-card-info";
+    const nm=document.createElement("div"); nm.className="ws-card-name"; nm.textContent=it.filename; nm.title=it.filename;
+    const dl=document.createElement("div"); dl.className="ws-card-meta"; dl.innerHTML=`<a class="dl-link" href="${url}" download title="Télécharger">⬇️ télécharger</a>`;
+    info.appendChild(nm); info.appendChild(dl);
+    chk.addEventListener("click",ev=>{ ev.stopPropagation(); if(rReviewSel.has(it.filename))rReviewSel.delete(it.filename); else rReviewSel.add(it.filename); card.classList.toggle("sel"); chk.textContent=rReviewSel.has(it.filename)?"✓":""; });
+    card.addEventListener("click",e=>{ if(e.target.closest("a"))return; if(v.paused){ document.querySelectorAll("#rReview video").forEach(x=>{if(x!==v)x.pause();}); v.play().catch(()=>{}); } else v.pause(); });
+    card.appendChild(chk); card.appendChild(v); card.appendChild(info);
+    g.appendChild(card);
+  });
+}
+async function rDownloadZip(selectedOnly){
+  if(!rMixJobId) return;
+  const body={job_id:rMixJobId};
+  if(selectedOnly){ if(!rReviewSel.size){ alert("Sélectionne au moins une vidéo."); return; } body.filenames=[...rReviewSel]; }
+  try{
+    const res=await fetch("/reels_mix_zip",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    if(!res.ok){ const d=await res.json().catch(()=>({})); throw new Error(d.error||res.statusText); }
+    const blob=await res.blob(); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="reels.zip"; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  }catch(e){ alert("Erreur ZIP : "+e.message); }
+}
 </script>
 </body>
 </html>

@@ -5419,6 +5419,563 @@ def optimizer_cleanup():
         return jsonify({"error": str(e)}), 500
 
 
+# ══════════════════════════════════════════════════════════════════
+# REELS PRODUCTION WORKSPACE — a COMPLETELY SEPARATE, low-cost pipeline.
+# NO OCR, NO Claude Vision, claude_requests = 0. Persistent libraries live
+# under DATA_DIR. Nothing here calls /analyze, /batch_detect, or any Vision
+# code; it only reuses the PURE renderer render_text_overlay (no Claude) to
+# rasterize caption overlays from library text. The A×B batch pipeline is
+# untouched.
+# ══════════════════════════════════════════════════════════════════
+
+REELS_LIB_DIR   = DATA_DIR / "videobot_libraries"
+REELS_MUSIC_DIR = REELS_LIB_DIR / "music"
+REELS_MIX_DIR   = DATA_DIR / "videobot_reels_mix"     # per-job staged reels + outputs
+for _rd in (REELS_LIB_DIR, REELS_MUSIC_DIR, REELS_MIX_DIR):
+    try:
+        _rd.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+
+REELS_MUSIC_EXT = {".mp3", ".m4a", ".aac", ".wav", ".ogg", ".opus"}
+REELS_VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv"}
+REELS_MAX_MIX_FILES = 500     # per-job staged reels cap
+
+
+def _migrate_reels_tables():
+    """Idempotent tables for the Reels libraries (captions + music). Same
+    SQLite file as users, so same persistence as everything else."""
+    try:
+        with _users_db() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS reels_captions (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id       INTEGER,
+                    name          TEXT NOT NULL,
+                    segments_json TEXT NOT NULL DEFAULT '[]',
+                    created_at    TEXT,
+                    updated_at    TEXT
+                )""")
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS reels_music (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id    INTEGER,
+                    name       TEXT NOT NULL,
+                    filename   TEXT NOT NULL,
+                    ext        TEXT,
+                    size       INTEGER,
+                    duration   REAL,
+                    created_at TEXT
+                )""")
+    except Exception as e:
+        print(f"[reels] migrate WARNING: {e}")
+
+
+_migrate_reels_tables()
+
+
+def _reels_uid():
+    u = getattr(request, "current_user", None)
+    if u is None:
+        return None
+    try:
+        return u["id"]
+    except Exception:
+        return getattr(u, "id", None)
+
+
+def _reels_now():
+    import datetime as _dt
+    return _dt.datetime.utcnow().isoformat(timespec="seconds")
+
+
+def _reels_sanitize_segments(raw):
+    """Return a clean list of {text, start_time|None, end_time|None}."""
+    out = []
+    if not isinstance(raw, list):
+        return out
+    for s in raw[:100]:
+        if not isinstance(s, dict):
+            continue
+        text = (s.get("text") or "").strip()
+        if not text:
+            continue
+        def _t(v):
+            try:
+                f = float(v)
+                return f if f >= 0 else None
+            except Exception:
+                return None
+        out.append({"text": text[:2000], "start_time": _t(s.get("start_time")),
+                    "end_time": _t(s.get("end_time"))})
+    return out
+
+
+def _reels_caption_row(row):
+    try:
+        segs = json.loads(row["segments_json"])
+    except Exception:
+        segs = []
+    if not isinstance(segs, list):
+        segs = []
+    return {"id": row["id"], "name": row["name"], "segments": segs,
+            "line_count": sum(len((s.get("text") or "").splitlines()) or 1 for s in segs),
+            "updated_at": row["updated_at"]}
+
+
+# ── MODULE 1 — CAPTIONS LIBRARY ───────────────────────────────────
+@app.route("/reels_caption_list", methods=["GET"])
+def reels_caption_list():
+    try:
+        uid = _reels_uid()
+        with _users_db() as conn:
+            rows = conn.execute(
+                "SELECT * FROM reels_captions WHERE user_id IS ? ORDER BY updated_at DESC, id DESC",
+                (uid,)).fetchall()
+        return jsonify({"captions": [_reels_caption_row(r) for r in rows]})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_caption_create", methods=["POST"])
+def reels_caption_create():
+    try:
+        data = request.get_json(force=True) or {}
+        name = (data.get("name") or "Caption").strip()[:120] or "Caption"
+        segs = _reels_sanitize_segments(data.get("segments"))
+        now = _reels_now()
+        uid = _reels_uid()
+        with _users_db() as conn:
+            cur = conn.execute(
+                "INSERT INTO reels_captions (user_id, name, segments_json, created_at, updated_at) VALUES (?,?,?,?,?)",
+                (uid, name, json.dumps(segs, ensure_ascii=False), now, now))
+            cid = cur.lastrowid
+            row = conn.execute("SELECT * FROM reels_captions WHERE id=?", (cid,)).fetchone()
+        return jsonify({"caption": _reels_caption_row(row)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_caption_update", methods=["POST"])
+def reels_caption_update():
+    try:
+        data = request.get_json(force=True) or {}
+        cid = int(data.get("id", 0))
+        uid = _reels_uid()
+        with _users_db() as conn:
+            row = conn.execute("SELECT * FROM reels_captions WHERE id=? AND user_id IS ?", (cid, uid)).fetchone()
+            if not row:
+                return jsonify({"error": "Caption introuvable"}), 404
+            name = (data.get("name") if data.get("name") is not None else row["name"]).strip()[:120] or row["name"]
+            segs = _reels_sanitize_segments(data.get("segments")) if data.get("segments") is not None else json.loads(row["segments_json"])
+            conn.execute("UPDATE reels_captions SET name=?, segments_json=?, updated_at=? WHERE id=? AND user_id IS ?",
+                         (name, json.dumps(segs, ensure_ascii=False), _reels_now(), cid, uid))
+            row = conn.execute("SELECT * FROM reels_captions WHERE id=?", (cid,)).fetchone()
+        return jsonify({"caption": _reels_caption_row(row)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_caption_duplicate", methods=["POST"])
+def reels_caption_duplicate():
+    try:
+        data = request.get_json(force=True) or {}
+        cid = int(data.get("id", 0))
+        uid = _reels_uid()
+        now = _reels_now()
+        with _users_db() as conn:
+            row = conn.execute("SELECT * FROM reels_captions WHERE id=? AND user_id IS ?", (cid, uid)).fetchone()
+            if not row:
+                return jsonify({"error": "Caption introuvable"}), 404
+            cur = conn.execute(
+                "INSERT INTO reels_captions (user_id, name, segments_json, created_at, updated_at) VALUES (?,?,?,?,?)",
+                (uid, (row["name"] + " (copie)")[:120], row["segments_json"], now, now))
+            new = conn.execute("SELECT * FROM reels_captions WHERE id=?", (cur.lastrowid,)).fetchone()
+        return jsonify({"caption": _reels_caption_row(new)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_caption_delete", methods=["POST"])
+def reels_caption_delete():
+    try:
+        data = request.get_json(force=True) or {}
+        cid = int(data.get("id", 0))
+        uid = _reels_uid()
+        with _users_db() as conn:
+            conn.execute("DELETE FROM reels_captions WHERE id=? AND user_id IS ?", (cid, uid))
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ── MODULE 2 — MUSIC LIBRARY ──────────────────────────────────────
+def _reels_music_row(row):
+    return {"id": row["id"], "name": row["name"], "ext": row["ext"],
+            "size": row["size"], "duration": row["duration"]}
+
+
+@app.route("/reels_music_list", methods=["GET"])
+def reels_music_list():
+    try:
+        uid = _reels_uid()
+        with _users_db() as conn:
+            rows = conn.execute("SELECT * FROM reels_music WHERE user_id IS ? ORDER BY id DESC", (uid,)).fetchall()
+        return jsonify({"music": [_reels_music_row(r) for r in rows]})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_music_upload", methods=["POST"])
+def reels_music_upload():
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "Fichier manquant"}), 400
+        f = request.files["file"]
+        orig = f.filename or "musique"
+        ext = os.path.splitext(orig)[1].lower()
+        if ext not in REELS_MUSIC_EXT:
+            return jsonify({"error": f"Format audio non supporté ({ext or 'inconnu'})"}), 400
+        uid = _reels_uid()
+        stored = f"{uid or 0}_{uuid.uuid4().hex}{ext}"
+        path = REELS_MUSIC_DIR / stored
+        f.save(str(path))
+        size = path.stat().st_size
+        dur = 0.0
+        try:
+            r = subprocess.run(["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                                "-print_format", "json", str(path)], capture_output=True, text=True, timeout=20)
+            dur = float(json.loads(r.stdout)["format"]["duration"])
+        except Exception:
+            dur = 0.0
+        name = os.path.splitext(os.path.basename(orig))[0][:120] or "musique"
+        with _users_db() as conn:
+            cur = conn.execute(
+                "INSERT INTO reels_music (user_id, name, filename, ext, size, duration, created_at) VALUES (?,?,?,?,?,?,?)",
+                (uid, name, stored, ext, size, dur, _reels_now()))
+            row = conn.execute("SELECT * FROM reels_music WHERE id=?", (cur.lastrowid,)).fetchone()
+        return jsonify({"music": _reels_music_row(row)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_music_update", methods=["POST"])
+def reels_music_update():
+    try:
+        data = request.get_json(force=True) or {}
+        mid = int(data.get("id", 0))
+        name = (data.get("name") or "").strip()[:120]
+        if not name:
+            return jsonify({"error": "Nom requis"}), 400
+        uid = _reels_uid()
+        with _users_db() as conn:
+            conn.execute("UPDATE reels_music SET name=? WHERE id=? AND user_id IS ?", (name, mid, uid))
+            row = conn.execute("SELECT * FROM reels_music WHERE id=? AND user_id IS ?", (mid, uid)).fetchone()
+        if not row:
+            return jsonify({"error": "Musique introuvable"}), 404
+        return jsonify({"music": _reels_music_row(row)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_music_delete", methods=["POST"])
+def reels_music_delete():
+    try:
+        data = request.get_json(force=True) or {}
+        mid = int(data.get("id", 0))
+        uid = _reels_uid()
+        with _users_db() as conn:
+            row = conn.execute("SELECT * FROM reels_music WHERE id=? AND user_id IS ?", (mid, uid)).fetchone()
+            if row:
+                try:
+                    (REELS_MUSIC_DIR / row["filename"]).unlink(missing_ok=True)
+                except Exception:
+                    pass
+                conn.execute("DELETE FROM reels_music WHERE id=? AND user_id IS ?", (mid, uid))
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_music_file/<int:mid>")
+def reels_music_file(mid):
+    try:
+        uid = _reels_uid()
+        with _users_db() as conn:
+            row = conn.execute("SELECT * FROM reels_music WHERE id=? AND user_id IS ?", (mid, uid)).fetchone()
+        if not row:
+            return jsonify({"error": "Not found"}), 404
+        path = REELS_MUSIC_DIR / row["filename"]
+        if not path.exists():
+            return jsonify({"error": "Not found"}), 404
+        return send_file(str(path), as_attachment=False, download_name=(row["name"] + (row["ext"] or "")))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ── MODULE 5 — LOW-COST RENDERER (no OCR, no Vision) ──────────────
+def _build_reels_mix_cmd(reel_path, music_path, overlay_specs, path_out):
+    """ffmpeg: reel video (input 0) + optional music audio + N timed caption
+    overlays. Video = reel with overlays; audio = music if provided, else the
+    reel's own audio. Same encode settings as the batch/caption path."""
+    cmd = ["ffmpeg", "-y", "-i", reel_path]
+    if music_path:
+        cmd += ["-i", music_path]
+        ov_base = 2
+    else:
+        ov_base = 1
+    for png, _, _ in overlay_specs:
+        cmd += ["-i", png]
+
+    filters = []
+    if overlay_specs:
+        prev = "[0:v]"
+        last = len(overlay_specs) - 1
+        for i, (_, s, e) in enumerate(overlay_specs):
+            inl = f"[{ov_base + i}:v]"
+            outl = "[ovout]" if i == last else f"[ov{i + 1}]"
+            filters.append(f"{prev}{inl}overlay=0:0:enable='between(t,{s:.3f},{e:.3f})'{outl}")
+            prev = outl
+        vmap = "[ovout]"
+    else:
+        vmap = "0:v"
+
+    if filters:
+        cmd += ["-filter_complex", ";".join(filters)]
+    cmd += ["-map", vmap]
+    cmd += ["-map", "1:a"] if music_path else ["-map", "0:a?"]
+    cmd += ["-shortest",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-pix_fmt", "yuv420p",
+            "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+            "-c:a", "aac", "-b:a", "128k",
+            "-loglevel", "error", path_out]
+    return cmd
+
+
+def _cleanup_stale_reels_mix(max_age_hours: float = 6.0):
+    try:
+        cutoff = time.time() - max_age_hours * 3600
+        for d in REELS_MIX_DIR.iterdir():
+            try:
+                if d.is_dir() and d.stat().st_mtime < cutoff:
+                    shutil.rmtree(d, ignore_errors=True)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+@app.route("/reels_mix_stage", methods=["POST"])
+def reels_mix_stage():
+    """Stage ONE reel video into a mix job (DATA_DIR). First call (no job_id)
+    creates the job. NO OCR / NO Vision."""
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "Fichier manquant"}), 400
+        f = request.files["file"]
+        ext = os.path.splitext(f.filename or "reel")[1].lower()
+        if ext not in REELS_VIDEO_EXT:
+            return jsonify({"error": f"Format vidéo non supporté ({ext or 'inconnu'})"}), 400
+        try:
+            index = int(request.form.get("index", "-1"))
+        except Exception:
+            index = -1
+        if index < 0 or index >= REELS_MAX_MIX_FILES:
+            return jsonify({"error": "Index invalide"}), 400
+        job_id = (request.form.get("job_id") or "").strip()
+        if job_id and (".." in job_id or "/" in job_id):
+            return jsonify({"error": "job_id invalide"}), 400
+        if not job_id:
+            _cleanup_stale_reels_mix()
+            job_id = uuid.uuid4().hex
+        jdir = REELS_MIX_DIR / job_id
+        (jdir / "in").mkdir(parents=True, exist_ok=True)
+        (jdir / "out").mkdir(parents=True, exist_ok=True)
+        f.save(str(jdir / "in" / f"{index:03d}.mp4"))
+        return jsonify({"job_id": job_id, "index": index})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_mix_run", methods=["POST"])
+def reels_mix_run():
+    """Render ONE reel = reel video + (optional) music + (optional) library
+    caption overlay. NEVER calls OCR / Vision / Claude. Logs usage under
+    mode 'reels_mixer' with claude_requests=0."""
+    _ov_paths = []
+    try:
+        job_id = (request.form.get("job_id") or "").strip()
+        if not job_id or ".." in job_id or "/" in job_id:
+            return jsonify({"error": "job_id invalide"}), 400
+        try:
+            index = int(request.form.get("index", "-1"))
+        except Exception:
+            index = -1
+        jdir = REELS_MIX_DIR / job_id
+        reel_path = jdir / "in" / f"{index:03d}.mp4"
+        if not reel_path.exists():
+            return jsonify({"error": "Reel introuvable (staging manquant)"}), 404
+        reel_path = str(reel_path)
+
+        uid = _reels_uid()
+        capcut_outline = (request.form.get("capcut_outline", "1") or "1").strip().lower() not in ("0", "false", "off", "no")
+
+        # ── Resolve music (library) ──
+        music_path = None
+        try:
+            mid = int(request.form.get("music_id", "0") or 0)
+        except Exception:
+            mid = 0
+        if mid:
+            with _users_db() as conn:
+                mrow = conn.execute("SELECT * FROM reels_music WHERE id=? AND user_id IS ?", (mid, uid)).fetchone()
+            if mrow:
+                p = REELS_MUSIC_DIR / mrow["filename"]
+                if p.exists():
+                    music_path = str(p)
+
+        # ── Resolve caption (library) → overlay PNGs via PURE renderer ──
+        overlay_specs = []
+        try:
+            cid = int(request.form.get("caption_id", "0") or 0)
+        except Exception:
+            cid = 0
+        if cid:
+            with _users_db() as conn:
+                crow = conn.execute("SELECT * FROM reels_captions WHERE id=? AND user_id IS ?", (cid, uid)).fetchone()
+            if crow:
+                try:
+                    segs = json.loads(crow["segments_json"])
+                except Exception:
+                    segs = []
+                wa, ha = get_video_dims(reel_path)
+                dur = _get_video_duration_seconds(reel_path) or 0.0
+                for s in segs:
+                    text = (s.get("text") or "").strip()
+                    if not text:
+                        continue
+                    st = s.get("start_time")
+                    en = s.get("end_time")
+                    st = 0.0 if st is None else max(0.0, float(st))
+                    en = (dur if dur > 0 else st + 3.0) if en is None else float(en)
+                    if en <= st:
+                        en = st + max(0.5, 2.0)
+                    block = {"text": text, "cx_pct": 0.5, "cy_pct": 0.78,
+                             "fontsize_pct": 0.05, "width_pct": 0.86, "align": "center"}
+                    png = render_text_overlay([block], wa, ha, wa, ha, capcut_outline=capcut_outline)
+                    _ov_paths.append(png)
+                    overlay_specs.append((png, round(st, 3), round(en, 3)))
+
+        # ── Output name + render ──
+        base = _photo_sanitize_name(request.form.get("out_name") or f"reel_{index + 1:03d}")
+        base = os.path.splitext(base)[0] or f"reel_{index + 1:03d}"
+        out_name = f"{base}.mp4"
+        n = 2
+        out_dir = jdir / "out"
+        while (out_dir / out_name).exists():
+            out_name = f"{base}_{n}.mp4"; n += 1
+        path_out = str(out_dir / out_name)
+
+        cmd = _build_reels_mix_cmd(reel_path, music_path, overlay_specs, path_out)
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        except subprocess.TimeoutExpired:
+            return jsonify({"error": "Timeout (>10 min)", "index": index}), 200
+        finally:
+            gc.collect()
+
+        ok = (proc.returncode == 0 and Path(path_out).exists())
+
+        # ── Analytics : mode reels_mixer, claude_requests = 0 (ZERO Claude) ──
+        try:
+            log_usage_event(getattr(request, "current_user", None), "reels_mixer",
+                            source_seconds=_get_video_duration_seconds(reel_path),
+                            output_seconds=_get_video_duration_seconds(path_out) if ok else None,
+                            source_count=1, output_count=1 if ok else 0,
+                            success=ok, claude_requests=0)
+        except Exception as e:
+            print(f"[reels_mixer] usage log WARNING: {e}")
+
+        if not ok:
+            err = (proc.stderr or "ffmpeg a échoué")[-500:]
+            try:
+                Path(path_out).unlink(missing_ok=True)
+            except Exception:
+                pass
+            return jsonify({"error": err, "index": index}), 200
+        return jsonify({"index": index, "filename": out_name, "job_id": job_id, "ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e), "index": request.form.get("index")}), 200
+    finally:
+        for p in _ov_paths:
+            try:
+                Path(p).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+
+@app.route("/reels_mix_file/<job_id>/<filename>")
+def reels_mix_file(job_id, filename):
+    if ".." in job_id or "/" in job_id or ".." in filename or "/" in filename:
+        return jsonify({"error": "Invalid"}), 400
+    path = REELS_MIX_DIR / job_id / "out" / filename
+    if path.exists():
+        return send_file(str(path), as_attachment=True, download_name=filename, mimetype="video/mp4")
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.route("/reels_mix_zip", methods=["POST"])
+def reels_mix_zip():
+    try:
+        data = request.get_json(force=True) or {}
+        job_id = (data.get("job_id") or "").strip()
+        if not job_id or ".." in job_id or "/" in job_id:
+            return jsonify({"error": "job_id invalide"}), 400
+        out_dir = REELS_MIX_DIR / job_id / "out"
+        # Optional selection (list of filenames). Empty/absent → all.
+        sel = data.get("filenames")
+        files = sorted(p for p in out_dir.glob("*.mp4") if p.is_file()) if out_dir.exists() else []
+        if isinstance(sel, list) and sel:
+            want = {str(x) for x in sel}
+            files = [p for p in files if p.name in want]
+        if not files:
+            return jsonify({"error": "Aucun fichier valide trouvé"}), 400
+        # Big ZIP on the persistent disk (DATA_DIR), never /tmp; removed after send.
+        zip_path = str(DATA_DIR / f"reels_{uuid.uuid4().hex}.zip")
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as zf:
+            for p in files:
+                zf.write(str(p), p.name)
+
+        @after_this_request
+        def _rm_reels_zip(resp, _zp=zip_path):
+            try:
+                os.remove(_zp)
+            except Exception:
+                pass
+            return resp
+
+        return send_file(zip_path, as_attachment=True, download_name="reels.zip", mimetype="application/zip")
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_mix_cleanup", methods=["POST"])
+def reels_mix_cleanup():
+    try:
+        data = request.get_json(force=True) or {}
+        job_id = (data.get("job_id") or "").strip()
+        if not job_id or ".." in job_id or "/" in job_id:
+            return jsonify({"error": "job_id invalide"}), 400
+        jdir = REELS_MIX_DIR / job_id
+        if jdir.exists():
+            shutil.rmtree(jdir, ignore_errors=True)
+        gc.collect()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
