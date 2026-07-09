@@ -336,9 +336,26 @@ width: 18px; height: 18px; font-size: 0.68rem; box-shadow: none;
 display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .drop-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .up-cell { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+/* Paramètres avancés repliables (OCR / contour) */
+.adv-params { margin: 0 0 14px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.02); }
+.adv-params > summary { list-style: none; cursor: pointer; padding: 10px 14px; font-size: .82rem; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.adv-params > summary::-webkit-details-marker { display: none; }
+.adv-params .adv-chev { transition: transform .15s var(--ease); color: var(--muted); }
+.adv-params[open] .adv-chev { transform: rotate(90deg); }
+.adv-params .adv-hint { font-weight: 500; color: var(--muted); font-size: .74rem; }
+.adv-params-body { padding: 0 14px 12px; display: flex; flex-direction: column; gap: 10px; }
+.adv-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: .82rem; font-weight: 600; }
+.adv-lbl { color: var(--muted); }
 .up-preview-wrap { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: #05060a; }
 .up-preview { width: 100%; max-height: 260px; display: block; background: #05060a; cursor: pointer; object-fit: contain; }
 .up-meta { font-size: .7rem; color: var(--muted); padding: 6px 10px; }
+/* Galerie previews multi-variations */
+.vm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 10px; }
+.vm-card { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: #05060a; }
+.vm-thumb { width: 100%; height: 200px; object-fit: cover; display: block; background: #05060a; cursor: pointer; }
+.vm-card-info { padding: 6px 8px; display: flex; flex-direction: column; gap: 2px; }
+.vm-card-name { font-size: .7rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vm-card-meta { font-size: .64rem; color: var(--muted); }
 .drop-zone { border: 1.5px dashed var(--border-strong); border-radius: var(--radius);
 padding: 17px 13px; text-align: center; cursor: pointer;
 background: var(--surface-2);
@@ -468,6 +485,17 @@ color: var(--accent2); opacity: .85; margin: 4px 0 9px; display: flex; align-ite
 
 /* ── Variation mode: advanced sliders ── */
 #vAdvancedPanel { display: none; }
+.v-range-toggle { display: block; font-size: .78rem; color: var(--muted); line-height: 1.5; margin: 0 0 8px;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: rgba(255,255,255,.02); cursor: pointer; }
+.v-range-toggle b { color: var(--text); }
+.v-mm-min { color: var(--accent3, #7fe0c0); font-weight: 700; }
+.v-mm-max { color: var(--accent2); font-weight: 700; }
+.v-adv-max { accent-color: var(--accent2); }
+.v-slider-row.range-on input[data-vadv] { accent-color: var(--accent3, #7fe0c0); }
+.v-meta-origin { display: flex; gap: 12px; flex-wrap: wrap; margin: 8px 0 4px; }
+.v-mo-field { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 140px; }
+.v-mo-field label { font-size: .72rem; color: var(--muted); font-weight: 600; }
+.v-mo-field select { padding: 7px 10px; border: 1px solid var(--border); background: rgba(255,255,255,.03); color: var(--text); border-radius: 8px; font-size: .8rem; }
 .v-group-title { font-size: 0.74rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
 color: var(--accent2);
 margin: 17px 0 10px; display: flex; align-items: center; gap: 8px; }
@@ -870,7 +898,7 @@ body {
 .ws-cap-card.r-usable .ws-mini { cursor:pointer; }
 .r-assign-mini { font-size:.62rem; padding:2px 7px; border:1px solid var(--accent); background:transparent; color:var(--accent); border-radius:6px; cursor:pointer; }
 .r-audiorow { display:flex; align-items:center; gap:8px; }
-.r-audiorow audio { height:26px; max-width:150px; }
+.r-audiorow audio { height:34px; width:100%; max-width:none; }
 /* modal */
 .r-modal { position:fixed; inset:0; z-index:250; background:rgba(0,0,0,.62); display:flex; align-items:center; justify-content:center; padding:16px; }
 .r-modal-box { width:min(560px,94vw); max-height:88vh; overflow:auto; background:var(--card,#16181d);
@@ -894,7 +922,7 @@ body {
 .r-tool-chip { width:30px; height:30px; border:1px solid var(--border); background:rgba(255,255,255,.03); color:var(--muted); border-radius:8px; cursor:pointer; font-size:.9rem; }
 .r-tool-chip.on { color:#f5c451; border-color:rgba(245,196,81,.5); background:rgba(245,196,81,.12); }
 .r-tagbar { display:flex; gap:5px; flex-wrap:wrap; padding:0 10px 6px; }
-.r-tag { font-size:.62rem; padding:2px 8px; border-radius:20px; border:1px solid var(--border); color:var(--muted); background:rgba(255,255,255,.02); cursor:pointer; }
+.r-tag { font-size:.72rem; padding:4px 11px; border-radius:20px; border:1px solid var(--border); color:var(--muted); background:rgba(255,255,255,.02); cursor:pointer; }
 .r-tag.on { color:#bda6ff; border-color:rgba(124,92,255,.5); background:rgba(124,92,255,.14); }
 .r-accent { border-color:var(--accent) !important; color:var(--accent) !important; }
 .r-usebadge { font-size:.6rem; color:var(--muted); }
@@ -910,7 +938,7 @@ body {
 .r-gencount { font-size:.8rem; font-weight:700; color:var(--accent); padding:3px 10px; border:1px solid rgba(124,92,255,.4); background:rgba(124,92,255,.1); border-radius:20px; }
 /* Dossiers / catégories (Modules 4 & 5) */
 .r-folderbar { display:flex; gap:5px; flex-wrap:wrap; padding:0 10px 7px; align-items:center; }
-.r-fchip { font-size:.64rem; padding:3px 9px; border-radius:20px; border:1px solid var(--border); color:var(--muted); background:rgba(255,255,255,.02); cursor:pointer; user-select:none; }
+.r-fchip { font-size:.74rem; padding:5px 12px; border-radius:20px; border:1px solid var(--border); color:var(--muted); background:rgba(255,255,255,.02); cursor:pointer; user-select:none; }
 .r-fchip b { color:var(--text); font-weight:700; opacity:.7; margin-left:2px; }
 .r-fchip.on { color:#9fd0ff; border-color:rgba(80,160,255,.55); background:rgba(80,160,255,.14); }
 .r-fchip.add { color:var(--accent); border-color:rgba(124,92,255,.45); background:transparent; }
@@ -1431,20 +1459,22 @@ SIMPLE MODE
 </div>
 </div>
 
-<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px;font-size:.82rem;font-weight:600;">
-<span>OCR :</span>
+<details class="adv-params">
+<summary><span class="adv-chev">▸</span> Paramètres avancés <span class="adv-hint">OCR &amp; contour</span></summary>
+<div class="adv-params-body">
+<div class="adv-row">
+<span class="adv-lbl">OCR :</span>
 <label class="v-opt"><input type="radio" name="ocrModeS" value="sonnet" checked> Sonnet ⭐ <span style="font-weight:500;opacity:.7">(Recommandé)</span></label>
-<label class="v-opt"><input type="radio" name="ocrModeS" value="opus"> Opus 👑 <span style="font-weight:500;opacity:.7">(Qualité maximale)</span></label>
+<label class="v-opt"><input type="radio" name="ocrModeS" value="opus"> Opus 👑 <span style="font-weight:500;opacity:.7">(Qualité max)</span></label>
 <button type="button" class="v-ghost-btn" onclick="reanalyzeNoCache()" title="Force une nouvelle analyse Vision en ignorant le cache OCR">🔄 Réanalyser sans cache</button>
-<span style="font-weight:500;opacity:.6;font-size:.74rem">— à choisir avant d'uploader la vidéo B</span>
 </div>
-
-
-<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px;font-size:.82rem;font-weight:600;">
-<span>Contour CapCut :</span>
+<div class="adv-row">
+<span class="adv-lbl">Contour CapCut :</span>
 <label class="v-opt"><input type="radio" name="capcutOutlineS" value="1" checked> Activé</label>
 <label class="v-opt"><input type="radio" name="capcutOutlineS" value="0"> Désactivé</label>
 </div>
+</div>
+</details>
 
 <!-- Detected lines -->
 <div class="card">
@@ -1645,6 +1675,10 @@ download as ZIP. No Claude Vision, no captions.
 <div class="fn" id="vName"></div>
 </div>
 </div>
+<div class="up-preview-wrap" id="vPreviewWrap" style="display:none;max-width:420px;margin:10px auto 0;">
+<video class="up-preview" id="vPreview" muted playsinline preload="metadata"></video>
+<div class="up-meta" id="vMeta"></div>
+</div>
 </div>
 
 <!-- Options -->
@@ -1690,6 +1724,7 @@ Légère = changements discrets (recommandé). Plus l'intensité augmente, plus 
 <div style="font-size:0.78rem;color:var(--muted);margin-bottom:10px;">
 0 = désactivé · 50 = recommandé · 100 = variation maximale (les vidéos restent toujours visuellement propres, jamais corrompues).
 </div>
+<label class="v-range-toggle"><input type="checkbox" id="vRangeMode" onchange="vToggleRangeMode()"> <b>Mode plage min/max</b> — chaque variation tire une valeur aléatoire entre le curseur <span class="v-mm-min">min</span> et le curseur <span class="v-mm-max">max</span> (ex. luminosité 20→50).</label>
 
 <div class="v-group-title"><span class="v-dot" style="background:var(--accent);color:var(--accent)"></span> Visuel</div>
 <div class="v-slider-row" title="Ajuste légèrement la luminosité globale de chaque variation"><label for="vAdv_brightness">Luminosité</label><input type="range" id="vAdv_brightness" min="0" max="100" value="50" data-vadv="brightness" title="Ajuste légèrement la luminosité globale de chaque variation"><span class="v-slider-val" id="vAdv_brightness_val">50</span></div>
@@ -1716,6 +1751,12 @@ Légère = changements discrets (recommandé). Plus l'intensité augmente, plus 
 
 <div class="v-group-title"><span class="v-dot" style="background:var(--warn);color:var(--warn)"></span> Métadonnées</div>
 <div class="v-slider-row" title="Randomise les métadonnées du fichier (date, appareil, identifiants)"><label for="vAdv_metadata">Aléatoire métadonnées</label><input type="range" id="vAdv_metadata" min="0" max="100" value="50" data-vadv="metadata" title="Randomise les métadonnées du fichier (date, appareil, identifiants)"><span class="v-slider-val" id="vAdv_metadata_val">50</span></div>
+<div class="v-meta-origin">
+<div class="v-mo-field"><label for="vAppSource">App source</label>
+<select id="vAppSource"><option value="">— Aucune —</option><option value="capcut">CapCut</option><option value="instagram">Instagram</option><option value="tiktok">TikTok</option><option value="iphone">iPhone Camera</option></select></div>
+<div class="v-mo-field"><label for="vOrigin">Origine simulée</label>
+<select id="vOrigin"><option value="">— Aucune —</option><option value="usa">USA</option><option value="france">France</option><option value="uk">UK</option><option value="canada">Canada</option><option value="brazil">Brésil</option></select></div>
+</div>
 
 <div class="v-adv-actions">
 <button type="button" class="v-ghost-btn" id="vRandomizeBtn"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span> Randomiser la configuration</button>
@@ -3320,11 +3361,22 @@ probe.onerror = () => { URL.revokeObjectURL(url); };
 } catch(e) { /* best-effort estimate only — never blocks the actual flow */ }
 }
 
+// Preview vidéo inline générique (lecture/pause au clic, reste dans la page).
+function _mkPreview(wrapId, vidId, metaId, file){
+  const wrap=document.getElementById(wrapId), vid=document.getElementById(vidId), meta=document.getElementById(metaId);
+  if(!wrap||!vid||!file) return;
+  if(vid.dataset.url){ try{ URL.revokeObjectURL(vid.dataset.url); }catch(e){} }
+  const url=URL.createObjectURL(file); vid.dataset.url=url; vid.src=url; wrap.style.display="block";
+  if(meta) meta.textContent=`${file.name} · ${_upFmtSize(file.size)}`;
+  vid.onloadedmetadata=()=>{ if(meta) meta.textContent=`${file.name} · ${_upFmtDur(vid.duration)} · ${vid.videoWidth}×${vid.videoHeight} · ${_upFmtSize(file.size)}`; };
+  if(!vid.dataset.wired){ vid.dataset.wired="1"; vid.addEventListener("click", ()=>{ if(vid.paused){ document.querySelectorAll("video.up-preview").forEach(v=>{ if(v!==vid) v.pause(); }); vid.play().catch(()=>{}); } else vid.pause(); }); }
+}
 function handleVariationFile(file) {
 if (!file || !isVideoFile(file)) return;
 vFile = file;
 const dt = new DataTransfer(); dt.items.add(file); vInput.files = dt.files;
 vName.textContent = "✓ " + file.name;
+_mkPreview("vPreviewWrap","vPreview","vMeta", file);
 vJobId = null; // a new source means a fresh server-side job on next run
 probeVariationDuration(file);
 checkVariationReady();
@@ -3398,11 +3450,44 @@ const ADVANCED_SLIDER_KEYS_CLIENT = [
 
 function getAdvancedConfig() {
 const cfg = {};
+const rangeOn = !!(document.getElementById("vRangeMode") && document.getElementById("vRangeMode").checked);
+const clamp = v => Math.max(0, Math.min(100, parseInt(v, 10) || 0));
 ADVANCED_SLIDER_KEYS_CLIENT.forEach(key => {
 const el = document.getElementById("vAdv_" + key);
-cfg[key] = el ? Math.max(0, Math.min(100, parseInt(el.value, 10) || 0)) : ADVANCED_SLIDER_DEFAULT_CLIENT;
+const base = el ? clamp(el.value) : ADVANCED_SLIDER_DEFAULT_CLIENT;
+if (rangeOn && key !== "metadata") {
+const mx = document.getElementById("vAdvMax_" + key);
+const maxv = mx ? clamp(mx.value) : base;
+cfg[key] = { min: Math.min(base, maxv), max: Math.max(base, maxv) };
+} else {
+cfg[key] = base;
+}
 });
 return cfg;
+}
+// App source & origine simulée → FormData (métadonnées uniquement).
+function _appendMetaOrigin(fd) {
+const a = document.getElementById("vAppSource"), o = document.getElementById("vOrigin");
+if (a && a.value) fd.append("app_source", a.value);
+if (o && o.value) fd.append("origin", o.value);
+}
+// Mode plage : révèle un second curseur "max" par paramètre (créé à la volée).
+function vToggleRangeMode() {
+const on = !!(document.getElementById("vRangeMode") && document.getElementById("vRangeMode").checked);
+document.querySelectorAll('#vAdvancedPanel input[data-vadv]').forEach(sl => {
+const key = sl.dataset.vadv; if (key === "metadata") return;
+let mx = document.getElementById("vAdvMax_" + key);
+if (on && !mx) {
+mx = document.createElement("input");
+mx.type = "range"; mx.min = 0; mx.max = 100;
+mx.value = Math.min(100, (parseInt(sl.value, 10) || 50) + 20);
+mx.id = "vAdvMax_" + key; mx.className = "v-adv-max";
+mx.title = "Valeur maximale de la plage";
+sl.parentNode.appendChild(mx);
+}
+if (mx) mx.style.display = on ? "" : "none";
+sl.parentNode.classList.toggle("range-on", on);
+});
 }
 function setAdvancedConfig(cfg) {
 ADVANCED_SLIDER_KEYS_CLIENT.forEach(key => {
@@ -3651,6 +3736,7 @@ fd.append("config_mode", configMode);
 if (configMode === "advanced" && advancedConfig) {
 fd.append("advanced_config", JSON.stringify(advancedConfig));
 }
+_appendMetaOrigin(fd);
 const r = await fetch("/variation_run", { method: "POST", body: fd });
 const d = await r.json();
 if (!r.ok || d.error) throw new Error(d.error || r.statusText);
@@ -3796,7 +3882,8 @@ probe.onerror = () => { URL.revokeObjectURL(url); if (--pending === 0) done(); }
 function handleVmFiles(files) {
 const vids = files.filter(isVideoFile);
 if (vids.length > MAX_VM_VIDEOS) alert(`Maximum ${MAX_VM_VIDEOS} vidéos. Seules les ${MAX_VM_VIDEOS} premières seront utilisées.`);
-vmFiles = vids.slice(0, MAX_VM_VIDEOS).map(f => ({ file: f, name: f.name, duration: null }));
+try { (vmFiles||[]).forEach(f => { if (f.url) URL.revokeObjectURL(f.url); }); } catch(e){}
+vmFiles = vids.slice(0, MAX_VM_VIDEOS).map(f => ({ file: f, name: f.name, duration: null, url: URL.createObjectURL(f) }));
 vmJobs = [];
 const n = vmFiles.length;
 document.getElementById("vmName").textContent = n > 0 ? `✓ ${n} vidéo${n > 1 ? "s" : ""} sélectionnée${n > 1 ? "s" : ""}` : "";
@@ -3817,12 +3904,16 @@ const m = Math.floor(s / 60), r = s % 60;
 if (m < 60) return `${m} min ${r}s`;
 const h = Math.floor(m / 60), rm = m % 60; return `${h} h ${rm} min`;
 }
+function vmTogglePlay(v){ if(v.paused){ document.querySelectorAll("video.up-preview").forEach(x=>{ if(x!==v) x.pause(); }); v.play().catch(()=>{}); } else v.pause(); }
 function renderVmFileList() {
 const el = document.getElementById("vmFileList");
 if (!vmFiles.length) { el.innerHTML = ""; return; }
-el.innerHTML = vmFiles.map((f, i) =>
-`<div class="batch-row"><span class="batch-idx">${i + 1}</span><span class="batch-fname" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span><span class="batch-st" style="color:var(--muted)">${f.duration ? vmFmtDuration(f.duration) : "…"}</span></div>`
-).join("");
+el.innerHTML = `<div class="vm-grid">` + vmFiles.map((f, i) =>
+`<div class="vm-card">
+  <video class="up-preview vm-thumb" muted playsinline preload="metadata" src="${f.url}" onclick="vmTogglePlay(this)"></video>
+  <div class="vm-card-info"><span class="vm-card-name" title="${escapeHtml(f.name)}">${i + 1}. ${escapeHtml(f.name)}</span><span class="vm-card-meta">${f.duration ? vmFmtDuration(f.duration) : "…"}</span></div>
+</div>`
+).join("") + `</div>`;
 }
 
 // ── Count control ──
@@ -4029,6 +4120,7 @@ fd.append("job_id", jobId); fd.append("index", k); fd.append("count", count);
 fd.append("num_videos", vmFiles.length);
 fd.append("strength", strength); fd.append("config_mode", configMode);
 if (configMode === "advanced" && advancedConfig) fd.append("advanced_config", JSON.stringify(advancedConfig));
+_appendMetaOrigin(fd);
 const r = await fetch("/variation_multi_run", { method: "POST", body: fd });
 const d = await r.json();
 if (!r.ok || d.error) throw new Error(d.error || r.statusText);

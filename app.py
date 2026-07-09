@@ -273,9 +273,9 @@ VARIATION_STRENGTH_PRESETS = {
         "brightness_pct":  0.05,
         "contrast_pct":    0.08,
         "saturation_pct":  0.08,
-        "zoom_range":      (1.00, 1.05),
-        "crop_pct":        0.02,
-        "rotation_deg":    0.5,
+        "zoom_range":      (1.00, 1.04),
+        "crop_pct":        0.015,
+        "rotation_deg":    0.0,    # désactivée par défaut (évitait des coins/fond gris)
         "speed_range":     (0.99, 1.02),
         "volume_pct":      0.03,
         "pitch_pct":       0.01,
@@ -286,9 +286,9 @@ VARIATION_STRENGTH_PRESETS = {
         "brightness_pct":  0.10,
         "contrast_pct":    0.15,
         "saturation_pct":  0.15,
-        "zoom_range":      (1.00, 1.08),
-        "crop_pct":        0.04,
-        "rotation_deg":    1.0,
+        "zoom_range":      (1.00, 1.06),
+        "crop_pct":        0.025,
+        "rotation_deg":    0.0,    # désactivée par défaut (évitait des coins/fond gris)
         "speed_range":     (0.98, 1.03),
         "volume_pct":      0.05,
         "pitch_pct":       0.02,
@@ -309,6 +309,22 @@ VARIATION_METADATA_PROFILES = [
     {"label": "Samsung Galaxy S24","encoder": "Lavc60.16",  "software": "Android 14",  "comment": "Galaxy S24 camera"},
     {"label": "Google Pixel 8",    "encoder": "Lavc60.3.100","software": "Android 15", "comment": "Pixel 8 camera"},
 ]
+
+# ── App-source / origine simulée (métadonnées uniquement — n'altère JAMAIS
+# l'image ni l'audio ; pas de GPS). ──
+APP_SOURCE_META = {
+    "capcut":    {"software": "CapCut",    "encoder": "CapCut",     "comment": "Made with CapCut"},
+    "instagram": {"software": "Instagram", "encoder": "Instagram",  "comment": "Instagram"},
+    "tiktok":    {"software": "TikTok",    "encoder": "TikTok",     "comment": "TikTok"},
+    "iphone":    {"software": "iOS 17.5",  "encoder": "HEVC",       "comment": "Recorded on iPhone"},
+}
+ORIGIN_META = {
+    "usa":    {"lang": "eng", "country": "US", "tz": "-0500"},
+    "france": {"lang": "fra", "country": "FR", "tz": "+0100"},
+    "uk":     {"lang": "eng", "country": "GB", "tz": "+0000"},
+    "canada": {"lang": "eng", "country": "CA", "tz": "-0400"},
+    "brazil": {"lang": "por", "country": "BR", "tz": "-0300"},
+}
 
 # ── Advanced Mode (additive, opt-in slider system) ──────────────────
 # Each of these 16 sliders runs 0-100 (default 50, "0=disabled,
@@ -1101,12 +1117,32 @@ def _pick_advanced_variation_params(config: dict, rng: "random.Random") -> dict:
     Never raises: missing/non-numeric/out-of-range slider values fall
     back to ADVANCED_SLIDER_DEFAULT (50) before mapping.
     """
-    def _norm(key):  # slider value -> 0.0..1.0
+    # Chaque paramètre peut être soit une valeur simple 0-100, soit une PLAGE
+    # {"min":a,"max":b} (mode plage) : on tire alors une position aléatoire
+    # dans [a,b] par variation. On échantillonne UNE fois par clé pour rester
+    # cohérent entre _norm/_spread. Rétro-compatible : une valeur simple donne
+    # exactement le comportement d'origine.
+    def _sample_pos(key):
+        v = config.get(key, ADVANCED_SLIDER_DEFAULT)
         try:
-            raw = float(config.get(key, ADVANCED_SLIDER_DEFAULT))
+            if isinstance(v, dict):
+                lo = max(0.0, min(100.0, float(v.get("min", 0))))
+                hi = max(0.0, min(100.0, float(v.get("max", lo))))
+                if hi < lo:
+                    lo, hi = hi, lo
+                raw = rng.uniform(lo, hi)
+            else:
+                raw = float(v)
         except Exception:
             raw = ADVANCED_SLIDER_DEFAULT
         return max(0.0, min(100.0, raw)) / 100.0
+
+    _pos = {}
+    for _k in ADVANCED_PARAM_MAX:
+        _pos[_k] = _sample_pos(_k)
+
+    def _norm(key):  # position échantillonnée -> 0.0..1.0
+        return _pos.get(key, ADVANCED_SLIDER_DEFAULT / 100.0)
 
     def _spread(key):  # ± range scaled by slider position, e.g. rng.uniform(-spread, +spread)
         return rng.uniform(-1.0, 1.0) * (_norm(key) * ADVANCED_PARAM_MAX[key])
@@ -1189,9 +1225,20 @@ def _build_variation_filter_graph(params: dict, src_w: int, src_h: int):
 
     rot = float(params.get("rotation_deg", 0.0))
     if abs(rot) > 0.01:
-        # rotate fills corners with the edge pixel (no black borders),
-        # then we scale back to source size to guarantee identical AR/dims.
-        vf_parts.append(f"rotate={rot:.3f}*PI/180:fillcolor=black@0:ow=rotw(iw):oh=roth(ih)")
+        # Rotation SANS coins vides/gris : on pré-zoome juste assez pour que
+        # l'image pivotée couvre encore tout le cadre, on tourne à taille
+        # CONSTANTE (ow=iw:oh=ih, pas d'agrandissement du canvas), puis on
+        # recadre au centre à la taille source. Aucun fillcolor visible,
+        # jamais de vidéo rétrécie sur fond gris.
+        import math as _math
+        _r = abs(rot) * _math.pi / 180.0
+        _c, _s = abs(_math.cos(_r)), abs(_math.sin(_r))
+        cover = max((src_w * _c + src_h * _s) / src_w, (src_w * _s + src_h * _c) / src_h)
+        cover = max(1.0, min(1.18, cover))
+        zw3, zh3 = int(src_w * cover) | 1, int(src_h * cover) | 1
+        vf_parts.append(f"scale={zw3}:{zh3}")
+        vf_parts.append(f"rotate={rot:.3f}*PI/180:ow=iw:oh=ih")
+        vf_parts.append(f"crop={src_w}:{src_h}")
 
     # Color: brightness (additive, eq's range is roughly -1..1),
     # contrast & saturation (multiplicative around 1.0), gamma nudged
@@ -1287,7 +1334,8 @@ def _build_variation_filter_graph(params: dict, src_w: int, src_h: int):
 
 def _build_variation_ffmpeg_cmd(path_in: str, path_out: str, params: dict,
                                 profile: dict, src_w: int, src_h: int,
-                                src_bitrate_kbps: int = 2500) -> list:
+                                src_bitrate_kbps: int = 2500,
+                                app_source: str = "", origin: str = "") -> list:
     """
     Assembles the full FFmpeg command for ONE variation: video+audio
     filter graphs (from _build_variation_filter_graph), a randomized
@@ -1303,10 +1351,23 @@ def _build_variation_ffmpeg_cmd(path_in: str, path_out: str, params: dict,
     bitrate_mult = max(0.7, min(1.4, float(params.get("bitrate_mult", 1.0))))
     target_kbps  = max(400, int(src_bitrate_kbps * bitrate_mult))
 
+    # App-source & origine simulée (métadonnées seulement) : surchargent le
+    # profil appareil si demandé, sans jamais toucher au flux vidéo/audio.
+    app_meta    = APP_SOURCE_META.get((app_source or "").strip().lower())
+    origin_meta = ORIGIN_META.get((origin or "").strip().lower())
+    enc  = (app_meta or {}).get("encoder")  or profile.get("encoder", "")
+    soft = (app_meta or {}).get("software") or profile.get("software", "")
+    comm = (app_meta or {}).get("comment")  or profile.get("comment", "")
+
     # Slightly jittered creation_time within the last ~30 days, so a
-    # batch of variants doesn't all carry the exact same timestamp.
+    # batch of variants doesn't all carry the exact same timestamp. Le
+    # fuseau horaire suit l'origine choisie (cohérent avec le pays).
     jitter_seconds = random.randint(0, 30 * 86400)
-    creation_time  = time.strftime("%Y-%m-%dT%H:%M:%S.000000Z", time.gmtime(time.time() - jitter_seconds))
+    _t = time.gmtime(time.time() - jitter_seconds)
+    if origin_meta:
+        creation_time = time.strftime("%Y-%m-%dT%H:%M:%S.000000", _t) + origin_meta["tz"]
+    else:
+        creation_time = time.strftime("%Y-%m-%dT%H:%M:%S.000000Z", _t)
 
     cmd = ["ffmpeg", "-y", "-i", str(path_in)]
 
@@ -1320,13 +1381,21 @@ def _build_variation_ffmpeg_cmd(path_in: str, path_out: str, params: dict,
         "-b:v", f"{target_kbps}k", "-maxrate", f"{int(target_kbps * 1.2)}k", "-bufsize", f"{target_kbps * 2}k",
         "-c:a", "aac", "-b:a", "128k",
         "-metadata", f"creation_time={creation_time}",
-        "-metadata", f"encoder={profile.get('encoder', '')}",
+        "-metadata", f"encoder={enc}",
     ]
-    if profile.get("software"):
-        cmd += ["-metadata", f"com.apple.quicktime.software={profile['software']}"]
+    if soft:
+        cmd += ["-metadata", f"com.apple.quicktime.software={soft}"]
     cmd += [
         "-metadata", f"title={profile.get('label', '')}",
-        "-metadata", f"comment={profile.get('comment', '')}",
+        "-metadata", f"comment={comm}",
+    ]
+    if origin_meta:
+        cmd += [
+            "-metadata", f"language={origin_meta['lang']}",
+            "-metadata:s:a:0", f"language={origin_meta['lang']}",
+            "-metadata", f"country={origin_meta['country']}",
+        ]
+    cmd += [
         "-movflags", "+faststart",
         "-loglevel", "error",
         str(path_out),
@@ -4082,7 +4151,10 @@ def variation_run():
             params         = _pick_variation_params(strength, rng)
             profile        = _pick_metadata_profile(rng)
             strength_label = strength
-        cmd = _build_variation_ffmpeg_cmd(str(path_in), str(path_out), params, profile, width, height)
+        _app_source = (request.form.get("app_source") or "").strip().lower()
+        _origin = (request.form.get("origin") or "").strip().lower()
+        cmd = _build_variation_ffmpeg_cmd(str(path_in), str(path_out), params, profile, width, height,
+                                          app_source=_app_source, origin=_origin)
 
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
@@ -4413,7 +4485,10 @@ def variation_multi_run():
             params         = _pick_variation_params(strength, rng)
             profile        = _pick_metadata_profile(rng)
             strength_label = strength
-        cmd = _build_variation_ffmpeg_cmd(str(path_in), str(path_out), params, profile, width, height)
+        _app_source = (request.form.get("app_source") or "").strip().lower()
+        _origin = (request.form.get("origin") or "").strip().lower()
+        cmd = _build_variation_ffmpeg_cmd(str(path_in), str(path_out), params, profile, width, height,
+                                          app_source=_app_source, origin=_origin)
 
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
