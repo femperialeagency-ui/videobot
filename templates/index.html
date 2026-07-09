@@ -335,6 +335,10 @@ margin-bottom: 13px; display: flex; align-items: center; gap: 8px; }
 width: 18px; height: 18px; font-size: 0.68rem; box-shadow: none;
 display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .drop-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.up-cell { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.up-preview-wrap { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: #05060a; }
+.up-preview { width: 100%; max-height: 260px; display: block; background: #05060a; cursor: pointer; object-fit: contain; }
+.up-meta { font-size: .7rem; color: var(--muted); padding: 6px 10px; }
 .drop-zone { border: 1.5px dashed var(--border-strong); border-radius: var(--radius);
 padding: 17px 13px; text-align: center; cursor: pointer;
 background: var(--surface-2);
@@ -723,9 +727,17 @@ body {
 /* 3 panneaux */
 /* Layout Reels Studio : GAUCHE = grande galerie reels, DROITE = Captions +
    Musiques empilés (Module 3). La galerie reels devient la zone principale. */
-.ws-panels { display:grid; gap:0; min-height:520px; height:74vh; }
+.ws-panels { display:grid; gap:0; min-height:520px; height:76vh; }
 /* Batch : Vidéos A et Vidéos B, deux grands panneaux d'égale importance. */
 #wsPanels { grid-template-columns:1fr 6px 1fr; }
+/* Barre d'infos compacte (déplacée près du bouton Générer) — récupère de la
+   hauteur pour les galeries. */
+.ws-infobar.mini { padding:5px 8px; gap:4px; }
+.ws-infobar.mini .ws-stat { min-width:auto; padding:2px 10px; flex-direction:row; gap:5px; align-items:baseline; }
+.ws-infobar.mini .ws-stat + .ws-stat { border-left:1px solid var(--border); }
+.ws-infobar.mini .ws-stat-v { font-size:.92rem; }
+.ws-infobar.mini .ws-stat-l { font-size:.6rem; margin-top:0; }
+.ws-infobar.mini .ws-stat-status { margin-left:auto; }
 /* Captions OCR : section pleine largeur sous les panneaux (workflow vertical). */
 .ws-cap-section { border:1px solid var(--border); border-radius:12px; padding:12px 14px;
   background:linear-gradient(180deg, rgba(255,255,255,.028), rgba(255,255,255,.01)); }
@@ -733,10 +745,14 @@ body {
 .ws-cap-section .ws-cap-hint { margin:0; }
 .ws-cap-section .ws-cap-list { flex-direction:row; flex-wrap:wrap; overflow:visible; padding:8px 0 0; }
 .ws-step-badge { display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:var(--accent); color:#fff; font-size:.72rem; font-weight:800; margin-right:2px; flex:0 0 auto; }
-/* Reels : grande galerie à gauche, bibliothèques empilées à droite. */
-#rPanels { grid-template-columns:minmax(0,2.6fr) 6px minmax(300px,0.95fr); }
+/* Reels : grande galerie à gauche, bibliothèques empilées à droite plus larges. */
+#rPanels { grid-template-columns:minmax(0,2.15fr) 6px minmax(360px,1.12fr); height:80vh; min-height:600px; }
 .r-side-col { display:flex; flex-direction:column; gap:10px; min-width:0; min-height:0; }
-.r-side-col .ws-panel { flex:1 1 0; min-height:0; }
+.r-side-col .ws-panel { flex:1 1 0; min-height:230px; }
+/* Zone d'ajout musique compacte pour laisser de la place à la liste. */
+.r-side-col .ws-drop { margin:8px; padding:10px 12px; }
+.r-side-col .ws-drop .filebox .ico-svg.lg { width:22px; height:22px; }
+.r-side-col .ws-cap-list { min-height:120px; }
 .ws-panel { display:flex; flex-direction:column; min-width:0; overflow:hidden;
   background:linear-gradient(180deg, rgba(255,255,255,.028), rgba(255,255,255,.01));
   border:1px solid var(--border); border-radius:12px; }
@@ -1370,6 +1386,7 @@ SIMPLE MODE
 </div>
 
 <div class="drop-row">
+<div class="up-cell">
 <div class="drop-zone upcard" id="zoneA">
 <input type="file" name="video_a" id="inputA" accept="video/*" required />
 <span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="5" width="9" height="8" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M11.5 8 L15.5 6 V12 L11.5 10 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
@@ -1379,6 +1396,12 @@ SIMPLE MODE
 <div class="fn" id="nameA"></div>
 </div>
 </div>
+<div class="up-preview-wrap" id="previewWrapA" style="display:none;">
+<video class="up-preview" id="previewA" muted playsinline preload="metadata"></video>
+<div class="up-meta" id="metaA"></div>
+</div>
+</div>
+<div class="up-cell">
 <div class="drop-zone upcard" id="zoneB">
 <input type="file" name="video_b" id="inputB" accept="video/*" required />
 <span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 13 V4.5 L13.5 3 V11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="5.5" cy="13" r="1.7" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="11.5" r="1.7" stroke="currentColor" stroke-width="1.5"/></svg></span>
@@ -1386,6 +1409,11 @@ SIMPLE MODE
 <div class="lbl">Vidéo B</div>
 <div class="sub">Audio + texte source</div>
 <div class="fn" id="nameB"></div>
+</div>
+</div>
+<div class="up-preview-wrap" id="previewWrapB" style="display:none;">
+<video class="up-preview" id="previewB" muted playsinline preload="metadata"></video>
+<div class="up-meta" id="metaB"></div>
 </div>
 </div>
 </div>
@@ -1444,17 +1472,7 @@ BATCH MODE
      conservés à l'identique → la logique JS/Batch est INCHANGÉE. ═══════════ -->
 <div class="ws-root">
 
-  <!-- Barre d'informations (lecture seule, valeurs calculées depuis l'état existant) -->
-  <div class="ws-infobar">
-    <div class="ws-stat"><span class="ws-stat-v" id="wsInfoA">0</span><span class="ws-stat-l">reels A</span></div>
-    <div class="ws-stat"><span class="ws-stat-v" id="wsInfoB">0</span><span class="ws-stat-l">cibles B</span></div>
-    <div class="ws-stat"><span class="ws-stat-v" id="wsInfoCap">0</span><span class="ws-stat-l">captions</span></div>
-    <div class="ws-stat ws-stat-hi"><span class="ws-stat-v" id="wsInfoOut">0</span><span class="ws-stat-l">à générer</span></div>
-    <div class="ws-stat"><span class="ws-stat-v" id="wsInfoEta">—</span><span class="ws-stat-l">temps estimé</span></div>
-    <div class="ws-stat ws-stat-status"><span class="ws-dot" id="wsStatusDot"></span><span class="ws-stat-l" id="wsInfoStatus">Prêt</span></div>
-  </div>
-
-  <!-- 3 panneaux redimensionnables -->
+  <!-- 2 panneaux redimensionnables (Vidéos A | Vidéos B) -->
   <div class="ws-panels" id="wsPanels">
 
     <!-- Panneau 1 : Vidéos A / Sources visuelles -->
@@ -1550,6 +1568,14 @@ BATCH MODE
 
   <!-- Barre de génération -->
   <div class="ws-genbar">
+    <div class="ws-infobar mini">
+      <div class="ws-stat"><span class="ws-stat-v" id="wsInfoA">0</span><span class="ws-stat-l">reels A</span></div>
+      <div class="ws-stat"><span class="ws-stat-v" id="wsInfoB">0</span><span class="ws-stat-l">cibles B</span></div>
+      <div class="ws-stat"><span class="ws-stat-v" id="wsInfoCap">0</span><span class="ws-stat-l">captions</span></div>
+      <div class="ws-stat ws-stat-hi"><span class="ws-stat-v" id="wsInfoOut">0</span><span class="ws-stat-l">à générer</span></div>
+      <div class="ws-stat"><span class="ws-stat-v" id="wsInfoEta">—</span><span class="ws-stat-l">temps estimé</span></div>
+      <div class="ws-stat ws-stat-status"><span class="ws-dot" id="wsStatusDot"></span><span class="ws-stat-l" id="wsInfoStatus">Prêt</span></div>
+    </div>
     <button id="bLaunchBtn" class="primary-btn ws-gen-btn" onclick="runBatch()" disabled><svg class="ico-svg sm" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 2 L4.5 10.5 H8.3 L7.4 16 L13.5 7 H9.5 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="currentColor" fill-opacity=".18"/></svg> Lancer le Batch</button>
     <div class="card ws-progress" id="bProgressCard">
       <h2 id="bProgressTitle"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Génération des combinaisons…</h2>
@@ -2110,14 +2136,6 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 <div id="reelsTab" class="tab-content">
 <div class="ws-root">
 
-  <div class="ws-infobar">
-    <div class="ws-stat"><span class="ws-stat-v" id="rInfoReels">0</span><span class="ws-stat-l">reels</span></div>
-    <div class="ws-stat"><span class="ws-stat-v" id="rInfoCap">0</span><span class="ws-stat-l">captions</span></div>
-    <div class="ws-stat"><span class="ws-stat-v" id="rInfoMus">0</span><span class="ws-stat-l">musiques</span></div>
-    <div class="ws-stat ws-stat-hi"><span class="ws-stat-v" id="rInfoOut">0</span><span class="ws-stat-l">à générer</span></div>
-    <div class="ws-stat ws-stat-status"><span class="ws-dot" id="rStatusDot"></span><span class="ws-stat-l" id="rInfoStatus">Prêt</span></div>
-  </div>
-
   <div class="ws-panels" id="rPanels">
 
     <!-- Panneau REELS -->
@@ -2209,6 +2227,13 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 
   <!-- Barre de génération + review -->
   <div class="ws-genbar">
+    <div class="ws-infobar mini">
+      <div class="ws-stat"><span class="ws-stat-v" id="rInfoReels">0</span><span class="ws-stat-l">reels</span></div>
+      <div class="ws-stat"><span class="ws-stat-v" id="rInfoCap">0</span><span class="ws-stat-l">captions</span></div>
+      <div class="ws-stat"><span class="ws-stat-v" id="rInfoMus">0</span><span class="ws-stat-l">musiques</span></div>
+      <div class="ws-stat ws-stat-hi"><span class="ws-stat-v" id="rInfoOut">0</span><span class="ws-stat-l">à générer</span></div>
+      <div class="ws-stat ws-stat-status"><span class="ws-dot" id="rStatusDot"></span><span class="ws-stat-l" id="rInfoStatus">Prêt</span></div>
+    </div>
     <div class="r-genmode">
       <label class="r-genmode-lbl">Mode d'assignation</label>
       <select id="rGenMode" class="r-tool-sel" onchange="rUpdateInfo()">
@@ -2468,6 +2493,19 @@ return (el && el.value === "0") ? "0" : "1";
 // ══════════════════════════════════════════
 // SIMPLE MODE (unchanged)
 // ══════════════════════════════════════════
+function _upFmtSize(b){ b=b||0; return b<1048576 ? (b/1024).toFixed(0)+" Ko" : b<1073741824 ? (b/1048576).toFixed(1)+" Mo" : (b/1073741824).toFixed(2)+" Go"; }
+function _upFmtDur(d){ if(!d||!isFinite(d)) return ""; const m=Math.floor(d/60), s=Math.round(d%60); return m+":"+String(s).padStart(2,"0"); }
+function _upShowPreview(letter, file){
+  const wrap=document.getElementById("previewWrap"+letter);
+  const vid=document.getElementById("preview"+letter);
+  const meta=document.getElementById("meta"+letter);
+  if(!wrap||!vid) return;
+  if(vid.dataset.url){ try{ URL.revokeObjectURL(vid.dataset.url); }catch(e){} }
+  const url=URL.createObjectURL(file); vid.dataset.url=url; vid.src=url;
+  wrap.style.display="block";
+  if(meta) meta.textContent=`${file.name} · ${_upFmtSize(file.size)}`;
+  vid.onloadedmetadata=()=>{ if(meta) meta.textContent=`${file.name} · ${_upFmtDur(vid.duration)} · ${vid.videoWidth}×${vid.videoHeight} · ${_upFmtSize(file.size)}`; };
+}
 ["A","B"].forEach(letter => {
 const input = document.getElementById("input"+letter);
 const zone = document.getElementById("zone"+letter);
@@ -2476,12 +2514,16 @@ const handle = file => {
 if (!file) return;
 const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files;
 name.textContent = "✓ " + file.name;
+_upShowPreview(letter, file);
 if (letter === "B") analyzeVideoB(file);
 };
 input.addEventListener("change", () => handle(input.files[0]));
 zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("drag-over"); });
 zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
 zone.addEventListener("drop", e => { e.preventDefault(); zone.classList.remove("drag-over"); handle(e.dataTransfer.files[0]); });
+// Lecture / pause inline au clic (une seule preview à la fois, reste dans la page).
+const vid=document.getElementById("preview"+letter);
+if(vid) vid.addEventListener("click", ()=>{ if(vid.paused){ document.querySelectorAll(".up-preview").forEach(v=>{ if(v!==vid) v.pause(); }); vid.play().catch(()=>{}); } else vid.pause(); });
 });
 
 let linesData = [];
