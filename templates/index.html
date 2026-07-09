@@ -745,14 +745,26 @@ body {
 .ws-cap-section .ws-cap-hint { margin:0; }
 .ws-cap-section .ws-cap-list { flex-direction:row; flex-wrap:wrap; overflow:visible; padding:8px 0 0; }
 .ws-step-badge { display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:var(--accent); color:#fff; font-size:.72rem; font-weight:800; margin-right:2px; flex:0 0 auto; }
-/* Reels : grande galerie à gauche, bibliothèques empilées à droite plus larges. */
+/* Reels : grande galerie à gauche, bibliothèque à onglets à droite. */
 #rPanels { grid-template-columns:minmax(0,2.15fr) 6px minmax(360px,1.12fr); height:80vh; min-height:600px; }
-.r-side-col { display:flex; flex-direction:column; gap:10px; min-width:0; min-height:0; }
-.r-side-col .ws-panel { flex:1 1 0; min-height:230px; }
-/* Zone d'ajout musique compacte pour laisser de la place à la liste. */
-.r-side-col .ws-drop { margin:8px; padding:10px 12px; }
-.r-side-col .ws-drop .filebox .ico-svg.lg { width:22px; height:22px; }
-.r-side-col .ws-cap-list { min-height:120px; }
+/* Panneau bibliothèque à onglets (Captions / Musiques) — pleine hauteur. */
+.r-libpanel { min-width:0; }
+.r-lib-head { padding:0 8px 0 0; }
+.r-lib-tabs { display:flex; gap:2px; }
+.r-lib-tab { display:inline-flex; align-items:center; gap:6px; border:0; background:transparent; color:var(--muted); font-size:.82rem; font-weight:700; padding:12px 16px; cursor:pointer; border-bottom:2px solid transparent; }
+.r-lib-tab:hover { color:var(--text); }
+.r-lib-tab.active { color:#fff; border-bottom-color:var(--accent); }
+.r-libpane { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
+.r-libpane .ws-cap-list { flex:1 1 auto; min-height:0; }
+/* Zone "Ajouter des musiques" fortement réduite (une ligne). */
+.r-drop-mini { position:relative; display:flex; align-items:center; gap:10px; margin:8px 10px; padding:8px 12px;
+  border:1px dashed var(--border-strong); border-radius:9px; cursor:pointer; }
+.r-drop-mini:hover, .r-drop-mini.drag-over { border-color:var(--accent); background:rgba(124,92,255,.06); }
+.r-drop-mini input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; }
+.r-drop-mini-ico { font-size:1.1rem; }
+.r-drop-mini-txt { display:flex; flex-direction:column; line-height:1.25; font-size:.76rem; }
+.r-drop-mini-txt b { color:var(--text); }
+.r-drop-mini-txt .fn { color:var(--accent3,#7fe0c0); font-size:.7rem; }
 .ws-panel { display:flex; flex-direction:column; min-width:0; overflow:hidden;
   background:linear-gradient(180deg, rgba(255,255,255,.028), rgba(255,255,255,.01));
   border:1px solid var(--border); border-radius:12px; }
@@ -2182,46 +2194,45 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 
     <div class="ws-resizer" data-i="0" title="Glisser pour redimensionner"></div>
 
-    <!-- Colonne DROITE : Captions + Musiques empilés (Module 3) -->
-    <div class="r-side-col">
-
-    <!-- Panneau CAPTIONS LIBRARY -->
-    <section class="ws-panel">
-      <header class="ws-panel-head">
-        <div class="ws-panel-title"><span class="ws-panel-ico">✏️</span> Captions <span class="ws-panel-sub">bibliothèque</span></div>
-        <button type="button" class="ws-icon-btn r-live" title="Nouvelle caption" onclick="rCapOpen()">＋</button>
+    <!-- Colonne DROITE : bibliothèque à onglets (Captions / Musiques) -->
+    <section class="ws-panel r-libpanel">
+      <header class="ws-panel-head r-lib-head">
+        <div class="r-lib-tabs">
+          <button type="button" class="r-lib-tab active" id="rLibTabCap" onclick="rLibTab('cap')"><span class="ws-panel-ico">✏️</span> Captions</button>
+          <button type="button" class="r-lib-tab" id="rLibTabMus" onclick="rLibTab('mus')"><span class="ws-panel-ico">🎵</span> Musiques</button>
+        </div>
+        <button type="button" class="ws-icon-btn r-live" id="rCapAddBtn" title="Nouvelle caption" onclick="rCapOpen()">＋</button>
       </header>
-      <div class="r-toolbar">
-        <input type="text" id="rCapSearch" class="r-tool-input" placeholder="Rechercher…" oninput="rCapRender()">
-        <select id="rCapSort" class="r-tool-sel" onchange="rCapRender()"><option value="recent">Récents</option><option value="name">Nom</option><option value="used">Utilisées</option></select>
-        <button type="button" class="r-tool-chip" id="rCapFavChip" onclick="rToggleFavFilter('cap')" title="Favoris">★</button>
-      </div>
-      <div class="r-folderbar" id="rCapFolderBar"></div>
-      <div class="r-tagbar" id="rCapTagBar"></div>
-      <div class="ws-cap-list" id="rCapList"></div>
-    </section>
 
-    <!-- Panneau MUSIC LIBRARY -->
-    <section class="ws-panel">
-      <header class="ws-panel-head">
-        <div class="ws-panel-title"><span class="ws-panel-ico">🎵</span> Musiques <span class="ws-panel-sub">bibliothèque</span></div>
-      </header>
-      <div class="drop-zone upcard ws-drop" id="rZoneMus">
-        <input type="file" id="rMusInput" accept="audio/*,video/*,.mp3,.m4a,.aac,.wav,.ogg,.opus,.mp4,.mov,.webm,.m4v,.mkv" multiple />
-        <span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2 V11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M9 2 L13.5 3.7 V6.5 L9 4.8 Z" fill="currentColor"/><circle cx="6.5" cy="11.5" r="2.6" stroke="currentColor" stroke-width="1.6"/></svg></span>
-        <div class="meta"><div class="lbl">Ajouter des musiques</div><div class="sub">Audio ou vidéo — on extrait l'audio automatiquement</div><div class="fn" id="rMusName"></div></div>
+      <!-- Onglet Captions -->
+      <div class="r-libpane" id="rCapPane">
+        <div class="r-toolbar">
+          <input type="text" id="rCapSearch" class="r-tool-input" placeholder="Rechercher…" oninput="rCapRender()">
+          <select id="rCapSort" class="r-tool-sel" onchange="rCapRender()"><option value="recent">Récents</option><option value="name">Nom</option><option value="used">Utilisées</option></select>
+          <button type="button" class="r-tool-chip" id="rCapFavChip" onclick="rToggleFavFilter('cap')" title="Favoris">★</button>
+        </div>
+        <div class="r-folderbar" id="rCapFolderBar"></div>
+        <div class="r-tagbar" id="rCapTagBar"></div>
+        <div class="ws-cap-list" id="rCapList"></div>
       </div>
-      <div class="r-toolbar">
-        <input type="text" id="rMusSearch" class="r-tool-input" placeholder="Rechercher…" oninput="rMusRender()">
-        <select id="rMusSort" class="r-tool-sel" onchange="rMusRender()"><option value="recent">Récents</option><option value="name">Nom</option><option value="used">Utilisées</option><option value="duration">Durée</option></select>
-        <button type="button" class="r-tool-chip" id="rMusFavChip" onclick="rToggleFavFilter('mus')" title="Favoris">★</button>
-      </div>
-      <div class="r-folderbar" id="rMusFolderBar"></div>
-      <div class="r-tagbar" id="rMusTagBar"></div>
-      <div class="ws-cap-list" id="rMusList"></div>
-    </section>
 
-    </div><!-- /r-side-col -->
+      <!-- Onglet Musiques -->
+      <div class="r-libpane" id="rMusPane" style="display:none;">
+        <div class="drop-zone ws-drop r-drop-mini" id="rZoneMus">
+          <input type="file" id="rMusInput" accept="audio/*,video/*,.mp3,.m4a,.aac,.wav,.ogg,.opus,.mp4,.mov,.webm,.m4v,.mkv" multiple />
+          <span class="r-drop-mini-ico">🎵</span>
+          <div class="r-drop-mini-txt"><b>Ajouter des musiques</b><span class="fn" id="rMusName"></span></div>
+        </div>
+        <div class="r-toolbar">
+          <input type="text" id="rMusSearch" class="r-tool-input" placeholder="Rechercher…" oninput="rMusRender()">
+          <select id="rMusSort" class="r-tool-sel" onchange="rMusRender()"><option value="recent">Récents</option><option value="name">Nom</option><option value="used">Utilisées</option><option value="duration">Durée</option></select>
+          <button type="button" class="r-tool-chip" id="rMusFavChip" onclick="rToggleFavFilter('mus')" title="Favoris">★</button>
+        </div>
+        <div class="r-folderbar" id="rMusFolderBar"></div>
+        <div class="r-tagbar" id="rMusTagBar"></div>
+        <div class="ws-cap-list" id="rMusList"></div>
+      </div>
+    </section>
 
   </div>
 
@@ -4703,6 +4714,17 @@ async function reelsOnOpen(){
   await Promise.all([rRefreshFolders(), rRefreshCaptions(), rRefreshMusic(), rPresetRefresh()]);
   rRenderReels(); rRenderReview(); rUpdateInfo();
   if(!window._rWired){ window._rWired=true; rWireResizers(); rWireShortcuts(); }
+}
+// Onglets bibliothèque (Captions / Musiques) — chaque onglet occupe toute la hauteur.
+function rLibTab(which){
+  const cap = which==="cap";
+  const cp=document.getElementById("rCapPane"), mp=document.getElementById("rMusPane");
+  if(cp) cp.style.display=cap?"flex":"none";
+  if(mp) mp.style.display=cap?"none":"flex";
+  const tc=document.getElementById("rLibTabCap"), tm=document.getElementById("rLibTabMus");
+  if(tc) tc.classList.toggle("active",cap);
+  if(tm) tm.classList.toggle("active",!cap);
+  const add=document.getElementById("rCapAddBtn"); if(add) add.style.display=cap?"":"none";
 }
 async function rRefreshFolders(){
   try{ const d=await rGet("/reels_folder_list?kind=caption"); rCapFolders=d.folders||[]; }catch(e){}
