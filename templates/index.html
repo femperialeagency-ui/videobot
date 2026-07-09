@@ -208,6 +208,8 @@ border: 1px solid var(--border); background: rgba(255,255,255,.025); font-size: 
   border-radius: 9px; cursor: pointer; transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); white-space: nowrap; }
 .subnav-pill:hover { color: var(--text); background: rgba(255,255,255,.05); }
 .subnav-pill.active { color: #fff; background: var(--accent-soft, rgba(67,105,255,.18)); box-shadow: inset 0 0 0 1px rgba(67,105,255,.4); }
+.free-badge { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; padding: 4px 11px; border-radius: 20px;
+  font-size: .72rem; font-weight: 800; color: #34d399; background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.35); cursor: help; }
 @media (max-width:640px){ .subnav { overflow-x: auto; } }
 
 /* ── Dashboard overview — KPI row, quick actions, activity feed ── */
@@ -490,8 +492,13 @@ color: var(--accent2); opacity: .85; margin: 4px 0 9px; display: flex; align-ite
 .v-range-toggle b { color: var(--text); }
 .v-mm-min { color: var(--accent3, #7fe0c0); font-weight: 700; }
 .v-mm-max { color: var(--accent2); font-weight: 700; }
-.v-adv-max { accent-color: var(--accent2); }
-.v-slider-row.range-on input[data-vadv] { accent-color: var(--accent3, #7fe0c0); }
+.v-mm { display: none; align-items: center; gap: 7px; margin-left: auto; }
+.v-mm-lbl { font-size: .68rem; color: var(--accent3, #7fe0c0); font-weight: 700; }
+.v-mm-arrow { font-size: .68rem; color: var(--accent2); font-weight: 700; }
+.v-mm-num { width: 56px; padding: 4px 6px; border: 1px solid var(--border); background: rgba(255,255,255,.03); color: var(--text); border-radius: 7px; font-size: .78rem; text-align: center; }
+.v-slider-row.range-on { justify-content: space-between; }
+.v-meta-note { font-size: .72rem; color: var(--muted); line-height: 1.5; background: rgba(240,180,60,.07); border: 1px solid rgba(240,180,60,.25); border-radius: 8px; padding: 8px 10px; margin: 6px 0 8px; }
+.v-meta-note b { color: var(--text); }
 .v-meta-origin { display: flex; gap: 12px; flex-wrap: wrap; margin: 8px 0 4px; }
 .v-mo-field { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 140px; }
 .v-mo-field label { font-size: .72rem; color: var(--muted); font-weight: 600; }
@@ -793,6 +800,14 @@ body {
 .r-drop-mini-txt { display:flex; flex-direction:column; line-height:1.25; font-size:.76rem; }
 .r-drop-mini-txt b { color:var(--text); }
 .r-drop-mini-txt .fn { color:var(--accent3,#7fe0c0); font-size:.7rem; }
+/* Bouton visible "Créer une caption" (même logique que Ajouter des musiques) */
+.r-create-btn { display:flex; align-items:center; gap:10px; width:calc(100% - 20px); margin:8px 10px; padding:10px 12px;
+  border:1px dashed var(--accent); border-radius:9px; background:rgba(124,92,255,.07); color:var(--text); cursor:pointer; text-align:left; }
+.r-create-btn:hover { background:rgba(124,92,255,.14); }
+.r-create-ico { font-size:1.2rem; color:var(--accent); font-weight:800; }
+.r-create-txt { display:flex; flex-direction:column; line-height:1.25; }
+.r-create-txt b { font-size:.82rem; }
+.r-create-txt span { font-size:.7rem; color:var(--muted); }
 .ws-panel { display:flex; flex-direction:column; min-width:0; overflow:hidden;
   background:linear-gradient(180deg, rgba(255,255,255,.028), rgba(255,255,255,.01));
   border:1px solid var(--border); border-radius:12px; }
@@ -1217,6 +1232,7 @@ Se déconnecter
 <div>
 <h1>Studio de génération</h1>
 <div class="subtitle">Vidéo A + Vidéo B → texte détecté et réécrit → Vidéo C prête à publier</div>
+<span id="freeBadge" class="free-badge" style="display:none;" title="Ce mode utilise uniquement FFmpeg — aucune requête Claude / Vision / OCR, aucun crédit IA consommé.">⚡ 100% FFmpeg · 0 crédit IA</span>
 </div>
 {% if current_user %}
 <div class="header-right">
@@ -1749,13 +1765,14 @@ Légère = changements discrets (recommandé). Plus l'intensité augmente, plus 
 <div class="v-slider-row" title="Modifie légèrement le nombre d'images par seconde à l'export"><label for="vAdv_fps">Variation FPS</label><input type="range" id="vAdv_fps" min="0" max="100" value="50" data-vadv="fps" title="Modifie légèrement le nombre d'images par seconde à l'export"><span class="v-slider-val" id="vAdv_fps_val">50</span></div>
 <div class="v-slider-row" title="Fait varier le débit d'encodage pour différencier la signature du fichier"><label for="vAdv_bitrate">Variation bitrate</label><input type="range" id="vAdv_bitrate" min="0" max="100" value="50" data-vadv="bitrate" title="Fait varier le débit d'encodage pour différencier la signature du fichier"><span class="v-slider-val" id="vAdv_bitrate_val">50</span></div>
 
-<div class="v-group-title"><span class="v-dot" style="background:var(--warn);color:var(--warn)"></span> Métadonnées</div>
+<div class="v-group-title"><span class="v-dot" style="background:var(--warn);color:var(--warn)"></span> Métadonnées simulées</div>
+<div class="v-meta-note">ℹ️ Ces réglages modifient uniquement les <b>métadonnées</b> du fichier (software, encoder, langue, pays, fuseau). Ils ne changent <b>pas</b> la provenance réelle du fichier — le fichier ne vient pas vraiment de l'app choisie.</div>
 <div class="v-slider-row" title="Randomise les métadonnées du fichier (date, appareil, identifiants)"><label for="vAdv_metadata">Aléatoire métadonnées</label><input type="range" id="vAdv_metadata" min="0" max="100" value="50" data-vadv="metadata" title="Randomise les métadonnées du fichier (date, appareil, identifiants)"><span class="v-slider-val" id="vAdv_metadata_val">50</span></div>
 <div class="v-meta-origin">
-<div class="v-mo-field"><label for="vAppSource">App source</label>
-<select id="vAppSource"><option value="">— Aucune —</option><option value="capcut">CapCut</option><option value="instagram">Instagram</option><option value="tiktok">TikTok</option><option value="iphone">iPhone Camera</option></select></div>
-<div class="v-mo-field"><label for="vOrigin">Origine simulée</label>
-<select id="vOrigin"><option value="">— Aucune —</option><option value="usa">USA</option><option value="france">France</option><option value="uk">UK</option><option value="canada">Canada</option><option value="brazil">Brésil</option></select></div>
+<div class="v-mo-field"><label for="vAppSource" title="Simulation metadata uniquement — ne change pas la provenance réelle">App simulée</label>
+<select id="vAppSource" title="Écrit software/encoder/comment dans les métadonnées — simulation, pas de provenance réelle"><option value="">— Aucune —</option><option value="capcut">CapCut</option><option value="instagram">Instagram</option><option value="tiktok">TikTok</option><option value="iphone">iPhone Camera</option></select></div>
+<div class="v-mo-field"><label for="vOrigin" title="Simulation metadata uniquement — langue/pays/fuseau">Origine simulée</label>
+<select id="vOrigin" title="Écrit langue/pays/fuseau dans les métadonnées — simulation, pas de géoloc réelle"><option value="">— Aucune —</option><option value="usa">USA</option><option value="france">France</option><option value="uk">UK</option><option value="canada">Canada</option><option value="brazil">Brésil</option></select></div>
 </div>
 
 <div class="v-adv-actions">
@@ -2247,6 +2264,10 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 
       <!-- Onglet Captions -->
       <div class="r-libpane" id="rCapPane">
+        <button type="button" class="r-create-btn" onclick="rCapOpen()">
+          <span class="r-create-ico">＋</span>
+          <span class="r-create-txt"><b>Créer une caption</b><span>Ouvre l'éditeur (texte, position, style)</span></span>
+        </button>
         <div class="r-toolbar">
           <input type="text" id="rCapSearch" class="r-tool-input" placeholder="Rechercher…" oninput="rCapRender()">
           <select id="rCapSort" class="r-tool-sel" onchange="rCapRender()"><option value="recent">Récents</option><option value="name">Nom</option><option value="used">Utilisées</option></select>
@@ -2473,9 +2494,19 @@ function renderSubnav(tab) {
   }
   var h1 = document.querySelector('.app-header h1'); if (h1 && info.title) h1.textContent = info.title;
   var sub = document.querySelector('.app-header .subtitle'); if (sub && info.subtitle) sub.textContent = info.subtitle;
+  // Badge "0 crédit IA" sur les modes 100% FFmpeg (aucun Claude/Vision/OCR).
+  var FREE_TABS = { reels:1, variation:1, variation_multi:1, audio:1, photo:1, optimizer:1 };
+  var badge = document.getElementById('freeBadge'); if (badge) badge.style.display = FREE_TABS[tab] ? 'inline-flex' : 'none';
 }
 function switchTab(tab) {
 window.scrollTo(0, 0);
+// En quittant Studio Variations, on libère la source stagée (re-stage auto au retour).
+try {
+if (tab !== "variation" && typeof vCleanupJob === "function") {
+var _vt = document.getElementById("variationTab");
+if (_vt && _vt.classList.contains("active")) vCleanupJob();
+}
+} catch(e){}
 var info = TAB_GROUPS[tab] || { primary: tab };
 document.querySelectorAll('.tab-btn').forEach(b => {
 b.classList.toggle('active', b.dataset.tab === info.primary);
@@ -3371,13 +3402,21 @@ function _mkPreview(wrapId, vidId, metaId, file){
   vid.onloadedmetadata=()=>{ if(meta) meta.textContent=`${file.name} · ${_upFmtDur(vid.duration)} · ${vid.videoWidth}×${vid.videoHeight} · ${_upFmtSize(file.size)}`; };
   if(!vid.dataset.wired){ vid.dataset.wired="1"; vid.addEventListener("click", ()=>{ if(vid.paused){ document.querySelectorAll("video.up-preview").forEach(v=>{ if(v!==vid) v.pause(); }); vid.play().catch(()=>{}); } else vid.pause(); }); }
 }
+function vCleanupJob() {
+// Libère la source côté serveur (changement de fichier / reset / départ onglet).
+if (vJobId) {
+const _old = vJobId;
+fetch("/variation_cleanup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ job_id: _old }) }).catch(() => {});
+}
+vJobId = null;
+}
 function handleVariationFile(file) {
 if (!file || !isVideoFile(file)) return;
 vFile = file;
 const dt = new DataTransfer(); dt.items.add(file); vInput.files = dt.files;
 vName.textContent = "✓ " + file.name;
 _mkPreview("vPreviewWrap","vPreview","vMeta", file);
-vJobId = null; // a new source means a fresh server-side job on next run
+vCleanupJob(); // nouvelle source → on nettoie l'ancien job puis on re-stagera
 probeVariationDuration(file);
 checkVariationReady();
 }
@@ -3456,9 +3495,9 @@ ADVANCED_SLIDER_KEYS_CLIENT.forEach(key => {
 const el = document.getElementById("vAdv_" + key);
 const base = el ? clamp(el.value) : ADVANCED_SLIDER_DEFAULT_CLIENT;
 if (rangeOn && key !== "metadata") {
-const mx = document.getElementById("vAdvMax_" + key);
-const maxv = mx ? clamp(mx.value) : base;
-cfg[key] = { min: Math.min(base, maxv), max: Math.max(base, maxv) };
+const mn = document.getElementById("vAdvMin_" + key), mx = document.getElementById("vAdvMax_" + key);
+const a = mn ? clamp(mn.value) : base, b = mx ? clamp(mx.value) : base;
+cfg[key] = { min: Math.min(a, b), max: Math.max(a, b) };
 } else {
 cfg[key] = base;
 }
@@ -3471,22 +3510,33 @@ const a = document.getElementById("vAppSource"), o = document.getElementById("vO
 if (a && a.value) fd.append("app_source", a.value);
 if (o && o.value) fd.append("origin", o.value);
 }
-// Mode plage : révèle un second curseur "max" par paramètre (créé à la volée).
+// Mode plage : une seule ligne claire par réglage → « min X → max Y »
+// (deux champs numériques). Le curseur simple est masqué en mode plage.
+function _vClampMM(el){ let v=Math.max(0,Math.min(100,parseInt(el.value,10)||0)); el.value=v; return v; }
 function vToggleRangeMode() {
 const on = !!(document.getElementById("vRangeMode") && document.getElementById("vRangeMode").checked);
 document.querySelectorAll('#vAdvancedPanel input[data-vadv]').forEach(sl => {
 const key = sl.dataset.vadv; if (key === "metadata") return;
-let mx = document.getElementById("vAdvMax_" + key);
-if (on && !mx) {
-mx = document.createElement("input");
-mx.type = "range"; mx.min = 0; mx.max = 100;
-mx.value = Math.min(100, (parseInt(sl.value, 10) || 50) + 20);
-mx.id = "vAdvMax_" + key; mx.className = "v-adv-max";
-mx.title = "Valeur maximale de la plage";
-sl.parentNode.appendChild(mx);
+const row = sl.closest(".v-slider-row"); if (!row) return;
+const valSpan = document.getElementById("vAdv_" + key + "_val");
+let mm = row.querySelector(".v-mm");
+if (on && !mm) {
+const cur = parseInt(sl.value, 10) || 50;
+mm = document.createElement("div"); mm.className = "v-mm";
+mm.innerHTML = `<span class="v-mm-lbl">min</span>`
++ `<input type="number" min="0" max="100" id="vAdvMin_${key}" class="v-mm-num" value="${cur}">`
++ `<span class="v-mm-arrow">→ max</span>`
++ `<input type="number" min="0" max="100" id="vAdvMax_${key}" class="v-mm-num" value="${Math.min(100, cur + 20)}">`;
+row.appendChild(mm);
+const mn = mm.querySelector("#vAdvMin_" + key), mx = mm.querySelector("#vAdvMax_" + key);
+// Auto-correction min>max (échange), clamp 0-100.
+mn.addEventListener("input", () => { _vClampMM(mn); if (+mn.value > +mx.value) mx.value = mn.value; });
+mx.addEventListener("input", () => { _vClampMM(mx); if (+mx.value < +mn.value) mn.value = mx.value; });
 }
-if (mx) mx.style.display = on ? "" : "none";
-sl.parentNode.classList.toggle("range-on", on);
+if (mm) mm.style.display = on ? "flex" : "none";
+sl.style.display = on ? "none" : "";
+if (valSpan) valSpan.style.display = on ? "none" : "";
+row.classList.toggle("range-on", on);
 });
 }
 function setAdvancedConfig(cfg) {
@@ -3737,8 +3787,20 @@ if (configMode === "advanced" && advancedConfig) {
 fd.append("advanced_config", JSON.stringify(advancedConfig));
 }
 _appendMetaOrigin(fd);
-const r = await fetch("/variation_run", { method: "POST", body: fd });
-const d = await r.json();
+let r = await fetch("/variation_run", { method: "POST", body: fd });
+let d = await r.json();
+// Filet de sécurité : si la source a disparu côté serveur, on re-stage
+// UNE fois automatiquement (sans re-upload manuel) puis on retente.
+if (r.status === 404 && vFile) {
+const sfd = new FormData(); sfd.append("file", vFile); sfd.append("count", count);
+const sr = await fetch("/variation_stage", { method: "POST", body: sfd });
+const sd = await sr.json();
+if (sr.ok && sd.job_id) {
+vJobId = sd.job_id; fd.set("job_id", vJobId);
+r = await fetch("/variation_run", { method: "POST", body: fd });
+d = await r.json();
+}
+}
 if (!r.ok || d.error) throw new Error(d.error || r.statusText);
 
 vResults[i].status = "done";
@@ -3819,12 +3881,9 @@ a.download = "variations.zip";
 a.click();
 URL.revokeObjectURL(url);
 
-// Free up server-side staging/output files now that the ZIP is downloaded.
-fetch("/variation_cleanup", {
-method: "POST",
-headers: { "Content-Type": "application/json" },
-body: JSON.stringify({ job_id: vJobId })
-}).catch(() => {});
+// NOTE : on ne nettoie PLUS la source ici — elle doit rester disponible
+// pour relancer (légère/moyenne/forte) sans re-uploader. Le nettoyage se
+// fait au changement de fichier, au reset, ou en quittant l'onglet.
 } catch(e) {
 alert("Erreur ZIP : " + e.message);
 } finally {
