@@ -703,7 +703,7 @@ body {
 .gen-drop-item:hover .ico-svg { color: #90AAFF; }
 
 /* ═══════════ WORKSPACE BATCH (UI premium — studio pro) ═══════════ */
-.ws-root { display:flex; flex-direction:column; gap:12px; }
+.ws-root { display:flex; flex-direction:column; gap:12px; width:100%; max-width:1680px; align-self:stretch; }
 /* Barre d'informations */
 .ws-infobar { display:flex; gap:8px; flex-wrap:wrap; align-items:stretch;
   background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015));
@@ -723,8 +723,11 @@ body {
 /* 3 panneaux */
 /* Layout Reels Studio : GAUCHE = grande galerie reels, DROITE = Captions +
    Musiques empilés (Module 3). La galerie reels devient la zone principale. */
-.ws-panels { display:grid; grid-template-columns:minmax(0,2.6fr) 6px minmax(300px,0.95fr); gap:0;
-  min-height:560px; height:76vh; }
+.ws-panels { display:grid; gap:0; min-height:520px; height:74vh; }
+/* Batch : Vidéos A et B larges, panneau central (aperçu) plus étroit. */
+#wsPanels { grid-template-columns:1.7fr 6px 1fr 6px 1.7fr; }
+/* Reels : grande galerie à gauche, bibliothèques empilées à droite. */
+#rPanels { grid-template-columns:minmax(0,2.6fr) 6px minmax(300px,0.95fr); }
 .r-side-col { display:flex; flex-direction:column; gap:10px; min-width:0; min-height:0; }
 .r-side-col .ws-panel { flex:1 1 0; min-height:0; }
 .ws-panel { display:flex; flex-direction:column; min-width:0; overflow:hidden;
@@ -997,7 +1000,7 @@ Nouvelle génération
 </button>
 <button type="button" class="gen-drop-item" onclick="selectGen('batch')">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
-<div><div class="gen-drop-item-label">Mode Matrice</div><div class="gen-drop-item-desc">N sources × M cibles</div></div>
+<div><div class="gen-drop-item-label">Mode Batch</div><div class="gen-drop-item-desc">N sources × M cibles</div></div>
 </button>
 <button type="button" class="gen-drop-item" onclick="selectGen('variation')">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span>
@@ -1251,7 +1254,7 @@ class="kpi-label">Vidéos générées</div>
 </button>
 <button type="button" class="qa-card" onclick="switchTab('batch')">
 <span class="qa-icon"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
-<span class="qa-name">Mode Matrice</span>
+<span class="qa-name">Mode Batch</span>
 <span class="qa-desc">Combine plusieurs sources et cibles — toutes les combinaisons en une passe.</span>
 </button>
 <button type="button" class="qa-card" onclick="switchTab('variation')">
@@ -2374,8 +2377,8 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 // (segmented pills) affichés en haut de la page.
 var TAB_GROUPS = {
   dashboard:       { primary:'dashboard', title:'Dashboard', subtitle:'Vue d’ensemble de votre activité', subs:[] },
-  simple:          { primary:'simple', title:'Générateur vidéo', subtitle:'Un moteur, plusieurs modes — la page reste identique', subs:[['simple','Mode Simple'],['batch','Mode Matrice']] },
-  batch:           { primary:'simple', title:'Générateur vidéo', subtitle:'Un moteur, plusieurs modes — la page reste identique', subs:[['simple','Mode Simple'],['batch','Mode Matrice']] },
+  simple:          { primary:'simple', title:'Générateur vidéo', subtitle:'Un moteur, plusieurs modes — la page reste identique', subs:[['simple','Mode Simple'],['batch','Batch']] },
+  batch:           { primary:'simple', title:'Générateur vidéo', subtitle:'Un moteur, plusieurs modes — la page reste identique', subs:[['simple','Mode Simple'],['batch','Batch']] },
   variation:       { primary:'variation', title:'Studio Variations', subtitle:'Générez des dizaines de variantes uniques', subs:[['variation','1 vidéo'],['variation_multi','Plusieurs vidéos']] },
   variation_multi: { primary:'variation', title:'Studio Variations', subtitle:'Générez des dizaines de variantes uniques', subs:[['variation','1 vidéo'],['variation_multi','Plusieurs vidéos']] },
   optimizer:       { primary:'optimizer', title:'Media Tools', subtitle:'Optimisation, audio et métadonnées au même endroit', subs:[['optimizer','Optimizer médias'],['audio','Audio'],['photo','Métadonnées']] },
