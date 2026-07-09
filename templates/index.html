@@ -723,8 +723,8 @@ body {
 /* 3 panneaux */
 /* Layout Reels Studio : GAUCHE = grande galerie reels, DROITE = Captions +
    Musiques empilés (Module 3). La galerie reels devient la zone principale. */
-.ws-panels { display:grid; grid-template-columns:minmax(0,1.95fr) 6px minmax(0,1fr); gap:0;
-  min-height:520px; height:70vh; }
+.ws-panels { display:grid; grid-template-columns:minmax(0,2.6fr) 6px minmax(300px,0.95fr); gap:0;
+  min-height:560px; height:76vh; }
 .r-side-col { display:flex; flex-direction:column; gap:10px; min-width:0; min-height:0; }
 .r-side-col .ws-panel { flex:1 1 0; min-height:0; }
 .ws-panel { display:flex; flex-direction:column; min-width:0; overflow:hidden;
@@ -756,8 +756,8 @@ body {
 .ws-card video, .ws-card .ws-thumb-ph { width:100%; object-fit:cover; display:block; background:#05060a; }
 .ws-gallery.grid .ws-card video, .ws-gallery.grid .ws-card .ws-thumb-ph { height:190px; }
 /* Galerie Reels = zone principale : miniatures nettement plus grandes (Module 3). */
-#rGalleryReels.grid { grid-template-columns:repeat(auto-fill, minmax(200px,1fr)); gap:12px; }
-#rGalleryReels.grid .ws-card video, #rGalleryReels.grid .ws-card .ws-thumb-ph { height:320px; }
+#rGalleryReels.grid { grid-template-columns:repeat(auto-fill, minmax(230px,1fr)); gap:14px; }
+#rGalleryReels.grid .ws-card video, #rGalleryReels.grid .ws-card .ws-thumb-ph { height:360px; }
 .ws-thumb-ph { display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:1.6rem; }
 /* Drag & drop bibliothèque → dossier (Module 1) */
 .ws-cap-card[draggable="true"] { cursor:grab; }
@@ -900,11 +900,22 @@ body {
 .r-assign-mini.danger { color:#ff8f8f; border-color:rgba(255,120,120,.4); }
 /* Contrôleur de preview flottant (Module 5) */
 .r-preview-ctl { display:none; position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:9000; gap:10px; align-items:center; padding:9px 14px; border-radius:12px; background:rgba(20,20,28,.96); border:1px solid var(--border-strong); box-shadow:0 8px 30px rgba(0,0,0,.5); }
+/* Menu déroulant d'assignation (Priorité 7) */
+.r-menu-wrap { position:relative; display:inline-block; }
+.r-menu { display:none; position:absolute; top:calc(100% + 6px); left:0; z-index:200; min-width:260px; padding:6px; border-radius:11px; background:rgba(18,19,26,.98); border:1px solid var(--border-strong); box-shadow:0 12px 34px rgba(0,0,0,.55); }
+.r-menu.open { display:block; }
+.r-menu-label { font-size:.6rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); padding:6px 9px 3px; }
+.r-menu-item { display:block; width:100%; text-align:left; border:0; background:transparent; color:var(--text); font-size:.78rem; padding:8px 10px; border-radius:8px; cursor:pointer; }
+.r-menu-item:hover { background:rgba(255,255,255,.06); }
+.r-menu-item.danger { color:#ff8f8f; }
+.r-menu-sep { height:1px; background:var(--border); margin:5px 4px; }
 .r-pv-name { font-size:.72rem; font-weight:700; color:var(--text); max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .r-pv-mus { font-size:.68rem; color:#7fe0c0; }
 .r-pv-btn { border:1px solid var(--border); background:rgba(255,255,255,.05); color:var(--text); border-radius:8px; padding:3px 9px; cursor:pointer; font-size:.8rem; }
 .r-pv-btn:disabled { opacity:.4; cursor:default; }
 .r-pv-btn.danger { color:#ff8f8f; border-color:rgba(255,120,120,.4); }
+.r-pv-vol { width:80px; accent-color:var(--accent); cursor:pointer; }
+.r-pv-vol:disabled { opacity:.4; }
 
 /* éditeur visuel */
 .r-edit-box { width:min(1180px,97vw); }
@@ -2120,22 +2131,24 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
         </div>
       </header>
       <div class="r-assign-bar">
-        <button type="button" class="v-ghost-btn r-accent" onclick="rAssignOpen()">✨ Assignation intelligente</button>
+        <div class="r-menu-wrap" id="rAssignMenuWrap">
+          <button type="button" class="v-ghost-btn r-accent" onclick="rToggleAssignMenu(event)">✨ Assigner <span style="opacity:.7">▼</span></button>
+          <div class="r-menu" id="rAssignMenu">
+            <div class="r-menu-label">Toutes → tous les reels</div>
+            <button type="button" class="r-menu-item" onclick="rMenuDo(()=>rQuickAssign('cap'))">✏️ Toutes les captions</button>
+            <button type="button" class="r-menu-item" onclick="rMenuDo(()=>rQuickAssign('mus'))">🎵 Toutes les musiques</button>
+            <button type="button" class="r-menu-item" onclick="rMenuDo(()=>rQuickAssign('both'))">✨ Captions + musiques</button>
+            <div class="r-menu-sep"></div>
+            <div class="r-menu-label">Sélection → sélection</div>
+            <button type="button" class="r-menu-item" onclick="rMenuDo(()=>rAssignSelected('cap'))">✏️ Captions sélectionnées</button>
+            <button type="button" class="r-menu-item" onclick="rMenuDo(()=>rAssignSelected('mus'))">🎵 Musiques sélectionnées</button>
+            <div class="r-menu-sep"></div>
+            <button type="button" class="r-menu-item" onclick="rMenuDo(()=>rAssignOpen())">🧠 Assignation intelligente…</button>
+            <button type="button" class="r-menu-item danger" onclick="rMenuDo(()=>rClearAssign())">🧹 Vider les assignations</button>
+          </div>
+        </div>
         <button type="button" class="v-ghost-btn" onclick="rSelectAllReels()">☑ Tout sélect.</button>
         <button type="button" class="v-ghost-btn ws-danger" onclick="rDeleteSelectedReels()">🗑 Supprimer sélection</button>
-        <button type="button" class="v-ghost-btn" onclick="rClearAssign()">✕ Vider assign.</button>
-      </div>
-      <div class="r-assign-bar r-quickbar">
-        <span class="r-quicklbl">⚡ Toutes → tous :</span>
-        <button type="button" class="v-ghost-btn" onclick="rQuickAssign('cap')">✏️ Toutes les captions</button>
-        <button type="button" class="v-ghost-btn" onclick="rQuickAssign('mus')">🎵 Toutes les musiques</button>
-        <button type="button" class="v-ghost-btn" onclick="rQuickAssign('both')">✨ Captions + musiques</button>
-      </div>
-      <div class="r-assign-bar r-quickbar">
-        <span class="r-quicklbl">🎯 Sélection → sélection :</span>
-        <button type="button" class="v-ghost-btn" onclick="rAssignSelected('cap')">✏️ Captions sélect.</button>
-        <button type="button" class="v-ghost-btn" onclick="rAssignSelected('mus')">🎵 Musiques sélect.</button>
-        <button type="button" class="v-ghost-btn ws-danger" onclick="rClearAssign()">🧹 Vider assignations</button>
       </div>
       <div class="r-toolbar">
         <input type="text" id="rReelSearch" class="r-tool-input" placeholder="Rechercher un reel…" oninput="rRenderReels()">
@@ -5260,6 +5273,10 @@ function rFilterTag(kind,tag){
 // ── Assignation intelligente (Module 3) ──
 function rAssignOpen(){ document.getElementById("rAssignModal").style.display="flex"; }
 function rAssignClose(){ document.getElementById("rAssignModal").style.display="none"; }
+// Menu déroulant d'assignation (Priorité 7 — moins de boutons).
+function rToggleAssignMenu(e){ if(e) e.stopPropagation(); const m=document.getElementById("rAssignMenu"); if(m) m.classList.toggle("open"); }
+function rMenuDo(fn){ const m=document.getElementById("rAssignMenu"); if(m) m.classList.remove("open"); try{ fn(); }catch(err){} }
+document.addEventListener("click",()=>{ const m=document.getElementById("rAssignMenu"); if(m) m.classList.remove("open"); });
 function rAssignClear(){ rClearAssign(); }
 function rClearAssign(){ rReels.forEach(r=>{ r.capIds=[]; r.musIds=[]; }); rRenderReels(); rUpdateInfo(); }
 function _rPool(kind){
@@ -5298,7 +5315,7 @@ function _rGet(r,setter){ return setter===undefined?false:((setter.name||"").inc
 // La vidéo (carte) sert de visuel ; l'audio vient de la musique assignée.
 // Une seule preview joue à la fois. Contrôleur flottant : mute/unmute,
 // sélecteur si plusieurs musiques, stop.
-let rPreviewAudio=null, rPreviewIdx=-1, rPreviewMusIdx=0, rPreviewMuted=false;
+let rPreviewAudio=null, rPreviewIdx=-1, rPreviewMusIdx=0, rPreviewMuted=false, rPreviewVol=1, rPreviewPaused=false;
 function rEnsurePreviewAudio(){
   if(!rPreviewAudio){ rPreviewAudio=document.createElement("audio"); rPreviewAudio.id="rPreviewAudio"; rPreviewAudio.style.display="none"; document.body.appendChild(rPreviewAudio); }
   return rPreviewAudio;
@@ -5309,13 +5326,13 @@ function rStopPreview(){
   rPreviewIdx=-1;
   const ctl=document.getElementById("rPreviewCtl"); if(ctl) ctl.style.display="none";
 }
+function rPreviewVideo(){ const card=document.querySelector(`#rGalleryReels .ws-card[data-i="${rPreviewIdx}"]`); return card?card.querySelector("video"):null; }
 function rReelPreview(i){
   const r=rReels[i]; if(!r) return;
   if(rPreviewIdx===i){ rStopPreview(); return; }   // toggle
   rStopPreview();
-  rPreviewIdx=i; rPreviewMusIdx=0;
-  const card=document.querySelector(`#rGalleryReels .ws-card[data-i="${i}"]`);
-  const v=card?card.querySelector("video"):null;
+  rPreviewIdx=i; rPreviewMusIdx=0; rPreviewPaused=false;
+  const v=rPreviewVideo();
   if(v){ if(!v.src && v.dataset.src) v.src=v.dataset.src; v.muted=true; try{ v.currentTime=0; }catch(e){} v.play().catch(()=>{}); }
   rPreviewPlayMusic();
   rPreviewRenderCtl();
@@ -5326,8 +5343,8 @@ function rPreviewPlayMusic(){
   if(r.musIds.length){
     if(rPreviewMusIdx>=r.musIds.length) rPreviewMusIdx=0;
     const mid=r.musIds[rPreviewMusIdx];
-    a.src=`/reels_music_file/${mid}`; a.muted=rPreviewMuted; try{ a.currentTime=0; }catch(e){}
-    a.play().catch(()=>{});
+    a.src=`/reels_music_file/${mid}`; a.muted=rPreviewMuted; a.volume=rPreviewVol; try{ a.currentTime=0; }catch(e){}
+    if(!rPreviewPaused) a.play().catch(()=>{});
   } else { a.pause(); a.removeAttribute("src"); }
 }
 function rPreviewToggleMute(){ rPreviewMuted=!rPreviewMuted; if(rPreviewAudio) rPreviewAudio.muted=rPreviewMuted; rPreviewRenderCtl(); }
@@ -5336,6 +5353,19 @@ function rPreviewNextMusic(step){
   rPreviewMusIdx=(rPreviewMusIdx+step+r.musIds.length)%r.musIds.length;
   rPreviewPlayMusic(); rPreviewRenderCtl();
 }
+// Vrai player (Priorité 5) : play/pause, précédent/suivant reel, volume.
+function rPreviewTogglePlay(){
+  rPreviewPaused=!rPreviewPaused; const v=rPreviewVideo();
+  if(rPreviewPaused){ if(v)v.pause(); if(rPreviewAudio)rPreviewAudio.pause(); }
+  else { if(v)v.play().catch(()=>{}); if(rPreviewAudio&&rPreviewAudio.src)rPreviewAudio.play().catch(()=>{}); }
+  rPreviewRenderCtl();
+}
+function rPreviewStepReel(step){
+  if(!rReels.length) return;
+  let n=rPreviewIdx<0?0:(rPreviewIdx+step+rReels.length)%rReels.length;
+  rReelPreview(n);
+}
+function rPreviewSetVolume(v){ rPreviewVol=Math.max(0,Math.min(1,+v)); if(rPreviewAudio){ rPreviewAudio.volume=rPreviewVol; if(rPreviewVol>0&&rPreviewMuted){ rPreviewMuted=false; rPreviewAudio.muted=false; } } }
 function rPreviewRenderCtl(){
   let ctl=document.getElementById("rPreviewCtl");
   if(!ctl){ ctl=document.createElement("div"); ctl.id="rPreviewCtl"; ctl.className="r-preview-ctl"; document.body.appendChild(ctl); }
@@ -5344,11 +5374,15 @@ function rPreviewRenderCtl(){
   const musName=hasMus?rMusNameOf(r.musIds[rPreviewMusIdx]):"aucune musique";
   const multi=r.musIds.length>1;
   ctl.style.display="flex";
-  ctl.innerHTML=`<span class="r-pv-name">👁 ${rEsc(r.file.name)}</span>
+  ctl.innerHTML=`<button type="button" class="r-pv-btn" onclick="rPreviewStepReel(-1)" title="Reel précédent">⏮</button>
+    <button type="button" class="r-pv-btn" onclick="rPreviewTogglePlay()" title="Lecture / pause">${rPreviewPaused?"▶":"⏸"}</button>
+    <button type="button" class="r-pv-btn" onclick="rPreviewStepReel(1)" title="Reel suivant">⏭</button>
+    <span class="r-pv-name">${rEsc(r.file.name)}</span>
     <span class="r-pv-mus">🎵 ${rEsc(musName)}${multi?` (${rPreviewMusIdx+1}/${r.musIds.length})`:""}</span>
-    ${multi?`<button type="button" class="r-pv-btn" onclick="rPreviewNextMusic(-1)">‹</button><button type="button" class="r-pv-btn" onclick="rPreviewNextMusic(1)">›</button>`:""}
-    <button type="button" class="r-pv-btn" onclick="rPreviewToggleMute()" ${hasMus?"":"disabled"}>${rPreviewMuted?"🔇":"🔊"}</button>
-    <button type="button" class="r-pv-btn danger" onclick="rStopPreview()">✕</button>`;
+    ${multi?`<button type="button" class="r-pv-btn" onclick="rPreviewNextMusic(-1)" title="Musique précédente">‹</button><button type="button" class="r-pv-btn" onclick="rPreviewNextMusic(1)" title="Musique suivante">›</button>`:""}
+    <button type="button" class="r-pv-btn" onclick="rPreviewToggleMute()" ${hasMus?"":"disabled"} title="Muet">${rPreviewMuted?"🔇":"🔊"}</button>
+    <input type="range" class="r-pv-vol" min="0" max="1" step="0.05" value="${rPreviewVol}" oninput="rPreviewSetVolume(this.value)" ${hasMus?"":"disabled"} title="Volume">
+    <button type="button" class="r-pv-btn danger" onclick="rStopPreview()" title="Fermer">✕</button>`;
 }
 
 // ── Assignation "tout croiser" (Module 1) — nombre de vidéos ──
