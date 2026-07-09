@@ -724,8 +724,15 @@ body {
 /* Layout Reels Studio : GAUCHE = grande galerie reels, DROITE = Captions +
    Musiques empilés (Module 3). La galerie reels devient la zone principale. */
 .ws-panels { display:grid; gap:0; min-height:520px; height:74vh; }
-/* Batch : Vidéos A et B larges, panneau central (aperçu) plus étroit. */
-#wsPanels { grid-template-columns:1.7fr 6px 1fr 6px 1.7fr; }
+/* Batch : Vidéos A et Vidéos B, deux grands panneaux d'égale importance. */
+#wsPanels { grid-template-columns:1fr 6px 1fr; }
+/* Captions OCR : section pleine largeur sous les panneaux (workflow vertical). */
+.ws-cap-section { border:1px solid var(--border); border-radius:12px; padding:12px 14px;
+  background:linear-gradient(180deg, rgba(255,255,255,.028), rgba(255,255,255,.01)); }
+.ws-cap-section-head { font-size:.86rem; font-weight:700; color:var(--text); display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.ws-cap-section .ws-cap-hint { margin:0; }
+.ws-cap-section .ws-cap-list { flex-direction:row; flex-wrap:wrap; overflow:visible; padding:8px 0 0; }
+.ws-step-badge { display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:var(--accent); color:#fff; font-size:.72rem; font-weight:800; margin-right:2px; flex:0 0 auto; }
 /* Reels : grande galerie à gauche, bibliothèques empilées à droite. */
 #rPanels { grid-template-columns:minmax(0,2.6fr) 6px minmax(300px,0.95fr); }
 .r-side-col { display:flex; flex-direction:column; gap:10px; min-width:0; min-height:0; }
@@ -1453,7 +1460,7 @@ BATCH MODE
     <!-- Panneau 1 : Vidéos A / Sources visuelles -->
     <section class="ws-panel" id="wsPanelA">
       <header class="ws-panel-head">
-        <div class="ws-panel-title"><span class="ws-panel-ico">🎬</span> Vidéos A <span class="ws-panel-sub">Sources visuelles</span></div>
+        <div class="ws-panel-title"><span class="ws-step-badge">1</span><span class="ws-panel-ico">🎬</span> Vidéos A <span class="ws-panel-sub">Sources visuelles</span></div>
         <div class="ws-view-toggle">
           <button type="button" class="ws-vt active" data-view="grid" onclick="wsSetView('A','grid')" title="Grandes miniatures">▦</button>
           <button type="button" class="ws-vt" data-view="list" onclick="wsSetView('A','list')" title="Compacte">≡</button>
@@ -1473,28 +1480,10 @@ BATCH MODE
 
     <div class="ws-resizer" data-i="0" title="Glisser pour redimensionner"></div>
 
-    <!-- Panneau 2 : Captions détectées depuis B / aperçu OCR (zone préparatoire, non connectée) -->
-    <section class="ws-panel" id="wsPanelCap">
-      <header class="ws-panel-head">
-        <div class="ws-panel-title"><span class="ws-panel-ico">✏️</span> Captions <span class="ws-panel-sub">aperçu OCR</span></div>
-        <div class="ws-cap-actions">
-          <button type="button" class="ws-icon-btn" title="Ajouter (bientôt)" disabled>＋</button>
-        </div>
-      </header>
-      <div class="ws-cap-hint">Zone préparatoire. Les captions sont détectées automatiquement sur les vidéos B lors de la génération. La bibliothèque de captions manuelles arrivera dans un chantier dédié.</div>
-      <div class="ws-cap-list" id="wsCapList">
-        <div class="ws-cap-card ws-ph"><div class="ws-cap-name">POV caption</div><div class="ws-cap-preview">« when you finally … »</div><div class="ws-cap-foot"><span class="ws-cap-lines">2 lignes</span><span class="ws-cap-btns"><button type="button" class="ws-mini" disabled>modifier</button><button type="button" class="ws-mini" disabled>dupliquer</button><button type="button" class="ws-mini ws-danger" disabled>suppr.</button></span></div></div>
-        <div class="ws-cap-card ws-ph"><div class="ws-cap-name">Hook 1</div><div class="ws-cap-preview">« 3 types of men … »</div><div class="ws-cap-foot"><span class="ws-cap-lines">4 lignes</span><span class="ws-cap-btns"><button type="button" class="ws-mini" disabled>modifier</button><button type="button" class="ws-mini" disabled>dupliquer</button><button type="button" class="ws-mini ws-danger" disabled>suppr.</button></span></div></div>
-        <div class="ws-cap-card ws-ph ws-ph-empty"><span>Aperçu — non connecté</span></div>
-      </div>
-    </section>
-
-    <div class="ws-resizer" data-i="1" title="Glisser pour redimensionner"></div>
-
-    <!-- Panneau 3 : Vidéos B / Cibles audio + texte -->
+    <!-- Panneau 2 : Vidéos B / Cibles audio + texte -->
     <section class="ws-panel" id="wsPanelB">
       <header class="ws-panel-head">
-        <div class="ws-panel-title"><span class="ws-panel-ico">🎵</span> Vidéos B <span class="ws-panel-sub">Cibles audio + texte</span></div>
+        <div class="ws-panel-title"><span class="ws-step-badge">2</span><span class="ws-panel-ico">🎵</span> Vidéos B <span class="ws-panel-sub">Cibles audio + texte</span></div>
         <div class="ws-view-toggle">
           <button type="button" class="ws-vt active" data-view="grid" onclick="wsSetView('B','grid')" title="Grandes miniatures">▦</button>
           <button type="button" class="ws-vt" data-view="list" onclick="wsSetView('B','list')" title="Compacte">≡</button>
@@ -1514,9 +1503,16 @@ BATCH MODE
 
   </div>
 
+  <!-- Captions détectées (OCR) — masqué tant qu'aucune vidéo B n'est importée -->
+  <section class="ws-cap-section" id="wsCapSection" style="display:none;">
+    <div class="ws-cap-section-head">✏️ Captions détectées <span class="ws-panel-sub">OCR automatique sur les vidéos B</span></div>
+    <div class="ws-cap-hint" id="wsCapHint">En attente d'analyse — le texte des vidéos B est détecté et réécrit automatiquement au lancement du Batch.</div>
+    <div class="ws-cap-list" id="wsCapList"></div>
+  </section>
+
   <!-- Barre de paramètres de génération (contrôles existants relocalisés — IDs inchangés) -->
   <div class="ws-settingsbar">
-    <div class="ws-settings-title">Paramètres de génération</div>
+    <div class="ws-settings-title"><span class="ws-step-badge">3</span> Mode Batch &amp; paramètres</div>
     <div class="ws-settings-row">
       <span class="ws-lbl">Mode :</span>
       <label class="v-opt"><input type="radio" name="bStrategy" value="matrix" checked onchange="onBatchStrategyChange()"> Matrice (A × B)</label>
@@ -4518,31 +4514,28 @@ function wsSetView(which, view){
   const panels = document.getElementById("wsPanels");
   if (!panels) return;
 
-  try { const c = sessionStorage.getItem("wsCols"); if (c) panels.style.gridTemplateColumns = c; } catch(e){}
+  try { const c = sessionStorage.getItem("wsCols2"); if (c) panels.style.gridTemplateColumns = c; } catch(e){}
 
-  // Séparateurs redimensionnables (ajustent les 2 panneaux adjacents).
+  // Séparateur redimensionnable (2 panneaux : Vidéos A | Vidéos B).
   panels.querySelectorAll(".ws-resizer").forEach(rz => {
     rz.addEventListener("mousedown", e => {
       e.preventDefault();
-      const i = parseInt(rz.dataset.i, 10);
       rz.classList.add("drag");
       const startX = e.clientX;
       const secs = [...panels.children].filter(c => c.classList.contains("ws-panel"));
-      const w0 = secs.map(s => s.getBoundingClientRect().width);
-      const total = w0.reduce((a,b) => a+b, 0) || 1;
+      if (secs.length < 2) return;
+      const w0 = [secs[0].getBoundingClientRect().width, secs[1].getBoundingClientRect().width];
+      const total = w0[0] + w0[1] || 1;
       const onMove = ev => {
         const dx = ev.clientX - startX;
-        const w = w0.slice();
-        w[i]   = Math.max(140, w0[i]   + dx);
-        w[i+1] = Math.max(140, w0[i+1] - dx);
-        const fr = w.map(x => (x/total).toFixed(4) + "fr");
-        panels.style.gridTemplateColumns = `${fr[0]} 6px ${fr[1]} 6px ${fr[2]}`;
+        const a = Math.max(200, w0[0] + dx), b = Math.max(200, w0[1] - dx);
+        panels.style.gridTemplateColumns = `${(a/total).toFixed(4)}fr 6px ${(b/total).toFixed(4)}fr`;
       };
       const onUp = () => {
         rz.classList.remove("drag");
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
-        try { sessionStorage.setItem("wsCols", panels.style.gridTemplateColumns); } catch(e){}
+        try { sessionStorage.setItem("wsCols2", panels.style.gridTemplateColumns); } catch(e){}
       };
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
@@ -4612,6 +4605,9 @@ function wsSetView(which, view){
     const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
     set("wsInfoA", A.length); set("wsInfoB", B.length); set("wsInfoCap", B.length);
     set("wsInfoOut", out); set("wsInfoEta", fmtEta(out * 8));
+    // Section captions OCR : visible uniquement quand des vidéos B sont importées.
+    const capSec = document.getElementById("wsCapSection");
+    if (capSec) capSec.style.display = B.length ? "block" : "none";
     const dot = document.getElementById("wsStatusDot"), lbl = document.getElementById("wsInfoStatus");
     let st = "ready", txt = "Prêt";
     try {
