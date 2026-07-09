@@ -198,6 +198,18 @@ border: 1px solid var(--border); background: rgba(255,255,255,.025); font-size: 
 .tab-content { display: none; flex-direction: column; align-items: center; width: 100%; }
 .tab-content.active { display: flex; }
 
+/* ── Sous-navigation contextuelle (segmented pills) — unifie les pages
+   fusionnées (Générateur, Variations, Media Tools) ── */
+.subnav { width: 100%; max-width: 1180px; display: flex; align-items: center; gap: 6px;
+  margin: 0 auto var(--sp-4); padding: 5px; border-radius: 12px;
+  background: rgba(255,255,255,.03); border: 1px solid var(--border); }
+.subnav-pill { display: inline-flex; align-items: center; gap: 7px; padding: 8px 16px;
+  border: 0; background: transparent; color: var(--muted); font-size: .82rem; font-weight: 700;
+  border-radius: 9px; cursor: pointer; transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); white-space: nowrap; }
+.subnav-pill:hover { color: var(--text); background: rgba(255,255,255,.05); }
+.subnav-pill.active { color: #fff; background: var(--accent-soft, rgba(67,105,255,.18)); box-shadow: inset 0 0 0 1px rgba(67,105,255,.4); }
+@media (max-width:640px){ .subnav { overflow-x: auto; } }
+
 /* ── Dashboard overview — KPI row, quick actions, activity feed ── */
 .dash-wrap { width: 100%; max-width: 1180px; display: flex; flex-direction: column; gap: var(--sp-4); margin-bottom: var(--sp-4); }
 .dash-greeting { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: var(--sp-3); }
@@ -974,7 +986,7 @@ Nouvelle génération
 </button>
 <button type="button" class="gen-drop-item" onclick="selectGen('batch')">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
-<div><div class="gen-drop-item-label">Mode Batch</div><div class="gen-drop-item-desc">N sources × M cibles</div></div>
+<div><div class="gen-drop-item-label">Mode Matrice</div><div class="gen-drop-item-desc">N sources × M cibles</div></div>
 </button>
 <button type="button" class="gen-drop-item" onclick="selectGen('variation')">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span>
@@ -999,7 +1011,7 @@ Nouvelle génération
 <nav class="sidebar-nav">
 <div class="nav-group">
 {% if current_user %}
-<button class="tab-btn nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
+<button class="tab-btn nav-item active" data-tab="dashboard" data-group="dashboard" onclick="switchTab('dashboard')">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="2.5" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="2.5" y="10" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="10" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/></svg></span>
 Dashboard
 </button>
@@ -1013,37 +1025,29 @@ Dashboard
 
 <div class="nav-group">
 <div class="nav-group-label">Création</div>
-<button class="tab-btn nav-item{% if not current_user %} active{% endif %}" data-tab="simple" onclick="switchTab('simple')">
+<button class="tab-btn nav-item{% if not current_user %} active{% endif %}" data-tab="simple" data-group="generator" onclick="switchTab('simple')">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="6" width="13" height="9.5" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 6 L4.2 2.5 L7 2.5 L5.6 6 Z M7.4 6 L9 2.7 L11.8 2.7 L10.4 6 Z M11.9 6 L13.4 2.7 L15.2 2.7 L14.5 6 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
-Mode Simple
+Générateur vidéo
 </button>
-<button class="tab-btn nav-item" data-tab="batch" onclick="switchTab('batch')">
-<span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
-Mode Batch
-</button>
-<button class="tab-btn nav-item" data-tab="reels" onclick="switchTab('reels')">
+<button class="tab-btn nav-item" data-tab="reels" data-group="reels" onclick="switchTab('reels')">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="3" width="13" height="12" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 6.5 H15.5 M6 3 L7.5 6.5 M10 3 L11.5 6.5" stroke="currentColor" stroke-width="1.3"/><path d="M8 9 L11 10.7 L8 12.4 Z" fill="currentColor"/></svg></span>
 Reels Studio
 </button>
-<button class="tab-btn nav-item" data-tab="variation" onclick="switchTab('variation')">
+</div>
+
+<div class="nav-group">
+<div class="nav-group-label">Variations</div>
+<button class="tab-btn nav-item" data-tab="variation" data-group="variations" onclick="switchTab('variation')">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span>
-Variation Studio
+Studio Variations
 </button>
-<button class="tab-btn nav-item" data-tab="variation_multi" onclick="switchTab('variation_multi')">
-<span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="3.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.6"/><rect x="6.5" y="6.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.6" fill="var(--card,#16181d)"/><circle cx="11" cy="11" r="1" fill="currentColor"/></svg></span>
-Variation Studio Multi
-</button>
-<button class="tab-btn nav-item" data-tab="audio" onclick="switchTab('audio')">
-<span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2 V11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M9 2 L13.5 3.7 V6.5 L9 4.8 Z" fill="currentColor"/><circle cx="6.5" cy="11.5" r="2.6" stroke="currentColor" stroke-width="1.6"/></svg></span>
-Audio Converter
-</button>
-<button class="tab-btn nav-item" data-tab="photo" onclick="switchTab('photo')">
-<span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="4" width="13" height="10" rx="1.8" stroke="currentColor" stroke-width="1.6"/><circle cx="6.5" cy="8" r="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 13 L7.5 9.5 L10 11.5 L12.5 9 L14.5 11" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
-Photo Metadata Studio
-</button>
-<button class="tab-btn nav-item" data-tab="optimizer" onclick="switchTab('optimizer')">
+</div>
+
+<div class="nav-group">
+<div class="nav-group-label">Outils Média</div>
+<button class="tab-btn nav-item" data-tab="optimizer" data-group="media" onclick="switchTab('optimizer')">
 <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2 V5 M9 13 V16 M2 9 H5 M13 9 H16 M4 4 L6 6 M14 4 L12 6 M4 14 L6 12 M14 14 L12 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="9" cy="9" r="2.6" stroke="currentColor" stroke-width="1.6"/></svg></span>
-Media Optimizer
+Media Tools
 </button>
 </div>
 
@@ -1155,6 +1159,9 @@ Se déconnecter
 
 <main class="app-content">
 
+<!-- Barre de sous-navigation contextuelle (Générateur / Variations / Media Tools) -->
+<div id="subnav" class="subnav" style="display:none;"></div>
+
 <!-- ══════════════════════════════════════════
 DASHBOARD TAB — KPI, activité récente, modes
 ══════════════════════════════════════════ -->
@@ -1233,12 +1240,12 @@ class="kpi-label">Vidéos générées</div>
 </button>
 <button type="button" class="qa-card" onclick="switchTab('batch')">
 <span class="qa-icon"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
-<span class="qa-name">Mode Batch</span>
+<span class="qa-name">Mode Matrice</span>
 <span class="qa-desc">Combine plusieurs sources et cibles — toutes les combinaisons en une passe.</span>
 </button>
 <button type="button" class="qa-card" onclick="switchTab('variation')">
 <span class="qa-icon"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span>
-<span class="qa-name">Variation Studio</span>
+<span class="qa-name">Studio Variations</span>
 <span class="qa-desc">Génère des dizaines de variantes uniques d'une seule vidéo source.</span>
 </button>
 </div>
@@ -2348,10 +2355,41 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 // ══════════════════════════════════════════
 // SHARED
 // ══════════════════════════════════════════
+// ── Architecture V2 : pages fusionnées via sous-navigation ──
+// Chaque onglet appartient à un "groupe" (objectif utilisateur). Le groupe
+// définit l'item de sidebar mis en surbrillance (primary) et les sous-onglets
+// (segmented pills) affichés en haut de la page.
+var TAB_GROUPS = {
+  dashboard:       { primary:'dashboard', title:'Dashboard', subtitle:'Vue d’ensemble de votre activité', subs:[] },
+  simple:          { primary:'simple', title:'Générateur vidéo', subtitle:'Un moteur, plusieurs modes — la page reste identique', subs:[['simple','Mode Simple'],['batch','Mode Matrice']] },
+  batch:           { primary:'simple', title:'Générateur vidéo', subtitle:'Un moteur, plusieurs modes — la page reste identique', subs:[['simple','Mode Simple'],['batch','Mode Matrice']] },
+  variation:       { primary:'variation', title:'Studio Variations', subtitle:'Générez des dizaines de variantes uniques', subs:[['variation','1 vidéo'],['variation_multi','Plusieurs vidéos']] },
+  variation_multi: { primary:'variation', title:'Studio Variations', subtitle:'Générez des dizaines de variantes uniques', subs:[['variation','1 vidéo'],['variation_multi','Plusieurs vidéos']] },
+  optimizer:       { primary:'optimizer', title:'Media Tools', subtitle:'Optimisation, audio et métadonnées au même endroit', subs:[['optimizer','Optimizer médias'],['audio','Audio'],['photo','Métadonnées']] },
+  audio:           { primary:'optimizer', title:'Media Tools', subtitle:'Optimisation, audio et métadonnées au même endroit', subs:[['optimizer','Optimizer médias'],['audio','Audio'],['photo','Métadonnées']] },
+  photo:           { primary:'optimizer', title:'Media Tools', subtitle:'Optimisation, audio et métadonnées au même endroit', subs:[['optimizer','Optimizer médias'],['audio','Audio'],['photo','Métadonnées']] },
+  reels:           { primary:'reels', title:'Reels Studio', subtitle:'Production de reels à faible coût — 100% FFmpeg', subs:[] }
+};
+function renderSubnav(tab) {
+  var info = TAB_GROUPS[tab] || {}; var bar = document.getElementById('subnav');
+  if (bar) {
+    var subs = info.subs || [];
+    if (!subs.length) { bar.style.display = 'none'; bar.innerHTML = ''; }
+    else {
+      bar.style.display = 'flex';
+      bar.innerHTML = subs.map(function(s){
+        return '<button type="button" class="subnav-pill'+(s[0]===tab?' active':'')+'" onclick="switchTab(\''+s[0]+'\')">'+s[1]+'</button>';
+      }).join('');
+    }
+  }
+  var h1 = document.querySelector('.app-header h1'); if (h1 && info.title) h1.textContent = info.title;
+  var sub = document.querySelector('.app-header .subtitle'); if (sub && info.subtitle) sub.textContent = info.subtitle;
+}
 function switchTab(tab) {
 window.scrollTo(0, 0);
+var info = TAB_GROUPS[tab] || { primary: tab };
 document.querySelectorAll('.tab-btn').forEach(b => {
-b.classList.toggle('active', b.dataset.tab === tab);
+b.classList.toggle('active', b.dataset.tab === info.primary);
 });
 document.getElementById('dashboardTab').classList.toggle('active', tab === 'dashboard');
 document.getElementById('simpleTab').classList.toggle('active', tab === 'simple');
@@ -2362,8 +2400,16 @@ document.getElementById('audioTab').classList.toggle('active', tab === 'audio');
 document.getElementById('photoTab').classList.toggle('active', tab === 'photo');
 document.getElementById('optimizerTab').classList.toggle('active', tab === 'optimizer');
 document.getElementById('reelsTab').classList.toggle('active', tab === 'reels');
+renderSubnav(tab);
 if (tab === 'reels' && typeof reelsOnOpen === 'function') reelsOnOpen();
 }
+// Sous-navigation initiale (selon l'onglet actif au chargement).
+document.addEventListener('DOMContentLoaded', function(){
+  var active = document.querySelector('.tab-content.active');
+  var id = active ? active.id : 'dashboardTab';
+  var map = { dashboardTab:'dashboard', simpleTab:'simple', batchTab:'batch', variationTab:'variation', variationMultiTab:'variation_multi', audioTab:'audio', photoTab:'photo', optimizerTab:'optimizer', reelsTab:'reels' };
+  renderSubnav(map[id] || 'dashboard');
+});
 
 function toggleGenDrop(e) {
   e.stopPropagation();
