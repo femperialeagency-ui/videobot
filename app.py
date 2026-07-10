@@ -9,6 +9,7 @@ import base64
 import zipfile
 import secrets
 import sqlite3
+import threading
 import subprocess
 from pathlib import Path
 from functools import wraps
@@ -3543,6 +3544,197 @@ def download(job_id):
         return send_file(str(path), as_attachment=True,
                          download_name="video_C.mp4", mimetype="video/mp4")
     return jsonify({"error": "Not found"}), 404
+
+
+# ══════════════════════════════════════════════════════════════════
+# ZIP en ARRIÈRE-PLAN (progression réelle + téléchargement natif).
+#
+# Cause racine du bug "loader infini, aucun téléchargement" sur 280 vidéos :
+# l'ancien flux construisait le ZIP entier de façon SYNCHRONE dans la requête
+# PUIS le renvoyait, et le navigateur chargeait tout en mémoire via res.blob().
+# Sur un ZIP volumineux → fetch dépasse le délai du proxy Render / mémoire
+# navigateur → jamais résolu.
+#
+# Nouveau flux : /zip_build_start lance un thread qui construit le ZIP sur le
+# disque persistant ; l'AVANCEMENT est écrit dans un petit JSON sur ce même
+# disque (zipbuild_<id>.json). Le client interroge /zip_build_status (pct) puis
+# télécharge via /zip_build_file en navigation NATIVE (aucun blob, aucun
+# timeout JS).
+#
+# Robustesse :
+#  - Statut sur DISQUE (pas en mémoire) → fonctionne même avec PLUSIEURS
+#    workers gunicorn ou après redémarrage : n'importe quel worker lit le JSON
+#    et sert le zip depuis le disque partagé.
+#  - Isolation utilisateur : le JSON stocke l'uid ; status/file refusent tout
+#    autre utilisateur (403).
+#  - Anti double-clic : un build actif identique (uid+kind+cible) est réutilisé.
+#  - Interruption (redémarrage) : si le JSON n'avance plus (>90 s) et n'est pas
+#    prêt → erreur claire renvoyée au client (plus de progression bloquée).
+#  - Nettoyage : zip + JSON supprimés au téléchargement, et purge des builds
+#    de plus de 2 h.
+# ══════════════════════════════════════════════════════════════════
+def _zip_uid():
+    u = getattr(request, "current_user", None)
+    try:
+        return u["id"] if u is not None else None
+    except Exception:
+        return None
+
+
+def _zip_json_path(bid):
+    return DATA_DIR / f"zipbuild_{bid}.json"
+
+
+def _zip_data_path(bid):
+    return DATA_DIR / f"zipbuild_{bid}.zip"
+
+
+def _zip_write(bid, d):
+    d["updated"] = time.time()
+    tmp = str(_zip_json_path(bid)) + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(d, f)
+        os.replace(tmp, str(_zip_json_path(bid)))
+    except Exception:
+        pass
+
+
+def _zip_read(bid):
+    try:
+        with open(_zip_json_path(bid)) as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _zip_cleanup_stale(max_age_s=7200):
+    try:
+        for jf in DATA_DIR.glob("zipbuild_*.json"):
+            try:
+                st = json.load(open(jf))
+            except Exception:
+                st = None
+            try:
+                if not st or time.time() - st.get("created", 0) > max_age_s:
+                    bid = st.get("build_id") if st else jf.stem.replace("zipbuild_", "")
+                    try: os.remove(str(_zip_data_path(bid)))
+                    except Exception: pass
+                    os.remove(str(jf))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _zip_worker(build_id, files):
+    d = _zip_read(build_id)
+    if not d:
+        return
+    zp = str(_zip_data_path(build_id))
+    total = len(files)
+    step = max(1, total // 100)   # écrit l'avancement ~tous les 1%
+    try:
+        with zipfile.ZipFile(zp, "w", zipfile.ZIP_STORED) as zf:
+            for i, p in enumerate(files):
+                zf.write(str(p), p.name)
+                if (i + 1) % step == 0 or (i + 1) == total:
+                    d["done"] = i + 1
+                    _zip_write(build_id, d)
+        d["done"] = total; d["ready"] = True
+        _zip_write(build_id, d)
+    except Exception as e:
+        d["error"] = str(e)
+        _zip_write(build_id, d)
+
+
+@app.route("/zip_build_start", methods=["POST"])
+def zip_build_start():
+    try:
+        data = request.get_json(force=True) or {}
+        kind = (data.get("kind") or "").strip()
+        jid = (data.get("id") or "").strip()
+        uid = _zip_uid()
+        if not jid or ".." in jid or "/" in jid:
+            return jsonify({"error": "id invalide"}), 400
+        if kind == "batch":
+            out_dir = BATCH_DIR / jid / "out"; dname = "videos_C.zip"
+        elif kind == "reels":
+            out_dir = REELS_MIX_DIR / jid / "out"; dname = "reels.zip"
+        else:
+            return jsonify({"error": "kind invalide"}), 400
+        files = sorted(p for p in out_dir.glob("*.mp4") if p.is_file()) if out_dir.exists() else []
+        sel = data.get("filenames")
+        if isinstance(sel, list) and sel:
+            want = {str(x) for x in sel}
+            files = [p for p in files if p.name in want]
+        if not files:
+            return jsonify({"error": "Aucun fichier valide trouvé"}), 400
+        _zip_cleanup_stale()
+        # Anti double-clic : réutilise un build actif identique (même uid/kind/cible/sélection).
+        sig = f"{uid}|{kind}|{jid}|{len(files)}"
+        for jf in DATA_DIR.glob("zipbuild_*.json"):
+            try:
+                st = json.load(open(jf))
+            except Exception:
+                continue
+            if (st.get("sig") == sig and not st.get("error")
+                    and (time.time() - st.get("updated", 0)) < 120):
+                return jsonify({"build_id": st["build_id"], "total": st["total"], "reused": True})
+        build_id = uuid.uuid4().hex
+        d = {"build_id": build_id, "uid": uid, "kind": kind, "target": jid, "sig": sig,
+             "total": len(files), "done": 0, "ready": False, "error": None,
+             "name": dname, "created": time.time()}
+        _zip_write(build_id, d)
+        threading.Thread(target=_zip_worker, args=(build_id, files), daemon=True).start()
+        return jsonify({"build_id": build_id, "total": len(files)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/zip_build_status")
+def zip_build_status():
+    bid = request.args.get("build_id", "")
+    d = _zip_read(bid)
+    if not d:
+        return jsonify({"error": "Job introuvable"}), 404
+    if d.get("uid") != _zip_uid():
+        return jsonify({"error": "Accès refusé"}), 403
+    # Interruption (redémarrage serveur) : plus d'avancement et pas prêt.
+    err = d.get("error")
+    if not d.get("ready") and not err and (time.time() - d.get("updated", 0)) > 90:
+        err = "Préparation interrompue — relance le téléchargement."
+    total = max(1, d["total"])
+    return jsonify({"total": d["total"], "done": d["done"],
+                    "pct": int(d["done"] / total * 100),
+                    "ready": bool(d["ready"]), "error": err})
+
+
+@app.route("/zip_build_file")
+def zip_build_file():
+    bid = request.args.get("build_id", "")
+    d = _zip_read(bid)
+    if not d:
+        return jsonify({"error": "Job introuvable"}), 404
+    if d.get("uid") != _zip_uid():
+        return jsonify({"error": "Accès refusé"}), 403
+    if d.get("error"):
+        return jsonify({"error": d["error"]}), 500
+    if not d.get("ready"):
+        return jsonify({"error": "ZIP pas encore prêt"}), 409
+    zp = str(_zip_data_path(bid))
+    if not os.path.exists(zp):
+        return jsonify({"error": "ZIP introuvable sur le disque"}), 404
+
+    @after_this_request
+    def _rm(resp, _zp=zp, _bid=bid):
+        try: os.remove(_zp)
+        except Exception: pass
+        try: os.remove(str(_zip_json_path(_bid)))
+        except Exception: pass
+        return resp
+
+    return send_file(zp, as_attachment=True, download_name=d["name"], mimetype="application/zip")
 
 
 @app.route("/batch_zip", methods=["POST"])

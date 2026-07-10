@@ -3424,44 +3424,43 @@ document.getElementById("bGlobalFill").style.width = pct + "%";
 document.getElementById("bGlobalStatus").textContent = `${done} / ${total} vidéo${total > 1 ? "s" : ""} générée${done > 1 ? "s" : ""}`;
 }
 
+// ZIP en arrière-plan : progression réelle % + téléchargement NATIF (pas de
+// blob mémoire, pas de timeout fetch) — corrige le "loader infini" sur 280 vidéos.
+async function rZipBackground(kind, id, btn, filenames){
+  const orig = btn.textContent; btn.disabled = true;
+  try{
+    btn.textContent = "⏳ Création du ZIP… 0%";
+    const body = { kind, id }; if (filenames) body.filenames = filenames;
+    const s = await fetch("/zip_build_start", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
+    const sd = await s.json(); if (!s.ok || sd.error) throw new Error(sd.error || s.statusText);
+    const bid = sd.build_id;
+    await new Promise((resolve, reject) => {
+      const iv = setInterval(async () => {
+        try{
+          const r = await fetch("/zip_build_status?build_id=" + encodeURIComponent(bid));
+          const d = await r.json();
+          if (d.error){ clearInterval(iv); reject(new Error(d.error)); return; }
+          btn.textContent = `⏳ Création du ZIP… ${d.pct}% (${d.done}/${d.total})`;
+          if (d.ready){ clearInterval(iv); resolve(); }
+        }catch(e){ clearInterval(iv); reject(e); }
+      }, 700);
+    });
+    // Téléchargement natif — le navigateur gère lui-même la progression.
+    window.location.href = "/zip_build_file?build_id=" + encodeURIComponent(bid);
+    btn.textContent = "✅ Téléchargement lancé";
+    return true;
+  }catch(e){ alert("Erreur ZIP : " + e.message); btn.textContent = orig; return false; }
+  finally { setTimeout(() => { btn.disabled = false; btn.textContent = orig; }, 2500); }
+}
 async function downloadZip() {
 const successes = bResults.filter(r => r.status === "done");
 if (!successes.length || !bBatchId) return;
-
 const btn = document.getElementById("bZipBtn");
-btn.disabled = true;
-const origText = btn.textContent;
-btn.textContent = "⏳ Préparation du ZIP…";
-
-try {
-const res = await fetch("/batch_zip", {
-method: "POST",
-headers: { "Content-Type": "application/json" },
-body: JSON.stringify({ batch_id: bBatchId })
-});
-if (!res.ok) {
-const err = await res.json().catch(() => ({}));
-throw new Error(err.error || res.statusText);
-}
-const blob = await res.blob();
-const url = URL.createObjectURL(blob);
-const a = document.createElement("a");
-a.href = url;
-a.download = "videos_C.zip";
-a.click();
-URL.revokeObjectURL(url);
-
-// Free up server-side staging/output files now that the ZIP is downloaded.
-fetch("/batch_cleanup", {
-method: "POST",
-headers: { "Content-Type": "application/json" },
-body: JSON.stringify({ batch_id: bBatchId })
-}).catch(() => {});
-} catch(e) {
-alert("Erreur ZIP : " + e.message);
-} finally {
-btn.disabled = false;
-btn.textContent = origText;
+const ok = await rZipBackground("batch", bBatchId, btn);
+if (ok) {
+// Libère les fichiers serveur une fois le ZIP construit (le ZIP est un
+// fichier indépendant sur le disque, la suppression du out/ est sûre).
+fetch("/batch_cleanup", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ batch_id: bBatchId }) }).catch(() => {});
 }
 }
 
@@ -5556,7 +5555,8 @@ function rEmojiRender(){
   if(q){ const set=new Set(); Object.keys(R_EMOJI_KW).forEach(k=>{ if(k.includes(q)) set.add(R_EMOJI_KW[k]); }); list=[...set]; if(!list.length) list=Object.values(R_EMOJI).flat().slice(0,60); }
   else if(_rEmojiCat==="Récents"){ list=rEmojiRecents(); if(!list.length) list=R_EMOJI["Smileys"].slice(0,24); }
   else list=R_EMOJI[_rEmojiCat]||[];
-  g.innerHTML=list.map(ch=>`<button type="button" class="r-emoji-cell" onclick="rEmojiInsert('${ch}')">${ch}</button>`).join("");
+  // Picker en Twemoji aussi (identique à la preview et à l'export FFmpeg).
+  g.innerHTML=list.map(ch=>`<button type="button" class="r-emoji-cell" onclick="rEmojiInsert('${ch}')"><img class="r-emoji-img" src="/static/emoji/twemoji/72x72/${_rTwName(ch)}.png" alt="${ch}" draggable="false" onerror="this.replaceWith(document.createTextNode(this.alt))"></button>`).join("");
 }
 function rEmojiInsert(ch){
   const ta=_rEmojiTarget; if(!ta) return;
@@ -6091,14 +6091,12 @@ function rReviewSelectAll(){ const any=rReview.some(it=>!rReviewSel.has(it.filen
 function rReviewDelete(){ if(!rReviewSel.size) return; rReview=rReview.filter(it=>!rReviewSel.has(it.filename)); rReviewSel.clear(); rRenderReview(); if(!rReview.length){ document.getElementById("rZipBtn").style.display="none"; document.getElementById("rZipSelBtn").style.display="none"; document.getElementById("rReviewDelBtn").style.display="none"; } }
 async function rDownloadZip(selectedOnly){
   if(!rMixJobId) return;
-  const body={job_id:rMixJobId};
-  if(selectedOnly){ if(!rReviewSel.size){ alert("Sélectionne au moins une vidéo."); return; } body.filenames=[...rReviewSel]; }
-  else { body.filenames=rReview.map(it=>it.filename); }
-  try{
-    const res=await fetch("/reels_mix_zip",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-    if(!res.ok){ const d=await res.json().catch(()=>({})); throw new Error(d.error||res.statusText); }
-    const blob=await res.blob(); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="reels.zip"; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-  }catch(e){ alert("Erreur ZIP : "+e.message); }
+  let filenames=null;
+  if(selectedOnly){ if(!rReviewSel.size){ alert("Sélectionne au moins une vidéo."); return; } filenames=[...rReviewSel]; }
+  else { filenames=rReview.map(it=>it.filename); }
+  const btn=document.getElementById(selectedOnly?"rZipSelBtn":"rZipBtn") || document.getElementById("rZipBtn");
+  // Même flux arrière-plan (progression réelle + téléchargement natif).
+  await rZipBackground("reels", rMixJobId, btn, filenames);
 }
 </script>
 </body>
