@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       fonts-liberation \
       fonts-noto-color-emoji \
       tesseract-ocr \
+      tesseract-ocr-fra \
     && rm -rf /var/lib/apt/lists/*
 
 # ── App setup ─────────────────────────────────────────────────────

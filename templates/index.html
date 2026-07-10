@@ -1022,6 +1022,7 @@ body {
   -webkit-text-stroke:1px #000; padding:2px; }
 .r-cap-box { touch-action:none; }
 .r-cap-box:hover { outline:1px dashed rgba(255,255,255,.35); }
+#rEditCaptionText.is-placeholder { opacity:.5; font-style:italic; }
 .r-cap-box.drag { cursor:grabbing; outline:1px dashed rgba(255,255,255,.8); }
 .r-quick-row { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
 .r-quick-row .v-ghost-btn { font-size:.7rem; padding:4px 9px; }
@@ -1480,6 +1481,7 @@ SIMPLE MODE
 <div class="adv-params-body">
 <div class="adv-row">
 <span class="adv-lbl">OCR :</span>
+<label class="v-opt"><input type="radio" name="ocrModeS" value="local"> Local ⚡ <span style="font-weight:500;opacity:.7">(0 coût API · Tesseract)</span></label>
 <label class="v-opt"><input type="radio" name="ocrModeS" value="sonnet" checked> Sonnet ⭐ <span style="font-weight:500;opacity:.7">(Recommandé)</span></label>
 <label class="v-opt"><input type="radio" name="ocrModeS" value="opus"> Opus 👑 <span style="font-weight:500;opacity:.7">(Qualité max)</span></label>
 <button type="button" class="v-ghost-btn" onclick="reanalyzeNoCache()" title="Force une nouvelle analyse Vision en ignorant le cache OCR">🔄 Réanalyser sans cache</button>
@@ -1596,6 +1598,7 @@ BATCH MODE
       <label class="v-opt"><input type="radio" name="bStrategy" value="variations" onchange="onBatchStrategyChange()"> Variations par A ⭐</label>
       <span class="ws-sep"></span>
       <span class="ws-lbl">OCR :</span>
+      <label class="v-opt"><input type="radio" name="ocrModeB" value="local"> Local ⚡ <span style="font-weight:500;opacity:.7">(0 coût API · Tesseract)</span></label>
       <label class="v-opt"><input type="radio" name="ocrModeB" value="sonnet" checked> Sonnet ⭐ <span style="font-weight:500;opacity:.7">(Recommandé)</span></label>
       <label class="v-opt"><input type="radio" name="ocrModeB" value="opus"> Opus 👑 <span style="font-weight:500;opacity:.7">(Qualité maximale)</span></label>
       <span class="ws-sep"></span>
@@ -2399,7 +2402,7 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
         </div>
         <div class="r-modal-actions">
           <button type="button" class="v-ghost-btn" onclick="rCapClose()">Fermer</button>
-          <button type="button" class="primary-btn" onclick="rCapSave()">💾 Enregistrer la caption</button>
+          <button type="button" class="primary-btn" id="rCapSaveBtn" onclick="rCapSave()">💾 Créer la caption</button>
         </div>
       </div>
 
@@ -2563,7 +2566,8 @@ return (s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
 // /batch_detect; selects the Vision model + cache (v1-sonnet / v1-opus).
 function getOcrMode(scope) {
 const el = document.querySelector('input[name="ocrMode' + scope + '"]:checked');
-return (el && el.value === "opus") ? "opus" : "sonnet";
+const v = el ? el.value : "sonnet";
+return (v === "opus" || v === "local") ? v : "sonnet";
 }
 
 // CapCut outline ON/OFF ("S"=Simple, "B"=Batch). Default ON. Sent as
@@ -2736,6 +2740,7 @@ fd.append("video_a", vaFile);
 fd.append("video_b", vbFile);
 fd.append("lines_json", JSON.stringify(linesData));
 fd.append("capcut_outline", getCapcutOutline("S"));
+fd.append("ocr_mode", getOcrMode("S"));
 
 try {
 const res = await fetch("/process", { method: "POST", body: fd });
@@ -3026,7 +3031,7 @@ fd.append("a_index", a);
 fd.append("b_index", b);
 fd.append("num_a", bFilesA.length);
 fd.append("num_b", bFilesB.length);
-fd.append("capcut_outline", getCapcutOutline("B"));
+fd.append("capcut_outline", getCapcutOutline("B")); fd.append("ocr_mode", getOcrMode("B"));
 fd.append("lines_json", JSON.stringify(linesByB[b]));
 const r = await fetch("/batch_render", { method: "POST", body: fd });
 const d = await r.json();
@@ -3177,7 +3182,7 @@ const fd = new FormData();
 fd.append("batch_id", bBatchId);
 fd.append("a_index", sa); fd.append("b_index", sb);
 fd.append("pairing", "1");
-fd.append("num_a", nA); fd.append("num_b", nB); fd.append("capcut_outline", getCapcutOutline("B"));
+fd.append("num_a", nA); fd.append("num_b", nB); fd.append("capcut_outline", getCapcutOutline("B")); fd.append("ocr_mode", getOcrMode("B"));
 fd.append("lines_json", JSON.stringify(linesByStagedB[sb]));
 const r = await fetch("/batch_render", { method: "POST", body: fd });
 const d = await r.json();
@@ -3268,7 +3273,7 @@ fd.append("batch_id", bBatchId);
 fd.append("a_index", sa); fd.append("b_index", sb);
 fd.append("pairing", "1");
 fd.append("variations", V);
-fd.append("num_a", nA); fd.append("num_b", nB); fd.append("capcut_outline", getCapcutOutline("B"));
+fd.append("num_a", nA); fd.append("num_b", nB); fd.append("capcut_outline", getCapcutOutline("B")); fd.append("ocr_mode", getOcrMode("B"));
 fd.append("lines_json", JSON.stringify(linesByStagedB[sb]));
 const r = await fetch("/batch_render", { method: "POST", body: fd });
 const d = await r.json();
@@ -4922,7 +4927,11 @@ async function rFolderRename(kind, fid){
   try{ await rPost("/reels_folder_rename",{id:fid, name:name.trim()}); await rRefreshFolders(); if(kind==="cap")rCapRender(); else rMusRender(); }catch(e){ alert("Erreur : "+e.message); }
 }
 async function rFolderDelete(kind, fid){
-  if(!confirm("Supprimer ce dossier ? Les éléments repasseront dans « Sans dossier ».")) return;
+  const n=_rFolderCount(kind, fid);
+  const msg = n>0
+    ? `Ce dossier contient ${n} élément${n>1?"s":""}. Les éléments seront déplacés vers « Sans dossier » (jamais supprimés). Continuer ?`
+    : "Supprimer ce dossier vide ?";
+  if(!confirm(msg)) return;
   try{ await rPost("/reels_folder_delete",{id:fid});
     if(kind==="cap"){ if(String(rActiveCapFolder)===String(fid)) rActiveCapFolder="all"; await rRefreshFolders(); await rRefreshCaptions(); }
     else { if(String(rActiveMusFolder)===String(fid)) rActiveMusFolder="all"; await rRefreshFolders(); await rRefreshMusic(); }
@@ -5198,11 +5207,17 @@ function rEditFillPreviewReels(){
 let rActiveSegRow = null;                                  // segment en cours d'édition
 let rGlobalPos = { cx:50, cy:78, w:86, size:5, align:"center" };   // position globale (fallback) de la caption
 function rCapOpen(id, previewReelIdx){
+  // Afficher le modal AVANT de calculer tailles/positions : rEditApplyToBox
+  // s'appuie sur stage.clientHeight, qui vaut 0 tant que le modal est caché
+  // (c'était la cause du texte minuscule tant qu'on n'avait pas déplacé).
+  document.getElementById("rCapModal").style.display="flex";
   rEditFillPreviewReels();
   const pv=document.getElementById("rEditPreviewReel"); if(previewReelIdx!=null){ pv.value=String(previewReelIdx); } rEditSetPreviewReel();
   rPresetRenderBar();
   rCapLoad(id||null);
-  document.getElementById("rCapModal").style.display="flex";
+  // Après le layout du modal, ré-applique la taille/position RÉELLES → le texte
+  // s'affiche immédiatement à la bonne taille, sans premier déplacement.
+  requestAnimationFrame(()=>{ if(rActiveSegRow) rEditApplyToBox(); });
 }
 // Liste de TOUTES les captions (zone droite) — cliquable sans fermer le modal.
 function rCapPickRender(){
@@ -5221,6 +5236,7 @@ async function rCapPick(id){
 function rCapLoad(id){
   document.getElementById("rCapModalId").value=id||"";
   document.getElementById("rCapModalTitle").textContent=id?"Éditeur de caption":"Nouvelle caption";
+  const _sb=document.getElementById("rCapSaveBtn"); if(_sb) _sb.textContent=id?"💾 Enregistrer les modifications":"💾 Créer la caption";
   const segsBox=document.getElementById("rCapSegs"); segsBox.innerHTML=""; rActiveSegRow=null;
   let c=id?rCaptions.find(x=>x.id===id):null;
   document.getElementById("rCapName").value=c?c.name:"";
@@ -5246,7 +5262,7 @@ function rCapAddSeg(s){
   row.dataset.size = (((hasPos?s.fontsize_pct:rGlobalPos.size/100))*100).toFixed(1);
   row.dataset.align = (hasPos && s.align) ? s.align : rGlobalPos.align;
   row.innerHTML=`<div class="r-seg-head"><button type="button" class="r-seg-active" onclick="rSegSelect(this.closest('.r-seg'))">🎯 Positionner ce segment</button><span class="r-seg-posbadge"></span></div>
-    <textarea placeholder="Texte (retour à la ligne = nouvelle ligne)" oninput="rSegSelect(this.closest('.r-seg'));rEditRenderText()">${rEsc((s&&s.text)||"")}</textarea>
+    <textarea placeholder="Écris ton texte ici" oninput="rSegSelect(this.closest('.r-seg'));rEditRenderText()">${rEsc((s&&s.text)||"")}</textarea>
     <div class="r-seg-times">start <input type="number" step="0.1" min="0" class="r-seg-start" value="${s&&s.start_time!=null?s.start_time:""}">
     end <input type="number" step="0.1" min="0" class="r-seg-end" value="${s&&s.end_time!=null?s.end_time:""}">
     <button type="button" class="r-seg-del" onclick="rSegDelete(this.closest('.r-seg'))">retirer</button></div>`;
@@ -5289,8 +5305,11 @@ function rCapCollect(){
   return segs;
 }
 function rEditRenderText(){
-  const row=rActiveSegRow; const t=(row&&row.querySelector("textarea").value.trim())||"Caption";
-  document.getElementById("rEditCaptionText").innerHTML=rEsc(t).replace(/\n/g,"<br>");
+  const row=rActiveSegRow; const raw=(row&&row.querySelector("textarea").value.trim())||"";
+  const el=document.getElementById("rEditCaptionText");
+  // Placeholder visuel (jamais enregistré comme contenu) quand le segment est vide.
+  if(raw){ el.innerHTML=rEsc(raw).replace(/\n/g,"<br>"); el.classList.remove("is-placeholder"); }
+  else { el.textContent="Écris ton texte ici"; el.classList.add("is-placeholder"); }
   rUpdateActiveLabel();
 }
 // Applique les valeurs des sliders à la BOX de preview (sans écrire dans le segment).
@@ -5300,7 +5319,11 @@ function rEditApplyToBox(){
   document.getElementById("rPosWV").textContent=w+"%"; document.getElementById("rPosSizeV").textContent=sz.toFixed(1)+"%";
   const box=document.getElementById("rEditCaption"); const stage=document.getElementById("rEditStage");
   box.style.left=x+"%"; box.style.top=y+"%"; box.style.width=w+"%";
-  box.style.fontSize=Math.max(9, stage.clientHeight*(sz/100))+"px";
+  // Hauteur de scène robuste : si le modal vient d'être affiché et que le
+  // layout n'est pas encore flushé, clientHeight peut valoir 0 → on retombe
+  // sur le rect réel puis sur le ratio vertical 9:16 de la largeur.
+  const sh=stage.clientHeight || stage.getBoundingClientRect().height || (stage.clientWidth*16/9) || 480;
+  box.style.fontSize=Math.max(11, sh*(sz/100))+"px";
   box.style.textAlign=rEdit.align;
   rEditRenderText();
 }

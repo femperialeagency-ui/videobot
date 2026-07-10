@@ -2137,8 +2137,14 @@ def analyze_with_tesseract_fallback(frame_paths: list) -> list:
     from PIL import Image as PIL
     pil_inv = PIL.fromarray(inv).resize((w*2, h*2), PIL.NEAREST)
 
-    data = pytesseract.image_to_data(pil_inv, config="--psm 3 --oem 3",
-                                      output_type=pytesseract.Output.DICT)
+    # FR + EN si le pack français est présent ; repli sûr sur 'eng' sinon
+    # (jamais d'exception non gérée si tesseract-ocr-fra n'est pas installé).
+    try:
+        data = pytesseract.image_to_data(pil_inv, lang="eng+fra", config="--psm 3 --oem 3",
+                                          output_type=pytesseract.Output.DICT)
+    except Exception:
+        data = pytesseract.image_to_data(pil_inv, config="--psm 3 --oem 3",
+                                          output_type=pytesseract.Output.DICT)
     raw_words = []
     for i in range(len(data['text'])):
         txt = data['text'][i].strip()
@@ -3246,21 +3252,23 @@ def analyze():
         # v1→v2 so old, incomplete detections (sequential-caption recall bug)
         # are invalidated and re-detected with the smaller-lot pipeline.
         ocr_mode   = (request.form.get("ocr_mode") or "sonnet").strip().lower()
+        _use_local = (ocr_mode == "local")   # OCR 100% local (Tesseract) — 0 appel API
         _is_opus   = (ocr_mode == "opus")
         _model     = OCR_MODEL_OPUS if _is_opus else OCR_MODEL_SONNET
-        _cache_ver = "v2-opus" if _is_opus else "v2-sonnet"
+        _cache_ver = "v2-local" if _use_local else ("v2-opus" if _is_opus else "v2-sonnet")
         _fallback_scale = "scale=1080:-2"
-        # "Réanalyser sans cache" : saute le lookup et force une analyse Vision
+        # "Réanalyser sans cache" : saute le lookup et force une analyse
         # fraîche (le résultat est tout de même re-stocké pour les fois suivantes).
         _ignore_cache = (request.form.get("ignore_cache", "0") or "0").strip().lower() in ("1", "true", "on", "yes")
         import sys as _sys_ocr
         print(f"[OCR_MODE] route=/analyze mode={ocr_mode} model={_model} engine={_cache_ver} ignore_cache={_ignore_cache}", file=_sys_ocr.stderr)
 
-        # ── OCR cache lookup (Chantier 1) — before any Vision call. On a
-        # hit we return the EXACT cached detection (same lines format),
-        # skipping Vision + frame extraction entirely. ──
+        # ── OCR cache lookup (Chantier 1) — before any detection. On a hit we
+        # return the EXACT cached detection (même format). Le cache s'applique
+        # aussi au mode local (aucune API, mais on évite de re-scanner). ──
+        _want_cache = has_key or _use_local
         b_hash = None
-        if has_key:
+        if _want_cache:
             try:
                 b_hash = _sha256_file(path_b)
             except Exception:
@@ -3272,7 +3280,7 @@ def analyze():
                     return jsonify({
                         "lines":          cached["lines"],
                         "video_b_height": cached["video_b_height"],
-                        "mode":           cached["mode"] or "vision",
+                        "mode":           cached["mode"] or ("local" if _use_local else "vision"),
                         "cached":         True,
                         "source":         "cache",
                         "ocr_mode":       ocr_mode,
@@ -3282,49 +3290,66 @@ def analyze():
 
         source = None
         lines = []
-        if has_key:
-            # Timed detection for ALL modes: sample frames across the timeline
-            # and detect WHEN each caption appears/disappears (start_time/end_time).
+        if _use_local:
+            # OCR LOCAL : Tesseract uniquement, JAMAIS Anthropic/Vision.
+            frames = extract_frames(path_b, count=4, scale=_fallback_scale)
             try:
-                lines, _ = analyze_with_claude_vision_timed(path_b, model=_model)
+                lines = analyze_with_tesseract_fallback(frames)
             except Exception:
                 lines = []
             if lines:
-                source = "vision"
-
-        if not lines:
-            # Fall back to the original single-pass flow (identical to the
-            # pre-existing behavior; produces lines WITHOUT timing info).
-            frames = extract_frames(path_b, count=4, scale=_fallback_scale)
-            if has_key:
-                lines = analyze_with_claude_vision(frames, model=_model)
-                if lines:
-                    source = "vision"
-            else:
-                lines = []
-            if not lines:
-                lines = analyze_with_tesseract_fallback(frames)
-                if lines:
-                    source = "tesseract"
+                source = "local"
             for f in frames:
                 try:
                     Path(f).unlink(missing_ok=True)
                 except Exception:
                     pass
+        else:
+            if has_key:
+                # Timed detection for ALL modes: sample frames across the timeline
+                # and detect WHEN each caption appears/disappears (start_time/end_time).
+                try:
+                    lines, _ = analyze_with_claude_vision_timed(path_b, model=_model)
+                except Exception:
+                    lines = []
+                if lines:
+                    source = "vision"
+
+            if not lines:
+                # Fall back to the original single-pass flow (identical to the
+                # pre-existing behavior; produces lines WITHOUT timing info).
+                frames = extract_frames(path_b, count=4, scale=_fallback_scale)
+                if has_key:
+                    lines = analyze_with_claude_vision(frames, model=_model)
+                    if lines:
+                        source = "vision"
+                else:
+                    lines = []
+                if not lines:
+                    lines = analyze_with_tesseract_fallback(frames)
+                    if lines:
+                        source = "tesseract"
+                for f in frames:
+                    try:
+                        Path(f).unlink(missing_ok=True)
+                    except Exception:
+                        pass
 
         _, hb = get_video_dims(path_b)
 
-        # ── Store ONLY a non-empty Vision result (never empty, never
-        # Tesseract). Defensive: a cache write can never break detection. ──
-        if has_key and source == "vision" and lines and b_hash:
+        # ── Store non-empty results. Vision → cache (inchangé). Local → cache
+        # sous sa propre version (v2-local), aucune API impliquée. ──
+        if _use_local and lines and b_hash:
+            _ocr_cache_put(b_hash, lines, hb, "local", _cache_ver)
+        elif has_key and source == "vision" and lines and b_hash:
             _ocr_cache_put(b_hash, lines, hb, "vision", _cache_ver)
 
         return jsonify({
             "lines":          lines,
             "video_b_height": hb,
-            "mode":           "vision" if has_key else "tesseract",
+            "mode":           "local" if _use_local else ("vision" if has_key else "tesseract"),
             "cached":         False,
-            "source":         source or "tesseract",
+            "source":         source or ("local" if _use_local else "tesseract"),
             "ocr_mode":       ocr_mode,
         })
 
@@ -3345,6 +3370,8 @@ def process():
         _usage_attempt_started = False
         _usage_source_seconds  = None
         _capcut_outline_req    = (request.form.get("capcut_outline", "1") or "1").strip().lower() not in ("0", "false", "off", "no")
+        # OCR local → 0 requête Claude dans les analytics (aucun appel API).
+        _ocr_cr = 0 if (request.form.get("ocr_mode") or "").strip().lower() == "local" else None
 
         if "video_a" not in request.files or "video_b" not in request.files:
             return jsonify({"error": "Les deux videos sont requises."}), 400
@@ -3377,7 +3404,7 @@ def process():
         if not lines:
             log_usage_event(request.current_user, _usage_mode,
                             source_seconds=_usage_source_seconds, output_seconds=None,
-                            source_count=2, output_count=0, success=False)
+                            source_count=2, output_count=0, success=False, claude_requests=_ocr_cr)
             return jsonify({"error": "Aucune ligne de texte fournie."}), 400
 
         # Timed-caption path: taken for ANY mode (Simple or Batch) when
@@ -3443,7 +3470,7 @@ def process():
             except subprocess.TimeoutExpired:
                 log_usage_event(request.current_user, _usage_mode,
                                 source_seconds=_usage_source_seconds, output_seconds=None,
-                                source_count=2, output_count=0, success=False)
+                                source_count=2, output_count=0, success=False, claude_requests=_ocr_cr)
                 return jsonify({"error": "Timeout (>3 min)"}), 500
         finally:
             for op in overlay_paths:
@@ -3457,13 +3484,13 @@ def process():
             err = proc.stderr[-800:] if proc.stderr else "ffmpeg a echoue"
             log_usage_event(request.current_user, _usage_mode,
                             source_seconds=_usage_source_seconds, output_seconds=None,
-                            source_count=2, output_count=0, success=False)
+                            source_count=2, output_count=0, success=False, claude_requests=_ocr_cr)
             return jsonify({"error": err}), 500
 
         log_usage_event(request.current_user, _usage_mode,
                         source_seconds=_usage_source_seconds,
                         output_seconds=_get_video_duration_seconds(path_out),
-                        source_count=2, output_count=1, success=True)
+                        source_count=2, output_count=1, success=True, claude_requests=_ocr_cr)
         return jsonify({"job_id": job_id})
 
     except Exception as e:
@@ -3471,7 +3498,7 @@ def process():
             if _usage_attempt_started:
                 log_usage_event(request.current_user, _usage_mode,
                                 source_seconds=_usage_source_seconds, output_seconds=None,
-                                source_count=2, output_count=0, success=False)
+                                source_count=2, output_count=0, success=False, claude_requests=_ocr_cr)
         except Exception:
             pass
         return jsonify({"error": f"Erreur serveur: {str(e)}"}), 500
@@ -3672,17 +3699,20 @@ def batch_detect():
         # Pairing (both call this route). Strictly separate cache namespaces.
         # (v1→v2: invalidates old incomplete detections after the recall fix.)
         ocr_mode   = (request.form.get("ocr_mode") or "sonnet").strip().lower()
+        _use_local = (ocr_mode == "local")   # OCR 100% local (Tesseract) — 0 appel API
         _is_opus   = (ocr_mode == "opus")
         _model     = OCR_MODEL_OPUS if _is_opus else OCR_MODEL_SONNET
-        _cache_ver = "v2-opus" if _is_opus else "v2-sonnet"
+        _cache_ver = "v2-local" if _use_local else ("v2-opus" if _is_opus else "v2-sonnet")
         _fallback_scale = "scale=1080:-2"
         _ignore_cache = (request.form.get("ignore_cache", "0") or "0").strip().lower() in ("1", "true", "on", "yes")
         import sys as _sys_ocr
         print(f"[OCR_MODE] route=/batch_detect mode={ocr_mode} model={_model} engine={_cache_ver} ignore_cache={_ignore_cache}", file=_sys_ocr.stderr)
 
-        # ── OCR cache lookup (Chantier 1) — before any Vision call. ──
+        # ── OCR cache lookup (Chantier 1) — before any detection (cache aussi
+        # pour le mode local, sans aucune API). ──
+        _want_cache = has_key or _use_local
         b_hash = None
-        if has_key:
+        if _want_cache:
             try:
                 b_hash = _sha256_file(path_b)
             except Exception:
@@ -3694,7 +3724,7 @@ def batch_detect():
                     return jsonify({
                         "lines":          cached["lines"],
                         "video_b_height": cached["video_b_height"],
-                        "mode":           cached["mode"] or "vision",
+                        "mode":           cached["mode"] or ("local" if _use_local else "vision"),
                         "cached":         True,
                         "source":         "cache",
                         "ocr_mode":       ocr_mode,
@@ -3702,29 +3732,40 @@ def batch_detect():
             elif b_hash and _ignore_cache:
                 print(f"[OCR_CACHE] hash={b_hash[:12]} engine={_cache_ver} hit=skipped(ignore_cache)", file=_sys_ocr.stderr)
 
-        # Identical sequence to /analyze: timed detection first, falling
-        # back to the original single-pass detection if it finds nothing.
         source = None
-        try:
-            lines, _ = analyze_with_claude_vision_timed(path_b, model=_model)
-        except Exception:
-            lines = []
-        if lines:
-            source = "vision"
-
+        lines = []
         frames = []
-        if not lines:
+        if _use_local:
+            # OCR LOCAL : Tesseract uniquement, JAMAIS Anthropic/Vision.
             frames = extract_frames(path_b, count=4, scale=_fallback_scale)
-            if has_key:
-                lines = analyze_with_claude_vision(frames, model=_model)
-                if lines:
-                    source = "vision"
-            else:
-                lines = []
-            if not lines:
+            try:
                 lines = analyze_with_tesseract_fallback(frames)
-                if lines:
-                    source = "tesseract"
+            except Exception:
+                lines = []
+            if lines:
+                source = "local"
+        else:
+            # Identical sequence to /analyze: timed detection first, falling
+            # back to the original single-pass detection if it finds nothing.
+            try:
+                lines, _ = analyze_with_claude_vision_timed(path_b, model=_model)
+            except Exception:
+                lines = []
+            if lines:
+                source = "vision"
+
+            if not lines:
+                frames = extract_frames(path_b, count=4, scale=_fallback_scale)
+                if has_key:
+                    lines = analyze_with_claude_vision(frames, model=_model)
+                    if lines:
+                        source = "vision"
+                else:
+                    lines = []
+                if not lines:
+                    lines = analyze_with_tesseract_fallback(frames)
+                    if lines:
+                        source = "tesseract"
 
         for f in frames:
             try:
@@ -3734,16 +3775,18 @@ def batch_detect():
 
         _, hb = get_video_dims(path_b)
 
-        # ── Store ONLY a non-empty Vision result (never empty, never Tesseract). ──
-        if has_key and source == "vision" and lines and b_hash:
+        # ── Store non-empty results. Vision → cache (inchangé). Local → cache v2-local. ──
+        if _use_local and lines and b_hash:
+            _ocr_cache_put(b_hash, lines, hb, "local", _cache_ver)
+        elif has_key and source == "vision" and lines and b_hash:
             _ocr_cache_put(b_hash, lines, hb, "vision", _cache_ver)
 
         return jsonify({
             "lines":          lines,
             "video_b_height": hb,
-            "mode":           "vision" if has_key else "tesseract",
+            "mode":           "local" if _use_local else ("vision" if has_key else "tesseract"),
             "cached":         False,
-            "source":         source or "tesseract",
+            "source":         source or ("local" if _use_local else "tesseract"),
             "ocr_mode":       ocr_mode,
         })
 
@@ -3778,6 +3821,8 @@ def batch_render():
         _usage_attempt_started = False
         _usage_source_seconds  = None
         _capcut_outline_req    = (request.form.get("capcut_outline", "1") or "1").strip().lower() not in ("0", "false", "off", "no")
+        # OCR local → 0 requête Claude dans les analytics (aucun appel API).
+        _ocr_cr = 0 if (request.form.get("ocr_mode") or "").strip().lower() == "local" else None
 
         batch_id = (request.form.get("batch_id") or "").strip()
         if not batch_id or ".." in batch_id or "/" in batch_id:
@@ -3851,7 +3896,7 @@ def batch_render():
         if not lines:
             log_usage_event(request.current_user, _usage_mode,
                             source_seconds=_usage_source_seconds, output_seconds=None,
-                            source_count=2, output_count=0, success=False)
+                            source_count=2, output_count=0, success=False, claude_requests=_ocr_cr)
             return jsonify({"error": "Aucune ligne de texte fournie."}), 400
 
         # Same has_timing detection /process uses — renders via the timed
@@ -3917,7 +3962,7 @@ def batch_render():
             except subprocess.TimeoutExpired:
                 log_usage_event(request.current_user, _usage_mode,
                                 source_seconds=_usage_source_seconds, output_seconds=None,
-                                source_count=2, output_count=0, success=False)
+                                source_count=2, output_count=0, success=False, claude_requests=_ocr_cr)
                 return jsonify({"error": "Timeout (>3 min)"}), 500
         finally:
             for op in overlay_paths:
@@ -3931,13 +3976,13 @@ def batch_render():
             err = proc.stderr[-800:] if proc.stderr else "ffmpeg a echoue"
             log_usage_event(request.current_user, _usage_mode,
                             source_seconds=_usage_source_seconds, output_seconds=None,
-                            source_count=2, output_count=0, success=False)
+                            source_count=2, output_count=0, success=False, claude_requests=_ocr_cr)
             return jsonify({"error": err}), 500
 
         log_usage_event(request.current_user, _usage_mode,
                         source_seconds=_usage_source_seconds,
                         output_seconds=_get_video_duration_seconds(path_out),
-                        source_count=2, output_count=1, success=True)
+                        source_count=2, output_count=1, success=True, claude_requests=_ocr_cr)
 
         # ── Opt-in visual positioning debug (CAPTION_VISUAL_DEBUG=1) ──
         # Saves an annotated source-B frame + rendered-C frame so the
@@ -3961,7 +4006,7 @@ def batch_render():
             if _usage_attempt_started:
                 log_usage_event(request.current_user, _usage_mode,
                                 source_seconds=_usage_source_seconds, output_seconds=None,
-                                source_count=2, output_count=0, success=False)
+                                source_count=2, output_count=0, success=False, claude_requests=_ocr_cr)
         except Exception:
             pass
         return jsonify({"error": f"Erreur serveur: {str(e)}"}), 500
