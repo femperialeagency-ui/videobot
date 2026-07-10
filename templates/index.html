@@ -999,11 +999,37 @@ body {
 .r-pv-vol:disabled { opacity:.4; }
 
 /* éditeur visuel */
-.r-edit-box { width:min(1180px,97vw); }
-.r-edit3 { display:grid; grid-template-columns:300px 1fr 300px; gap:16px; align-items:start; }
+.r-edit-box { width:min(1320px,98vw); }
+/* GAUCHE preview XL · CENTRE réglages compacts · DROITE gestion caption */
+.r-edit3 { display:grid; grid-template-columns:minmax(300px,380px) 248px minmax(280px,1fr); gap:14px; align-items:start; }
 .r-edit-left { display:flex; flex-direction:column; gap:8px; }
-.r-edit-center { min-width:0; }
-.r-edit-right { min-width:0; max-height:72vh; overflow-y:auto; }
+.r-edit-center { min-width:0; display:flex; flex-direction:column; gap:8px; }
+.r-edit-right { min-width:0; max-height:80vh; overflow-y:auto; display:flex; flex-direction:column; gap:10px; padding-right:2px; }
+/* Réglages compacts (centre) */
+.r-sec-title { font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+.r-pos-rows { display:flex; flex-direction:column; gap:5px; }
+.r-pos-k { width:42px; flex:0 0 auto; color:var(--muted); font-size:.7rem; }
+.r-quick-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+.r-mini-btn { font-size:.7rem; padding:5px 8px; border:1px solid var(--border); background:rgba(255,255,255,.03); color:var(--text); border-radius:7px; cursor:pointer; text-align:center; }
+.r-mini-btn:hover { border-color:var(--border-strong); }
+.r-mini-btn.r-accent { border-color:var(--accent); color:var(--accent); }
+.r-presets-acc { border:1px solid var(--border); border-radius:8px; }
+.r-presets-acc > summary { list-style:none; cursor:pointer; padding:7px 10px; font-size:.72rem; font-weight:700; color:var(--muted); }
+.r-presets-acc > summary::-webkit-details-marker { display:none; }
+.r-presets-acc[open] > summary { color:var(--text); }
+.r-presets-acc .r-preset-bar, .r-presets-acc .r-preset-add { margin:0 10px 10px; }
+/* Changer de caption (repliable, compact) */
+.r-capswitch { border:1px solid var(--border); border-radius:8px; }
+.r-capswitch > summary { list-style:none; cursor:pointer; padding:8px 11px; font-size:.76rem; font-weight:700; color:var(--text); }
+.r-capswitch > summary::-webkit-details-marker { display:none; }
+/* Chips de tags (Notion-like) */
+.r-chips { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:6px; }
+.r-chip { display:inline-flex; align-items:center; gap:5px; font-size:.72rem; padding:3px 9px; border-radius:20px; background:rgba(124,92,255,.14); color:#cdbcff; border:1px solid rgba(124,92,255,.4); }
+.r-chip b { cursor:pointer; opacity:.7; font-weight:700; }
+.r-chip b:hover { opacity:1; color:#fff; }
+/* Actions de la caption (bas de la colonne droite) */
+.r-edit-actions { display:flex; flex-direction:column; gap:8px; margin-top:4px; padding-top:10px; border-top:1px solid var(--border); }
+.r-edit-actions .primary-btn { width:100%; }
 .r-active-label { font-size:.74rem; font-weight:700; color:var(--accent); padding:6px 10px; border:1px solid var(--border); border-radius:8px; background:rgba(124,92,255,.08); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .r-reelswitch { display:flex; align-items:center; gap:6px; }
 .r-reelswitch select { flex:1 1 auto; min-width:0; background:rgba(0,0,0,.25); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:5px 7px; font-size:.74rem; }
@@ -2353,7 +2379,7 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
     </div>
     <input type="hidden" id="rCapModalId" value="">
     <div class="r-edit3">
-      <!-- ZONE GAUCHE : preview + choix du reel -->
+      <!-- ZONE GAUCHE : preview XL -->
       <div class="r-edit-left">
         <div class="r-active-label" id="rActiveLabel">Segment actif : —</div>
         <div class="r-stage" id="rEditStage">
@@ -2368,53 +2394,63 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
           <span class="r-reelcount" id="rReelCounter"></span>
         </div>
         <div class="r-edit-line"><label class="r-chk"><input type="checkbox" id="rEditSafeChk" onchange="rEditToggleSafe()"> Zone de sécurité</label>
-          <span class="r-edit-hint">Glisse le texte pour positionner le segment actif</span></div>
+          <span class="r-edit-hint">Glisse le texte sur la vidéo pour le positionner</span></div>
       </div>
 
-      <!-- ZONE CENTRE : réglages -->
+      <!-- ZONE CENTRE : réglages du segment actif (compact) -->
       <div class="r-edit-center">
-        <div class="r-modal-field"><label>Position du segment actif</label>
-          <div class="r-pos-grid">
-            <div class="r-pos-ctl">X <input type="range" id="rPosX" min="0" max="100" value="50" oninput="rEditPos()"><span class="r-pos-v" id="rPosXV">50%</span></div>
-            <div class="r-pos-ctl">Y <input type="range" id="rPosY" min="0" max="100" value="78" oninput="rEditPos()"><span class="r-pos-v" id="rPosYV">78%</span></div>
-            <div class="r-pos-ctl">Largeur <input type="range" id="rPosW" min="20" max="100" value="86" oninput="rEditPos()"><span class="r-pos-v" id="rPosWV">86%</span></div>
-            <div class="r-pos-ctl">Taille <input type="range" id="rPosSize" min="2" max="14" step="0.5" value="5" oninput="rEditPos()"><span class="r-pos-v" id="rPosSizeV">5.0%</span></div>
-          </div>
-          <div class="r-align-row">Alignement :
-            <button type="button" class="r-align-btn" data-al="left" onclick="rEditAlign('left')">⯇</button>
-            <button type="button" class="r-align-btn active" data-al="center" onclick="rEditAlign('center')">≡</button>
-            <button type="button" class="r-align-btn" data-al="right" onclick="rEditAlign('right')">⯈</button>
-          </div>
-          <div class="r-quick-row">
-            <button type="button" class="v-ghost-btn" onclick="rEditQuick('center')">⊕ Centrer</button>
-            <button type="button" class="v-ghost-btn" onclick="rEditQuick('tiktok')">⬇ Bas TikTok</button>
-            <button type="button" class="v-ghost-btn" onclick="rEditQuick('middle')">⊟ Milieu</button>
-            <button type="button" class="v-ghost-btn" onclick="rEditQuick('top')">⬆ Haut</button>
-          </div>
-          <div class="r-quick-row">
-            <button type="button" class="v-ghost-btn r-accent" onclick="rEditApplyAll()">⇄ Appliquer à tous les segments</button>
-            <button type="button" class="v-ghost-btn" onclick="rEditResetSeg()">↺ Réinitialiser ce segment</button>
-          </div>
+        <div class="r-sec-title">Position du segment actif</div>
+        <div class="r-pos-rows">
+          <div class="r-pos-ctl"><span class="r-pos-k">X</span><input type="range" id="rPosX" min="0" max="100" value="50" oninput="rEditPos()"><span class="r-pos-v" id="rPosXV">50%</span></div>
+          <div class="r-pos-ctl"><span class="r-pos-k">Y</span><input type="range" id="rPosY" min="0" max="100" value="78" oninput="rEditPos()"><span class="r-pos-v" id="rPosYV">78%</span></div>
+          <div class="r-pos-ctl"><span class="r-pos-k">Larg.</span><input type="range" id="rPosW" min="20" max="100" value="86" oninput="rEditPos()"><span class="r-pos-v" id="rPosWV">86%</span></div>
+          <div class="r-pos-ctl"><span class="r-pos-k">Taille</span><input type="range" id="rPosSize" min="2" max="14" step="0.5" value="5" oninput="rEditPos()"><span class="r-pos-v" id="rPosSizeV">5.0%</span></div>
         </div>
-        <div class="r-modal-field"><label>Presets de position</label>
+        <div class="r-align-row"><span class="r-pos-k">Align.</span>
+          <button type="button" class="r-align-btn" data-al="left" onclick="rEditAlign('left')">⯇</button>
+          <button type="button" class="r-align-btn active" data-al="center" onclick="rEditAlign('center')">≡</button>
+          <button type="button" class="r-align-btn" data-al="right" onclick="rEditAlign('right')">⯈</button>
+        </div>
+        <div class="r-quick-grid">
+          <button type="button" class="r-mini-btn" onclick="rEditQuick('center')">⊕ Centrer</button>
+          <button type="button" class="r-mini-btn" onclick="rEditQuick('tiktok')">⬇ Bas TikTok</button>
+          <button type="button" class="r-mini-btn" onclick="rEditQuick('middle')">⊟ Milieu</button>
+          <button type="button" class="r-mini-btn" onclick="rEditQuick('top')">⬆ Haut</button>
+        </div>
+        <div class="r-quick-grid">
+          <button type="button" class="r-mini-btn r-accent" onclick="rEditApplyAll()">⇄ Appliquer à tous</button>
+          <button type="button" class="r-mini-btn" onclick="rEditResetSeg()">↺ Réinitialiser</button>
+        </div>
+        <details class="r-presets-acc">
+          <summary>Presets de position</summary>
           <div class="r-preset-bar" id="rPresetBar"></div>
-          <div class="r-preset-add"><input type="text" id="rPresetName" placeholder="Nom du preset"><button type="button" class="v-ghost-btn" onclick="rPresetSaveCurrent()">💾 Position</button></div>
-        </div>
-        <div class="r-modal-actions">
-          <button type="button" class="v-ghost-btn" onclick="rCapClose()">Fermer</button>
-          <button type="button" class="primary-btn" id="rCapSaveBtn" onclick="rCapSave()">💾 Créer la caption</button>
-        </div>
+          <div class="r-preset-add"><input type="text" id="rPresetName" placeholder="Nom du preset"><button type="button" class="r-mini-btn" onclick="rPresetSaveCurrent()">💾 Enregistrer</button></div>
+        </details>
       </div>
 
-      <!-- ZONE DROITE : liste captions + segments -->
+      <!-- ZONE DROITE : gestion de la caption -->
       <div class="r-edit-right">
-        <div class="r-modal-field"><label>Toutes les captions</label>
-          <div class="r-cap-pick" id="rCapPickList"></div></div>
+        <details class="r-capswitch" id="rCapSwitch">
+          <summary>🔀 Changer de caption</summary>
+          <div class="r-cap-pick" id="rCapPickList"></div>
+        </details>
         <div class="r-modal-field"><label>Nom</label><input type="text" id="rCapName" placeholder="Nom de la caption" maxlength="120"></div>
-        <div class="r-modal-field"><label>Tags (séparés par des virgules)</label><input type="text" id="rCapTags" placeholder="viral, pov, hook"></div>
-        <div class="r-modal-field"><label>Segments — clique « Positionner » pour éditer un segment</label>
+        <div class="r-modal-field"><label>Dossier</label>
+          <select id="rCapFolderSel" class="r-folder-sel"><option value="">Sans dossier</option></select></div>
+        <div class="r-modal-field"><label>Tags</label>
+          <div class="r-chips" id="rCapTagChips"></div>
+          <input type="text" id="rCapTagInput" class="r-tool-input" placeholder="Ajouter un tag… (Entrée)" list="rCapTagList" onkeydown="rCapTagKey(event)" autocomplete="off">
+          <datalist id="rCapTagList"></datalist>
+          <input type="hidden" id="rCapTags">
+        </div>
+        <div class="r-modal-field"><label>Segments</label>
           <div id="rCapSegs"></div>
-          <button type="button" class="v-ghost-btn" onclick="rCapAddSeg();rSegSelect(document.querySelector('#rCapSegs .r-seg:last-child'))">＋ Ajouter un segment</button></div>
+          <button type="button" class="r-mini-btn" onclick="rCapAddSeg();rSegSelect(document.querySelector('#rCapSegs .r-seg:last-child'))">＋ Ajouter un segment</button></div>
+        <div class="r-edit-actions">
+          <button type="button" class="primary-btn" id="rCapSaveBtn" onclick="rCapSave()">💾 Créer la caption</button>
+          <button type="button" class="v-ghost-btn ws-danger" id="rCapDelBtn" onclick="rCapDeleteCurrent()" style="display:none;">🗑 Supprimer</button>
+          <button type="button" class="v-ghost-btn" onclick="rCapClose()">Fermer</button>
+        </div>
       </div>
     </div>
   </div>
@@ -5214,10 +5250,46 @@ function rCapOpen(id, previewReelIdx){
   rEditFillPreviewReels();
   const pv=document.getElementById("rEditPreviewReel"); if(previewReelIdx!=null){ pv.value=String(previewReelIdx); } rEditSetPreviewReel();
   rPresetRenderBar();
+  rCapFolderFill();
   rCapLoad(id||null);
+  // Câble une seule fois la suppression de chips par délégation.
+  const chips=document.getElementById("rCapTagChips");
+  if(chips && !chips.dataset.wired){ chips.dataset.wired="1"; chips.addEventListener("click", e=>{ const x=e.target.closest("b"); if(!x) return; const chip=x.closest(".r-chip"); if(chip) rCapTagRemove(chip.dataset.tag); }); }
   // Après le layout du modal, ré-applique la taille/position RÉELLES → le texte
   // s'affiche immédiatement à la bonne taille, sans premier déplacement.
   requestAnimationFrame(()=>{ if(rActiveSegRow) rEditApplyToBox(); });
+}
+// Remplit le sélecteur de dossier de l'éditeur.
+function rCapFolderFill(cur){
+  const sel=document.getElementById("rCapFolderSel"); if(!sel) return;
+  sel.innerHTML=rFolderSelectHtml("cap", cur==null?"":cur);
+}
+// ── Système de tags à chips (autocomplétion + création) ──
+function rCapTagsList(){ return (document.getElementById("rCapTags").value||"").split(",").map(s=>s.trim()).filter(Boolean); }
+function rCapTagsWrite(arr){
+  const seen=new Set(), out=[];
+  arr.forEach(t=>{ t=(t||"").trim(); const k=t.toLowerCase(); if(t && !seen.has(k)){ seen.add(k); out.push(t); } });
+  document.getElementById("rCapTags").value=out.join(", ");
+  rCapTagsRender();
+}
+function rCapTagRemove(t){ rCapTagsWrite(rCapTagsList().filter(x=>x.toLowerCase()!==(t||"").toLowerCase())); }
+function rCapTagAdd(raw){ const t=(raw||"").trim(); if(!t) return; rCapTagsWrite([...rCapTagsList(), t]); }
+function rCapTagKey(e){ if(e.key==="Enter" || e.key===","){ e.preventDefault(); rCapTagAdd(e.target.value); e.target.value=""; } }
+function rCapTagsRender(){
+  const box=document.getElementById("rCapTagChips"); if(!box) return;
+  const tags=rCapTagsList();
+  box.innerHTML=tags.map(t=>`<span class="r-chip" data-tag="${rEsc(t)}">${rEsc(t)}<b>×</b></span>`).join("");
+  const dl=document.getElementById("rCapTagList");
+  if(dl){ const all=[...new Set(rCaptions.flatMap(c=>c.tags||[]))].sort((a,b)=>a.localeCompare(b));
+    const avail=all.filter(t=>!tags.some(x=>x.toLowerCase()===t.toLowerCase()));
+    dl.innerHTML=avail.map(t=>`<option value="${rEsc(t)}"></option>`).join(""); }
+}
+// Supprime la caption en cours d'édition depuis l'éditeur.
+async function rCapDeleteCurrent(){
+  const id=document.getElementById("rCapModalId").value;
+  if(!id){ rCapClose(); return; }
+  if(!confirm("Supprimer définitivement cette caption ?")) return;
+  try{ await rPost("/reels_caption_delete",{id:parseInt(id,10)}); rReels.forEach(r=>{ r.capIds=r.capIds.filter(x=>x!==parseInt(id,10)); }); rCapSel.delete(parseInt(id,10)); await rRefreshCaptions(); rRenderReels(); rUpdateInfo(); rCapClose(); }catch(e){ alert("Erreur : "+e.message); }
 }
 // Liste de TOUTES les captions (zone droite) — cliquable sans fermer le modal.
 function rCapPickRender(){
@@ -5241,6 +5313,11 @@ function rCapLoad(id){
   let c=id?rCaptions.find(x=>x.id===id):null;
   document.getElementById("rCapName").value=c?c.name:"";
   document.getElementById("rCapTags").value=c&&c.tags?c.tags.join(", "):"";
+  rCapTagsRender();
+  rCapFolderFill(c?c.folder_id:"");
+  const _db=document.getElementById("rCapDelBtn"); if(_db) _db.style.display=id?"":"none";
+  const _in=document.getElementById("rCapTagInput"); if(_in) _in.value="";
+  const _sw=document.getElementById("rCapSwitch"); if(_sw && !id) _sw.open=false;
   const fav=c?!!c.favorite:false; const fb=document.getElementById("rCapFav"); fb.textContent=fav?"★":"☆"; fb.classList.toggle("off",!fav); fb.dataset.on=fav?"1":"0";
   rGlobalPos={ cx:Math.round((c?c.cx_pct:0.5)*100), cy:Math.round((c?c.cy_pct:0.78)*100),
                w:Math.round((c?c.width_pct:0.86)*100), size:+(((c?c.fontsize_pct:0.05)*100).toFixed(1)),
@@ -5408,7 +5485,10 @@ async function rCapSave(keepOpen){
     let savedId=id?parseInt(id,10):null;
     if(id){ body.id=savedId; await rPost("/reels_caption_update",body); }
     else { const res=await rPost("/reels_caption_create",body); if(res&&res.caption&&res.caption.id){ savedId=res.caption.id; document.getElementById("rCapModalId").value=String(savedId); } }
-    await rRefreshCaptions(); rRenderReels(); rUpdateInfo();
+    // Applique le dossier choisi dans l'éditeur.
+    const _fsel=document.getElementById("rCapFolderSel");
+    if(savedId && _fsel){ try{ await rPost("/reels_caption_set_folder",{id:savedId, folder_id:_fsel.value||null}); }catch(e){} }
+    await rRefreshCaptions(); rRefreshFolders(); rRenderReels(); rUpdateInfo();
     if(keepOpen){ rCapPickRender(); }
     else { rCapClose(); }
     return savedId;
