@@ -2186,11 +2186,10 @@ def analyze_with_tesseract_fallback(frame_paths: list) -> list:
     return lines
 
 
-def _analyze_local_engine(path_b):
-    """OCR LOCAL pro (module ocr_local.py) : multi-frame, fusion temporelle,
-    start/end + géométrie en %. Repli automatique sur la détection mono-frame
-    historique si le pipeline échoue ou ne trouve rien. Ne lève JAMAIS —
-    aucun appel API (0 coût Anthropic/Vision)."""
+def _analyze_local_engine_meta(path_b):
+    """OCR LOCAL pro (module ocr_local.py) — retourne (lines, meta). meta contient
+    'confidence' (0-100) et 'needs_vision' (bool) → utilisés par le mode HYBRIDE.
+    Repli mono-frame si le pipeline échoue. Ne lève JAMAIS. 0 appel API."""
     try:
         import ocr_local
         lines, meta = ocr_local.analyze_video_local(path_b)
@@ -2203,7 +2202,8 @@ def _analyze_local_engine(path_b):
         except Exception:
             pass
         if lines:
-            return lines
+            return lines, meta
+        return [], (meta if isinstance(meta, dict) else {"confidence": 0.0, "needs_vision": True})
     except Exception as e:
         try:
             import sys as _s
@@ -2214,15 +2214,22 @@ def _analyze_local_engine(path_b):
     frames = []
     try:
         frames = extract_frames(path_b, count=4, scale="scale=1080:-2")
-        return analyze_with_tesseract_fallback(frames)
+        lines = analyze_with_tesseract_fallback(frames)
+        return lines, {"confidence": 40.0 if lines else 0.0, "needs_vision": not bool(lines)}
     except Exception:
-        return []
+        return [], {"confidence": 0.0, "needs_vision": True}
     finally:
         for f in frames:
             try:
                 Path(f).unlink(missing_ok=True)
             except Exception:
                 pass
+
+
+def _analyze_local_engine(path_b):
+    """Compat : retourne uniquement les lignes (mode local pur)."""
+    lines, _meta = _analyze_local_engine_meta(path_b)
+    return lines
 
 
 # ── Emoji investigation: debug-only detection helper ──────────────
@@ -3293,9 +3300,11 @@ def analyze():
         # are invalidated and re-detected with the smaller-lot pipeline.
         ocr_mode   = (request.form.get("ocr_mode") or "sonnet").strip().lower()
         _use_local = (ocr_mode == "local")   # OCR 100% local (Tesseract) — 0 appel API
+        _use_auto  = (ocr_mode == "auto")    # HYBRIDE : local d'abord, Vision seulement si confiance faible
         _is_opus   = (ocr_mode == "opus")
         _model     = OCR_MODEL_OPUS if _is_opus else OCR_MODEL_SONNET
-        _cache_ver = "v2-local" if _use_local else ("v2-opus" if _is_opus else "v2-sonnet")
+        _cache_ver = ("v2-local" if _use_local else "v2-auto" if _use_auto
+                      else "v2-opus" if _is_opus else "v2-sonnet")
         _fallback_scale = "scale=1080:-2"
         # "Réanalyser sans cache" : saute le lookup et force une analyse
         # fraîche (le résultat est tout de même re-stocké pour les fois suivantes).
@@ -3305,8 +3314,8 @@ def analyze():
 
         # ── OCR cache lookup (Chantier 1) — before any detection. On a hit we
         # return the EXACT cached detection (même format). Le cache s'applique
-        # aussi au mode local (aucune API, mais on évite de re-scanner). ──
-        _want_cache = has_key or _use_local
+        # aussi aux modes local et hybride. ──
+        _want_cache = has_key or _use_local or _use_auto
         b_hash = None
         if _want_cache:
             try:
@@ -3335,6 +3344,24 @@ def analyze():
             lines = _analyze_local_engine(path_b)
             if lines:
                 source = "local"
+        elif _use_auto:
+            # HYBRIDE : local d'abord. Si confiance faible (needs_vision) ET clé API
+            # dispo → Vision pour cette vidéo seulement (réduit le coût API au strict
+            # nécessaire tout en gardant la qualité Vision quand le local est incertain).
+            _loc_lines, _meta = _analyze_local_engine_meta(path_b)
+            if _loc_lines and not _meta.get("needs_vision"):
+                lines, source = _loc_lines, "local"
+            elif has_key:
+                try:
+                    _vis, _ = analyze_with_claude_vision_timed(path_b, model=_model)
+                except Exception:
+                    _vis = []
+                if _vis:
+                    lines, source = _vis, "vision"
+                else:
+                    lines, source = _loc_lines, ("local" if _loc_lines else None)
+            else:
+                lines, source = _loc_lines, ("local" if _loc_lines else None)
         else:
             if has_key:
                 # Timed detection for ALL modes: sample frames across the timeline
@@ -3372,15 +3399,18 @@ def analyze():
         # sous sa propre version (v2-local), aucune API impliquée. ──
         if _use_local and lines and b_hash:
             _ocr_cache_put(b_hash, lines, hb, "local", _cache_ver)
+        elif _use_auto and lines and b_hash:
+            _ocr_cache_put(b_hash, lines, hb, source or "local", _cache_ver)
         elif has_key and source == "vision" and lines and b_hash:
             _ocr_cache_put(b_hash, lines, hb, "vision", _cache_ver)
 
         return jsonify({
             "lines":          lines,
             "video_b_height": hb,
-            "mode":           "local" if _use_local else ("vision" if has_key else "tesseract"),
+            "mode":           ("hybrid" if _use_auto else "local" if _use_local
+                               else ("vision" if has_key else "tesseract")),
             "cached":         False,
-            "source":         source or ("local" if _use_local else "tesseract"),
+            "source":         source or ("local" if (_use_local or _use_auto) else "tesseract"),
             "ocr_mode":       ocr_mode,
         })
 
@@ -3922,17 +3952,18 @@ def batch_detect():
         # (v1→v2: invalidates old incomplete detections after the recall fix.)
         ocr_mode   = (request.form.get("ocr_mode") or "sonnet").strip().lower()
         _use_local = (ocr_mode == "local")   # OCR 100% local (Tesseract) — 0 appel API
+        _use_auto  = (ocr_mode == "auto")    # HYBRIDE : local d'abord, Vision si confiance faible
         _is_opus   = (ocr_mode == "opus")
         _model     = OCR_MODEL_OPUS if _is_opus else OCR_MODEL_SONNET
-        _cache_ver = "v2-local" if _use_local else ("v2-opus" if _is_opus else "v2-sonnet")
+        _cache_ver = ("v2-local" if _use_local else "v2-auto" if _use_auto
+                      else "v2-opus" if _is_opus else "v2-sonnet")
         _fallback_scale = "scale=1080:-2"
         _ignore_cache = (request.form.get("ignore_cache", "0") or "0").strip().lower() in ("1", "true", "on", "yes")
         import sys as _sys_ocr
         print(f"[OCR_MODE] route=/batch_detect mode={ocr_mode} model={_model} engine={_cache_ver} ignore_cache={_ignore_cache}", file=_sys_ocr.stderr)
 
-        # ── OCR cache lookup (Chantier 1) — before any detection (cache aussi
-        # pour le mode local, sans aucune API). ──
-        _want_cache = has_key or _use_local
+        # ── OCR cache lookup — cache aussi pour local et hybride. ──
+        _want_cache = has_key or _use_local or _use_auto
         b_hash = None
         if _want_cache:
             try:
@@ -3962,6 +3993,18 @@ def batch_detect():
             lines = _analyze_local_engine(path_b)
             if lines:
                 source = "local"
+        elif _use_auto:
+            _loc_lines, _meta = _analyze_local_engine_meta(path_b)
+            if _loc_lines and not _meta.get("needs_vision"):
+                lines, source = _loc_lines, "local"
+            elif has_key:
+                try:
+                    _vis, _ = analyze_with_claude_vision_timed(path_b, model=_model)
+                except Exception:
+                    _vis = []
+                lines, source = (_vis, "vision") if _vis else (_loc_lines, ("local" if _loc_lines else None))
+            else:
+                lines, source = _loc_lines, ("local" if _loc_lines else None)
         else:
             # Identical sequence to /analyze: timed detection first, falling
             # back to the original single-pass detection if it finds nothing.
@@ -3996,15 +4039,18 @@ def batch_detect():
         # ── Store non-empty results. Vision → cache (inchangé). Local → cache v2-local. ──
         if _use_local and lines and b_hash:
             _ocr_cache_put(b_hash, lines, hb, "local", _cache_ver)
+        elif _use_auto and lines and b_hash:
+            _ocr_cache_put(b_hash, lines, hb, source or "local", _cache_ver)
         elif has_key and source == "vision" and lines and b_hash:
             _ocr_cache_put(b_hash, lines, hb, "vision", _cache_ver)
 
         return jsonify({
             "lines":          lines,
             "video_b_height": hb,
-            "mode":           "local" if _use_local else ("vision" if has_key else "tesseract"),
+            "mode":           ("hybrid" if _use_auto else "local" if _use_local
+                               else ("vision" if has_key else "tesseract")),
             "cached":         False,
-            "source":         source or ("local" if _use_local else "tesseract"),
+            "source":         source or ("local" if (_use_local or _use_auto) else "tesseract"),
             "ocr_mode":       ocr_mode,
         })
 
@@ -4512,12 +4558,22 @@ def variation_preset_save():
         if not isinstance(config, dict) or not config:
             return jsonify({"error": "Configuration invalide"}), 400
 
+        def _cl(x):
+            try:
+                return max(0, min(100, int(round(float(x)))))
+            except Exception:
+                return ADVANCED_SLIDER_DEFAULT
+
         clean = {}
         for k in ADVANCED_SLIDER_KEYS:
-            try:
-                clean[k] = max(0, min(100, int(round(float(config.get(k, ADVANCED_SLIDER_DEFAULT))))))
-            except Exception:
-                clean[k] = ADVANCED_SLIDER_DEFAULT
+            v = config.get(k, ADVANCED_SLIDER_DEFAULT)
+            # Nouveau modèle double-curseur : valeur = {min,max}. Ancien modèle :
+            # entier simple. Les deux sont acceptés et normalisés (rétro-compatible).
+            if isinstance(v, dict):
+                lo, hi = _cl(v.get("min", ADVANCED_SLIDER_DEFAULT)), _cl(v.get("max", ADVANCED_SLIDER_DEFAULT))
+                clean[k] = {"min": min(lo, hi), "max": max(lo, hi)}
+            else:
+                clean[k] = _cl(v)
 
         with _users_db() as conn:
             conn.execute(

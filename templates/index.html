@@ -487,16 +487,45 @@ color: var(--accent2); opacity: .85; margin: 4px 0 9px; display: flex; align-ite
 
 /* ── Variation mode: advanced sliders ── */
 #vAdvancedPanel { display: none; }
-.v-range-toggle { display: block; font-size: .78rem; color: var(--muted); line-height: 1.5; margin: 0 0 8px;
-  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: rgba(255,255,255,.02); cursor: pointer; }
-.v-range-toggle b { color: var(--text); }
-.v-mm-min { color: var(--accent3, #7fe0c0); font-weight: 700; }
-.v-mm-max { color: var(--accent2); font-weight: 700; }
-.v-mm { display: none; align-items: center; gap: 7px; margin-left: auto; }
-.v-mm-lbl { font-size: .68rem; color: var(--accent3, #7fe0c0); font-weight: 700; }
-.v-mm-arrow { font-size: .68rem; color: var(--accent2); font-weight: 700; }
-.v-mm-num { width: 56px; padding: 4px 6px; border: 1px solid var(--border); background: rgba(255,255,255,.03); color: var(--text); border-radius: 7px; font-size: .78rem; text-align: center; }
-.v-slider-row.range-on { justify-content: space-between; }
+/* P4 — double curseur min/max (2 poignées sur un rail) */
+.v-slider-row:has(.v-dual) { grid-template-columns: 130px 1fr; }
+.v-dual { position: relative; height: 30px; width: 100%; }
+.v-dual-rail { position: absolute; top: 13px; left: 4px; right: 46px; height: 4px; background: var(--border); border-radius: 3px; }
+.v-dual-fill { position: absolute; top: 0; height: 100%; background: var(--accent); border-radius: 3px; }
+/* Spécificité renforcée pour neutraliser le style .v-slider-row input[type=range] */
+.v-slider-row .v-dual-r { position: absolute; top: 5px; left: 0; right: 46px; width: calc(100% - 46px); height: 20px; margin: 0; padding: 0; background: transparent; -webkit-appearance: none; appearance: none; pointer-events: none; border-radius: 0; }
+.v-slider-row .v-dual-r::-webkit-slider-runnable-track { background: transparent; height: 20px; }
+.v-slider-row .v-dual-r::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); cursor: pointer; margin-top: 0; }
+.v-slider-row .v-dual-r::-moz-range-track { background: transparent; }
+.v-slider-row .v-dual-r::-moz-range-thumb { pointer-events: auto; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); cursor: pointer; }
+.v-dual-vals { position: absolute; right: 0; top: 6px; width: 44px; text-align: right; font-size: .66rem; color: var(--accent2); font-weight: 700; }
+/* Barre de contrôles globaux */
+.v-adv-topbar { display: flex; gap: 8px; margin: 6px 0; flex-wrap: wrap; align-items: center; }
+.v-adv-topbar .r-tool-input { flex: 1 1 200px; min-width: 160px; }
+.v-adv-card > summary .v-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.v-fav-chip[draggable] { user-select: none; }
+.v-fav-chip.drag { opacity: .5; }
+.v-fav-chip b { cursor: pointer; opacity: .6; }
+.v-fav-chip b:hover { opacity: 1; }
+/* P5 — cartes repliables */
+.v-adv-card { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; background: rgba(255,255,255,.02); }
+.v-adv-card > summary { list-style: none; cursor: pointer; padding: 10px 12px; }
+.v-adv-card > summary::-webkit-details-marker { display: none; }
+.v-adv-card > summary::before { content: "▸"; display: inline-block; margin-right: 8px; color: var(--muted); transition: transform .12s; }
+.v-adv-card[open] > summary::before { transform: rotate(90deg); }
+.v-adv-body { padding: 4px 12px 12px; }
+/* P6 — toolbar / favoris / infobulles */
+.v-adv-favbar { display: none; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.v-fav-lbl { font-size: .72rem; color: var(--muted); font-weight: 700; }
+.v-fav-chip { font-size: .72rem; padding: 4px 10px; border-radius: 20px; border: 1px solid rgba(245,196,81,.45); background: rgba(245,196,81,.1); color: #f5c451; cursor: pointer; }
+.v-row-tools { display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; }
+.v-fav-btn { border: 1px solid var(--border-strong); background: rgba(255,255,255,.03); color: var(--muted); cursor: pointer; font-size: .68rem; padding: 3px 8px; border-radius: 20px; white-space: nowrap; }
+.v-fav-btn::after { content: " Favori"; }
+.v-fav-btn:hover { border-color: #f5c451; color: #f5c451; }
+.v-fav-btn.on { color: #f5c451; border-color: rgba(245,196,81,.6); background: rgba(245,196,81,.12); }
+.v-info { color: var(--muted); cursor: help; font-size: .78rem; }
+.v-flash { animation: vflash 0.9s ease; }
+@keyframes vflash { 0%,100% { background: transparent; } 30% { background: rgba(124,92,255,.18); } }
 .v-meta-note { font-size: .72rem; color: var(--muted); line-height: 1.5; background: rgba(240,180,60,.07); border: 1px solid rgba(240,180,60,.25); border-radius: 8px; padding: 8px 10px; margin: 6px 0 8px; }
 .v-meta-note b { color: var(--text); }
 .v-meta-origin { display: flex; gap: 12px; flex-wrap: wrap; margin: 8px 0 4px; }
@@ -888,6 +917,18 @@ body {
 .ws-lbl { color:var(--text); }
 .ws-sep { width:1px; height:18px; background:var(--border); }
 .ws-genbar { display:flex; flex-direction:column; gap:10px; }
+/* P3 — Paramètres Batch en 3 sections claires */
+/* 3 colonnes EXACTEMENT égales (minmax(0,1fr)) + même alignement, séparées par le gap. */
+.ws-settings-3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:22px; align-items:start; }
+@media (max-width:820px){ .ws-settings-3 { grid-template-columns:1fr; } }
+.ws-set-sec { display:flex; flex-direction:column; gap:7px; min-width:0; }
+.ws-set-h { font-size:.66rem; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:3px; height:14px; }
+.v-opt2 { display:flex; align-items:center; gap:9px; padding:7px 9px; border:1px solid var(--border); border-radius:9px; cursor:pointer; transition:border-color .12s, background .12s; }
+.v-opt2:hover { border-color:var(--border-strong); }
+.v-opt2:has(input:checked) { border-color:var(--accent); background:rgba(124,92,255,.09); }
+.v-opt2 span { display:flex; flex-direction:column; line-height:1.25; }
+.v-opt2 b { font-size:.8rem; font-weight:700; color:var(--text); }
+.v-opt2 em { font-style:normal; font-size:.68rem; color:var(--muted); }
 .ws-gen-btn { align-self:flex-start; }
 .ws-progress { margin:0; }
 
@@ -1102,6 +1143,12 @@ body {
 .r-quick-row .v-ghost-btn { font-size:.7rem; padding:4px 9px; }
 .r-seg { transition:border-color .12s, background .12s; }
 .r-seg.active { border-color:var(--accent); background:rgba(124,92,255,.08); }
+.r-seg.multisel { border-color:rgba(124,92,255,.55); background:rgba(124,92,255,.05); box-shadow:inset 3px 0 0 var(--accent); }
+.r-editmus-hint { font-size:.68rem; color:var(--muted); margin-bottom:6px; }
+.r-editmus-list { max-height:220px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; }
+.r-editmus-item { display:flex; align-items:center; gap:7px; padding:4px 6px; border:1px solid var(--border); border-radius:8px; }
+.r-editmus-item.on { border-color:rgba(60,200,160,.5); background:rgba(60,200,160,.08); }
+.r-editmus-name { flex:1 1 auto; min-width:0; font-size:.74rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .r-seg-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
 .r-seg-active { font-size:.66rem; padding:3px 9px; border:1px solid var(--border); background:transparent; color:var(--muted); border-radius:7px; cursor:pointer; }
 .r-seg.active .r-seg-active { border-color:var(--accent); color:var(--accent); }
@@ -1555,6 +1602,7 @@ SIMPLE MODE
 <div class="adv-params-body">
 <div class="adv-row">
 <span class="adv-lbl">OCR :</span>
+<label class="v-opt"><input type="radio" name="ocrModeS" value="auto"> Auto hybride 🤖 <span style="font-weight:500;opacity:.7">(local + Vision si besoin — coût réduit)</span></label>
 <label class="v-opt"><input type="radio" name="ocrModeS" value="local"> Local ⚡ <span style="font-weight:500;opacity:.7">(0 coût API · Tesseract)</span></label>
 <label class="v-opt"><input type="radio" name="ocrModeS" value="sonnet" checked> Sonnet ⭐ <span style="font-weight:500;opacity:.7">(Recommandé)</span></label>
 <label class="v-opt"><input type="radio" name="ocrModeS" value="opus"> Opus 👑 <span style="font-weight:500;opacity:.7">(Qualité max)</span></label>
@@ -1665,20 +1713,25 @@ BATCH MODE
   <!-- Barre de paramètres de génération (contrôles existants relocalisés — IDs inchangés) -->
   <div class="ws-settingsbar">
     <div class="ws-settings-title"><span class="ws-step-badge">3</span> Mode Batch &amp; paramètres</div>
-    <div class="ws-settings-row">
-      <span class="ws-lbl">Mode :</span>
-      <label class="v-opt"><input type="radio" name="bStrategy" value="matrix" checked onchange="onBatchStrategyChange()"> Matrice (A × B)</label>
-      <label class="v-opt"><input type="radio" name="bStrategy" value="pairing" onchange="onBatchStrategyChange()"> Pairing / Shuffle</label>
-      <label class="v-opt"><input type="radio" name="bStrategy" value="variations" onchange="onBatchStrategyChange()"> Variations par A ⭐</label>
-      <span class="ws-sep"></span>
-      <span class="ws-lbl">OCR :</span>
-      <label class="v-opt"><input type="radio" name="ocrModeB" value="local"> Local ⚡ <span style="font-weight:500;opacity:.7">(0 coût API · Tesseract)</span></label>
-      <label class="v-opt"><input type="radio" name="ocrModeB" value="sonnet" checked> Sonnet ⭐ <span style="font-weight:500;opacity:.7">(Recommandé)</span></label>
-      <label class="v-opt"><input type="radio" name="ocrModeB" value="opus"> Opus 👑 <span style="font-weight:500;opacity:.7">(Qualité maximale)</span></label>
-      <span class="ws-sep"></span>
-      <span class="ws-lbl">Contour CapCut :</span>
-      <label class="v-opt"><input type="radio" name="capcutOutlineB" value="1" checked> Activé</label>
-      <label class="v-opt"><input type="radio" name="capcutOutlineB" value="0"> Désactivé</label>
+    <div class="ws-settings-3">
+      <div class="ws-set-sec">
+        <div class="ws-set-h">Mode de génération</div>
+        <label class="v-opt2"><input type="radio" name="bStrategy" value="matrix" checked onchange="onBatchStrategyChange()"> <span><b>Matrice (A × B)</b><em>toutes les combinaisons</em></span></label>
+        <label class="v-opt2"><input type="radio" name="bStrategy" value="pairing" onchange="onBatchStrategyChange()"> <span><b>Pairing / Shuffle</b><em>appariement 1-à-1</em></span></label>
+        <label class="v-opt2"><input type="radio" name="bStrategy" value="variations" onchange="onBatchStrategyChange()"> <span><b>Variations par A ⭐</b><em>N sorties par vidéo A</em></span></label>
+      </div>
+      <div class="ws-set-sec">
+        <div class="ws-set-h">Moteur OCR</div>
+        <label class="v-opt2"><input type="radio" name="ocrModeB" value="auto"> <span><b>Auto hybride 🤖</b><em>local + Vision si besoin</em></span></label>
+        <label class="v-opt2"><input type="radio" name="ocrModeB" value="local"> <span><b>Local ⚡</b><em>0 coût API · Tesseract</em></span></label>
+        <label class="v-opt2"><input type="radio" name="ocrModeB" value="sonnet" checked> <span><b>Sonnet ⭐</b><em>recommandé</em></span></label>
+        <label class="v-opt2"><input type="radio" name="ocrModeB" value="opus"> <span><b>Opus 👑</b><em>qualité maximale</em></span></label>
+      </div>
+      <div class="ws-set-sec">
+        <div class="ws-set-h">Options</div>
+        <label class="v-opt2"><input type="radio" name="capcutOutlineB" value="1" checked> <span><b>Contour CapCut activé</b><em>liseré style CapCut</em></span></label>
+        <label class="v-opt2"><input type="radio" name="capcutOutlineB" value="0"> <span><b>Contour désactivé</b><em>texte sans liseré</em></span></label>
+      </div>
     </div>
     <div id="bVarOpts" style="display:none;margin-top:10px;align-items:center;gap:10px;flex-wrap:wrap;">
       <span style="font-size:.82rem;font-weight:600;">Variations par vidéo A :</span>
@@ -1791,70 +1844,17 @@ download as ZIP. No Claude Vision, no captions.
 <div id="vCountWarning" style="display:none;color:var(--error);font-size:0.8rem;margin-top:8px;">Maximum 100 variations allowed.</div>
 </div>
 
-<div class="v-section-label"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.5 5.5 H14.5 M3.5 9 H14.5 M3.5 12.5 H14.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="5.5" r="1.5" fill="currentColor"/><circle cx="11.5" cy="9" r="1.5" fill="currentColor"/><circle cx="6" cy="12.5" r="1.5" fill="currentColor"/></svg></span> Variation Controls</div>
-<div class="v-modeswitch">
-<label><input type="radio" name="vConfigMode" value="preset" checked> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 15 L11 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M14.5 2.6 L15 3.8 L16.2 4.3 L15 4.8 L14.5 6 L14 4.8 L12.8 4.3 L14 3.8 Z" fill="currentColor"/><path d="M11 2.6 L11.3 3.4 L12.1 3.7 L11.3 4 L11 4.8 L10.7 4 L9.9 3.7 L10.7 3.4 Z" fill="currentColor" opacity=".7"/></svg></span> Mode Préréglages <span style="font-weight:500;opacity:.8">(débutant)</span></label>
-<label><input type="radio" name="vConfigMode" value="advanced"> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3.4 a3 3 0 0 0-4 3.7 L4 11.2 a1.5 1.5 0 0 0 2.1 2.1 l4.1-4.1 a3 3 0 0 0 3.7-4 l-2 2-1.4-.4-.4-1.4 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span> Mode Avancé <span style="font-weight:500;opacity:.8">(16 réglages)</span></label>
-</div>
-
-<!-- Preset mode panel -->
-<div id="vPresetPanel">
-<div style="font-size:0.84rem;font-weight:600;margin-bottom:8px;color:var(--text)">Intensité des variations</div>
-<div style="display:flex;gap:8px;flex-wrap:wrap;">
-<label class="v-opt"><input type="radio" name="vStrength" value="light" checked> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="3" height="4" rx="1" fill="currentColor"/><rect x="7.5" y="7" width="3" height="8" rx="1" fill="currentColor" opacity=".22"/><rect x="12" y="3" width="3" height="12" rx="1" fill="currentColor" opacity=".22"/></svg></span> Légère</label>
-<label class="v-opt"><input type="radio" name="vStrength" value="medium"> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="3" height="4" rx="1" fill="currentColor"/><rect x="7.5" y="7" width="3" height="8" rx="1" fill="currentColor"/><rect x="12" y="3" width="3" height="12" rx="1" fill="currentColor" opacity=".22"/></svg></span> Moyenne</label>
-<label class="v-opt"><input type="radio" name="vStrength" value="strong"> <span class="ic
-o-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="3" height="4" rx="1" fill="currentColor"/><rect x="7.5" y="7" width="3" height="8" rx="1" fill="currentColor"/><rect x="12" y="3" width="3" height="12" rx="1" fill="currentColor"/></svg></span> Forte</label>
-</div>
-<div style="font-size:0.78rem;color:var(--muted);margin-top:8px;">
-Légère = changements discrets (recommandé). Plus l'intensité augmente, plus les vidéos générées diffèrent visuellement de la source.
-</div>
-</div>
-
 <!-- Advanced mode panel -->
 <div id="vAdvancedPanel">
-<div class="v-section-label"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3.4 a3 3 0 0 0-4 3.7 L4 11.2 a1.5 1.5 0 0 0 2.1 2.1 l4.1-4.1 a3 3 0 0 0 3.7-4 l-2 2-1.4-.4-.4-1.4 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span> Advanced Controls</div>
-<div style="font-size:0.78rem;color:var(--muted);margin-bottom:10px;">
-0 = désactivé · 50 = recommandé · 100 = variation maximale (les vidéos restent toujours visuellement propres, jamais corrompues).
-</div>
-<label class="v-range-toggle"><input type="checkbox" id="vRangeMode" onchange="vToggleRangeMode()"> <b>Mode plage min/max</b> — chaque variation tire une valeur aléatoire entre le curseur <span class="v-mm-min">min</span> et le curseur <span class="v-mm-max">max</span> (ex. luminosité 20→50).</label>
+<div class="v-adv-topbar"><input type="text" id="vAdvSearch" class="r-tool-input" placeholder="🔎 Rechercher (lum, meta, vitesse…)" oninput="vAdvSearch(this.value)"><button type="button" class="r-mini-btn" onclick="vAdvCollapseAll(false)">▾ Tout développer</button><button type="button" class="r-mini-btn" onclick="vAdvCollapseAll(true)">▸ Tout réduire</button><button type="button" class="r-mini-btn" id="vResetAdvBtn">↺ Réinitialiser tous</button><button type="button" class="r-mini-btn r-accent" id="vRandomizeBtn">🎲 Randomiser</button></div>
+<div class="v-adv-favbar" id="vAdvFavBar" style="display:none;"></div>
+<div style="font-size:0.76rem;color:var(--muted);margin:2px 0 10px;">Chaque réglage a une plage <b>min → max</b> : chaque variation tire une valeur aléatoire dans cette plage. 0 = neutre · 100 = variation maximale sûre.</div>
+<details class="v-adv-card" open><summary><span class="v-dot" style="background:var(--accent);color:var(--accent)"></span> Visuel</summary><div class="v-adv-body"><div class="v-slider-row" data-k="brightness" data-label="luminosite"><label for="vAdvMin_brightness">Luminosité<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="brightness" title="Épingler ce réglage" onclick="vAdvToggleFav('brightness')">☆</button><span class="v-info" title="Luminosité — Effet : éclaircit/assombrit chaque variation (±10% max). Risque : au-delà de ~80, écart de luminosité visible entre sorties. Recommandé : 20–60.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_brightness" class="v-dual-r" value="50" oninput="_vDualSync('brightness')"><input type="range" min="0" max="100" id="vAdvMax_brightness" class="v-dual-r" value="50" oninput="_vDualSync('brightness')"><span class="v-dual-vals" id="vAdv_brightness_val">50 → 50</span></div><input type="hidden" id="vAdv_brightness" data-vadv="brightness" value="50"></div><div class="v-slider-row" data-k="contrast" data-label="contraste"><label for="vAdvMin_contrast">Contraste<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="contrast" title="Épingler ce réglage" onclick="vAdvToggleFav('contrast')">☆</button><span class="v-info" title="Contraste — Effet : fait varier le contraste (±15% max). Risque : trop haut = image délavée ou bouchée. Recommandé : 20–60.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_contrast" class="v-dual-r" value="50" oninput="_vDualSync('contrast')"><input type="range" min="0" max="100" id="vAdvMax_contrast" class="v-dual-r" value="50" oninput="_vDualSync('contrast')"><span class="v-dual-vals" id="vAdv_contrast_val">50 → 50</span></div><input type="hidden" id="vAdv_contrast" data-vadv="contrast" value="50"></div><div class="v-slider-row" data-k="saturation" data-label="saturation"><label for="vAdvMin_saturation">Saturation<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="saturation" title="Épingler ce réglage" onclick="vAdvToggleFav('saturation')">☆</button><span class="v-info" title="Saturation — Effet : module l'intensité des couleurs (±15% max). Risque : très haut = couleurs criardes ou ternes. Recommandé : 20–60.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_saturation" class="v-dual-r" value="50" oninput="_vDualSync('saturation')"><input type="range" min="0" max="100" id="vAdvMax_saturation" class="v-dual-r" value="50" oninput="_vDualSync('saturation')"><span class="v-dual-vals" id="vAdv_saturation_val">50 → 50</span></div><input type="hidden" id="vAdv_saturation" data-vadv="saturation" value="50"></div><div class="v-slider-row" data-k="gamma" data-label="gamma"><label for="vAdvMin_gamma">Gamma<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="gamma" title="Épingler ce réglage" onclick="vAdvToggleFav('gamma')">☆</button><span class="v-info" title="Gamma — Effet : ajuste les tons moyens indépendamment de la luminosité (±10%). Risque : excès = image plate ou trop dense. Recommandé : 10–50.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_gamma" class="v-dual-r" value="50" oninput="_vDualSync('gamma')"><input type="range" min="0" max="100" id="vAdvMax_gamma" class="v-dual-r" value="50" oninput="_vDualSync('gamma')"><span class="v-dual-vals" id="vAdv_gamma_val">50 → 50</span></div><input type="hidden" id="vAdv_gamma" data-vadv="gamma" value="50"></div><div class="v-slider-row" data-k="noise" data-label="bruit / grain"><label for="vAdvMin_noise">Bruit / Grain<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="noise" title="Épingler ce réglage" onclick="vAdvToggleFav('noise')">☆</button><span class="v-info" title="Bruit / Grain — Effet : ajoute un grain fin pour casser l'empreinte numérique. Risque : fort = grésillement visible, perte de netteté. Recommandé : 10–40.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_noise" class="v-dual-r" value="50" oninput="_vDualSync('noise')"><input type="range" min="0" max="100" id="vAdvMax_noise" class="v-dual-r" value="50" oninput="_vDualSync('noise')"><span class="v-dual-vals" id="vAdv_noise_val">50 → 50</span></div><input type="hidden" id="vAdv_noise" data-vadv="noise" value="50"></div><div class="v-slider-row" data-k="sharpness" data-label="nettete"><label for="vAdvMin_sharpness">Netteté<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="sharpness" title="Épingler ce réglage" onclick="vAdvToggleFav('sharpness')">☆</button><span class="v-info" title="Netteté — Effet : accentue légèrement les contours. Risque : trop = halos/artefacts sur les bords. Recommandé : 10–40.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_sharpness" class="v-dual-r" value="50" oninput="_vDualSync('sharpness')"><input type="range" min="0" max="100" id="vAdvMax_sharpness" class="v-dual-r" value="50" oninput="_vDualSync('sharpness')"><span class="v-dual-vals" id="vAdv_sharpness_val">50 → 50</span></div><input type="hidden" id="vAdv_sharpness" data-vadv="sharpness" value="50"></div><div class="v-slider-row" data-k="blur" data-label="flou"><label for="vAdvMin_blur">Flou<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="blur" title="Épingler ce réglage" onclick="vAdvToggleFav('blur')">☆</button><span class="v-info" title="Flou — Effet : adoucit très légèrement l'image. Risque : fort = image molle/floue. Recommandé : 0–30.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_blur" class="v-dual-r" value="50" oninput="_vDualSync('blur')"><input type="range" min="0" max="100" id="vAdvMax_blur" class="v-dual-r" value="50" oninput="_vDualSync('blur')"><span class="v-dual-vals" id="vAdv_blur_val">50 → 50</span></div><input type="hidden" id="vAdv_blur" data-vadv="blur" value="50"></div><div class="v-slider-row" data-k="zoom" data-label="zoom"><label for="vAdvMin_zoom">Zoom<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="zoom" title="Épingler ce réglage" onclick="vAdvToggleFav('zoom')">☆</button><span class="v-info" title="Zoom — Effet : agrandit un peu le cadrage (jusqu'à +8%). Risque : fort = perte de bords, léger crop. Recommandé : 10–50.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_zoom" class="v-dual-r" value="50" oninput="_vDualSync('zoom')"><input type="range" min="0" max="100" id="vAdvMax_zoom" class="v-dual-r" value="50" oninput="_vDualSync('zoom')"><span class="v-dual-vals" id="vAdv_zoom_val">50 → 50</span></div><input type="hidden" id="vAdv_zoom" data-vadv="zoom" value="50"></div><div class="v-slider-row" data-k="crop" data-label="recadrage"><label for="vAdvMin_crop">Recadrage<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="crop" title="Épingler ce réglage" onclick="vAdvToggleFav('crop')">☆</button><span class="v-info" title="Recadrage — Effet : recadre subtilement (±4%). Risque : fort = éléments importants coupés. Recommandé : 0–40.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_crop" class="v-dual-r" value="50" oninput="_vDualSync('crop')"><input type="range" min="0" max="100" id="vAdvMax_crop" class="v-dual-r" value="50" oninput="_vDualSync('crop')"><span class="v-dual-vals" id="vAdv_crop_val">50 → 50</span></div><input type="hidden" id="vAdv_crop" data-vadv="crop" value="50"></div><div class="v-slider-row" data-k="rotation" data-label="rotation"><label for="vAdvMin_rotation">Rotation<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="rotation" title="Épingler ce réglage" onclick="vAdvToggleFav('rotation')">☆</button><span class="v-info" title="Rotation — Effet : incline très légèrement l'image (±1° max au curseur 100). Risque : fort = coins visibles / rendu penché (le moteur reste borné à 1°). Recommandé : 0–30.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_rotation" class="v-dual-r" value="50" oninput="_vDualSync('rotation')"><input type="range" min="0" max="100" id="vAdvMax_rotation" class="v-dual-r" value="50" oninput="_vDualSync('rotation')"><span class="v-dual-vals" id="vAdv_rotation_val">50 → 50</span></div><input type="hidden" id="vAdv_rotation" data-vadv="rotation" value="50"></div></div></details>
+<details class="v-adv-card" open><summary><span class="v-dot" style="background:var(--accent2);color:var(--accent2)"></span> Mouvement</summary><div class="v-adv-body"><div class="v-slider-row" data-k="speed" data-label="vitesse video"><label for="vAdvMin_speed">Vitesse vidéo<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="speed" title="Épingler ce réglage" onclick="vAdvToggleFav('speed')">☆</button><span class="v-info" title="Vitesse vidéo — Effet : fait varier la vitesse de lecture (±3%). Risque : fort = décalage audio/vidéo perceptible. Recommandé : 10–50.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_speed" class="v-dual-r" value="50" oninput="_vDualSync('speed')"><input type="range" min="0" max="100" id="vAdvMax_speed" class="v-dual-r" value="50" oninput="_vDualSync('speed')"><span class="v-dual-vals" id="vAdv_speed_val">50 → 50</span></div><input type="hidden" id="vAdv_speed" data-vadv="speed" value="50"></div></div></details>
+<details class="v-adv-card" open><summary><span class="v-dot" style="background:var(--accent3);color:var(--accent3)"></span> Audio</summary><div class="v-adv-body"><div class="v-slider-row" data-k="volume" data-label="volume audio"><label for="vAdvMin_volume">Volume audio<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="volume" title="Épingler ce réglage" onclick="vAdvToggleFav('volume')">☆</button><span class="v-info" title="Volume audio — Effet : ajuste le niveau sonore (±5%). Risque : fort = variations de volume audibles entre sorties. Recommandé : 10–60.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_volume" class="v-dual-r" value="50" oninput="_vDualSync('volume')"><input type="range" min="0" max="100" id="vAdvMax_volume" class="v-dual-r" value="50" oninput="_vDualSync('volume')"><span class="v-dual-vals" id="vAdv_volume_val">50 → 50</span></div><input type="hidden" id="vAdv_volume" data-vadv="volume" value="50"></div><div class="v-slider-row" data-k="pitch" data-label="tonalite audio"><label for="vAdvMin_pitch">Tonalité audio<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="pitch" title="Épingler ce réglage" onclick="vAdvToggleFav('pitch')">☆</button><span class="v-info" title="Tonalité audio — Effet : décale subtilement la tonalité audio (±2%). Risque : fort = voix qui sonne artificielle. Recommandé : 0–40.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_pitch" class="v-dual-r" value="50" oninput="_vDualSync('pitch')"><input type="range" min="0" max="100" id="vAdvMax_pitch" class="v-dual-r" value="50" oninput="_vDualSync('pitch')"><span class="v-dual-vals" id="vAdv_pitch_val">50 → 50</span></div><input type="hidden" id="vAdv_pitch" data-vadv="pitch" value="50"></div></div></details>
+<details class="v-adv-card" open><summary><span class="v-dot" style="background:var(--info);color:var(--info)"></span> Encodage</summary><div class="v-adv-body"><div class="v-slider-row" data-k="fps" data-label="variation fps"><label for="vAdvMin_fps">Variation FPS<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="fps" title="Épingler ce réglage" onclick="vAdvToggleFav('fps')">☆</button><span class="v-info" title="Variation FPS — Effet : modifie légèrement le nombre d'images/s (±10). Risque : fort = micro-saccades sur certaines plateformes. Recommandé : 10–50.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_fps" class="v-dual-r" value="50" oninput="_vDualSync('fps')"><input type="range" min="0" max="100" id="vAdvMax_fps" class="v-dual-r" value="50" oninput="_vDualSync('fps')"><span class="v-dual-vals" id="vAdv_fps_val">50 → 50</span></div><input type="hidden" id="vAdv_fps" data-vadv="fps" value="50"></div><div class="v-slider-row" data-k="bitrate" data-label="variation bitrate"><label for="vAdvMin_bitrate">Variation bitrate<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="bitrate" title="Épingler ce réglage" onclick="vAdvToggleFav('bitrate')">☆</button><span class="v-info" title="Variation bitrate — Effet : fait varier le débit d'encodage (±20%). Risque : très bas = compression visible ; très haut = fichier lourd. Recommandé : 20–70.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_bitrate" class="v-dual-r" value="50" oninput="_vDualSync('bitrate')"><input type="range" min="0" max="100" id="vAdvMax_bitrate" class="v-dual-r" value="50" oninput="_vDualSync('bitrate')"><span class="v-dual-vals" id="vAdv_bitrate_val">50 → 50</span></div><input type="hidden" id="vAdv_bitrate" data-vadv="bitrate" value="50"></div></div></details>
+<details class="v-adv-card"><summary><span class="v-dot" style="background:var(--warn);color:var(--warn)"></span> Métadonnées simulées</summary><div class="v-adv-body"><div class="v-meta-note">ℹ️ Ces réglages modifient uniquement les <b>métadonnées déclarées</b> du fichier (software, encoder, langue, pays, fuseau). Ils ne changent <b>pas</b> sa provenance réelle et ne prouvent pas que la vidéo vient réellement de CapCut, TikTok, Instagram ou d'un pays donné.</div><div class="v-slider-row" data-k="metadata" data-label="metadonnees aleatoire meta"><label for="vAdv_metadata">Aléatoire métadonnées<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="metadata" title="Épingler" onclick="vAdvToggleFav('metadata')">☆</button><span class="v-info" title="Aléatoire métadonnées — Effet : randomise date/appareil/identifiants déclarés. Risque : aucun visuel. Recommandé : 40–100.">ⓘ</span></span></label><input type="range" id="vAdv_metadata" min="0" max="100" value="50" data-vadv="metadata" oninput="document.getElementById('vAdv_metadata_val').textContent=this.value"><span class="v-slider-val" id="vAdv_metadata_val">50</span></div><div class="v-meta-origin"><div class="v-mo-field"><label for="vAppSource" title="Simulation metadata uniquement — ne change pas la provenance réelle">App simulée</label><select id="vAppSource" title="Écrit software/encoder/comment dans les métadonnées — simulation, pas de provenance réelle"><option value="">— Aucune —</option><option value="capcut">CapCut</option><option value="instagram">Instagram</option><option value="tiktok">TikTok</option><option value="iphone">iPhone Camera</option></select></div><div class="v-mo-field"><label for="vOrigin" title="Simulation metadata uniquement — langue/pays/fuseau">Origine simulée</label><select id="vOrigin" title="Écrit langue/pays/fuseau dans les métadonnées — simulation, pas de géoloc réelle"><option value="">— Aucune —</option><option value="usa">USA</option><option value="france">France</option><option value="uk">UK</option><option value="canada">Canada</option><option value="brazil">Brésil</option></select></div></div></div></details>
 
-<div class="v-group-title"><span class="v-dot" style="background:var(--accent);color:var(--accent)"></span> Visuel</div>
-<div class="v-slider-row" title="Ajuste légèrement la luminosité globale de chaque variation"><label for="vAdv_brightness">Luminosité</label><input type="range" id="vAdv_brightness" min="0" max="100" value="50" data-vadv="brightness" title="Ajuste légèrement la luminosité globale de chaque variation"><span class="v-slider-val" id="vAdv_brightness_val">50</span></div>
-<div class="v-slider-row" title="Fait varier le contraste pour différencier visuellement chaque sortie"><label for="vAdv_contrast">Contraste</label><input type="range" id="vAdv_contrast" min="0" max="100" value="50" data-vadv="contrast" title="Fait varier le contraste pour différencier visuellement chaque sortie"><span class="v-slider-val" id="vAdv_contrast_val">50</span></div>
-<div class="v-slider-row" title="Module l'intensité des couleurs entre les variations"><label for="vAdv_saturation">Saturation</label><input type="range" id="vAdv_saturation" min="0" max="100" value="50" data-vadv="saturation" title="Module l'intensité des couleurs entre les variations"><span class="v-slider-val" id="vAdv_saturation_val">50</span></div>
-<div class="v-slider-row" title="Ajuste la courbe de luminosité (tons moyens) de l'image"><label for="vAdv_gamma">Gamma</label><input type="range" id="vAdv_gamma" min="0" max="100" value="50" data-vadv="gamma" title="Ajuste la courbe de luminosité (tons moyens) de l'image"><span class="v-slider-val" id="vAdv_gamma_val">50</span></div>
-<div class="v-slider-row" title="Ajoute un grain subtil pour casser l'empreinte numérique de la source"><label for="vAdv_noise">Bruit / Grain</label><input type="range" id="vAdv_noise" min="0" max="100" value="50" data-vadv="noise" title="Ajoute un grain subtil pour casser l'empreinte numérique de la source"><span class="v-slider-val" id="vAdv_noise_val">50</span></div>
-<div class="v-slider-row" title="Accentue ou adoucit la netteté de l'image"><label for="vAdv_sharpness">Netteté</label><input type="range" id="vAdv_sharpness" min="0" max="100" value="50" data-vadv="sharpness" title="Accentue ou adoucit la netteté de l'image"><span class="v-slider-val" id="vAdv_sharpness_val">50</span></div>
-<div class="v-slider-row" title="Applique un flou léger et variable selon les sorties"><label for="vAdv_blur">Flou</label><input type="range" id="vAdv_blur" min="0" max="100" value="50" data-vadv="blur" title="Applique un flou léger et variable selon les sorties"><span class="v-slider-val" id="vAdv_blur_val">50</span></div>
-<div class="v-slider-row" title="Fait varier le niveau de zoom appliqué au cadrage"><label for="vAdv_zoom">Zoom</label><input type="range" id="vAdv_zoom" min="0" max="100" value="50" data-vadv="zoom" title="Fait varier le niveau de zoom appliqué au cadrage"><span class="v-slider-val" id="vAdv_zoom_val">50</span></div>
-<div class="v-slider-row" title="Modifie légèrement le cadrage pour différencier chaque sortie"><label for="vAdv_crop">Recadrage</label><input type="range" id="vAdv_crop" min="0" max="100" value="50" data-vadv="crop" title="Modifie légèrement le cadrage pour différencier chaque sortie"><span class="v-slider-val" id="vAdv_crop_val">50</span></div>
-<div class="v-slider-row" title="Applique une micro-rotation aléatoire à l'image"><label for="vAdv_rotation">Rotation</label><input type="range" id="vAdv_rotation" min="0" max="100" value="50" data-vadv="rotation" title="Applique une micro-rotation aléatoire à l'image"><span class="v-slider-val" id="vAdv_rotation_val">50</span></div>
-
-<div class="v-group-title"><span class="v-dot" style="background:var(--accent2);color:var(--accent2)"></span> Mouvement</div>
-<div class="v-slider-row" title="Fait varier légèrement la vitesse de lecture de la vidéo"><label for="vAdv_speed">Vitesse vidéo</label><input type="range" id="vAdv_speed" min="0" max="100" value="50" data-vadv="speed" title="Fait varier légèrement la vitesse de lecture de la vidéo"><span class="v-slider-val" id="vAdv_speed_val">50</span></div>
-
-<div class="v-group-title"><span class="v-dot" style="background:var(--accent3);color:var(--accent3)"></span> Audio</div>
-<div class="v-slider-row" title="Ajuste le niveau sonore global de chaque variation"><label for="vAdv_volume">Volume audio</label><input type="range" id="vAdv_volume" min="0" max="100" value="50" data-vadv="volume" title="Ajuste le niveau sonore global de chaque variation"><span class="v-slider-val" id="vAdv_volume_val">50</span></div>
-<div class="v-slider-row" title="Fait varier subtilement la tonalité de la piste audio"><label for="vAdv_pitch">Tonalité audio</label><input type="range" id="vAdv_pitch" min="0" max="100" value="50" data-vadv="pitch" title="Fait varier subtilement la tonalité de la piste audio"><span class="v-slider-val" id="vAdv_pitch_val">50</span></div>
-
-<div class="v-group-title"><span class="v-dot" style="background:var(--info);color:var(--info)"></span> Encodage</div>
-<div class="v-slider-row" title="Modifie légèrement le nombre d'images par seconde à l'export"><label for="vAdv_fps">Variation FPS</label><input type="range" id="vAdv_fps" min="0" max="100" value="50" data-vadv="fps" title="Modifie légèrement le nombre d'images par seconde à l'export"><span class="v-slider-val" id="vAdv_fps_val">50</span></div>
-<div class="v-slider-row" title="Fait varier le débit d'encodage pour différencier la signature du fichier"><label for="vAdv_bitrate">Variation bitrate</label><input type="range" id="vAdv_bitrate" min="0" max="100" value="50" data-vadv="bitrate" title="Fait varier le débit d'encodage pour différencier la signature du fichier"><span class="v-slider-val" id="vAdv_bitrate_val">50</span></div>
-
-<div class="v-group-title"><span class="v-dot" style="background:var(--warn);color:var(--warn)"></span> Métadonnées simulées</div>
-<div class="v-meta-note">ℹ️ Ces réglages modifient uniquement les <b>métadonnées</b> du fichier (software, encoder, langue, pays, fuseau). Ils ne changent <b>pas</b> la provenance réelle du fichier — le fichier ne vient pas vraiment de l'app choisie.</div>
-<div class="v-slider-row" title="Randomise les métadonnées du fichier (date, appareil, identifiants)"><label for="vAdv_metadata">Aléatoire métadonnées</label><input type="range" id="vAdv_metadata" min="0" max="100" value="50" data-vadv="metadata" title="Randomise les métadonnées du fichier (date, appareil, identifiants)"><span class="v-slider-val" id="vAdv_metadata_val">50</span></div>
-<div class="v-meta-origin">
-<div class="v-mo-field"><label for="vAppSource" title="Simulation metadata uniquement — ne change pas la provenance réelle">App simulée</label>
-<select id="vAppSource" title="Écrit software/encoder/comment dans les métadonnées — simulation, pas de provenance réelle"><option value="">— Aucune —</option><option value="capcut">CapCut</option><option value="instagram">Instagram</option><option value="tiktok">TikTok</option><option value="iphone">iPhone Camera</option></select></div>
-<div class="v-mo-field"><label for="vOrigin" title="Simulation metadata uniquement — langue/pays/fuseau">Origine simulée</label>
-<select id="vOrigin" title="Écrit langue/pays/fuseau dans les métadonnées — simulation, pas de géoloc réelle"><option value="">— Aucune —</option><option value="usa">USA</option><option value="france">France</option><option value="uk">UK</option><option value="canada">Canada</option><option value="brazil">Brésil</option></select></div>
-</div>
-
-<div class="v-adv-actions">
-<button type="button" class="v-ghost-btn" id="vRandomizeBtn"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span> Randomiser la configuration</button>
-<button type="button" class="v-ghost-btn" id="vResetAdvBtn"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.5 7 H10.5 a3.3 3.3 0 0 1 0 6.6 H7.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 4.5 L4.5 7 L7 9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Réinitialiser (50)</button>
 </div>
 
 <div class="v-preset-row">
@@ -2505,6 +2505,12 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
         <div class="r-modal-field"><label>Segments</label>
           <div id="rCapSegs"></div>
           <button type="button" class="r-mini-btn" onclick="rCapAddSeg();rSegSelect(document.querySelector('#rCapSegs .r-seg:last-child'))">＋ Ajouter un segment</button></div>
+        <details class="r-capswitch" id="rEditMusPanel">
+          <summary>🎵 Musiques — écouter &amp; assigner</summary>
+          <input type="text" id="rEditMusSearch" class="r-tool-input" placeholder="Rechercher une musique…" oninput="rEditMusRender()" style="margin:6px 0;">
+          <div class="r-editmus-hint" id="rEditMusHint"></div>
+          <div class="r-editmus-list" id="rEditMusList"></div>
+        </details>
         <div class="r-edit-actions">
           <button type="button" class="primary-btn" id="rCapSaveBtn" onclick="rCapSave()">💾 Créer la caption</button>
           <button type="button" class="v-ghost-btn ws-danger" id="rCapDelBtn" onclick="rCapDeleteCurrent()" style="display:none;">🗑 Supprimer</button>
@@ -2672,7 +2678,7 @@ return (s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
 function getOcrMode(scope) {
 const el = document.querySelector('input[name="ocrMode' + scope + '"]:checked');
 const v = el ? el.value : "sonnet";
-return (v === "opus" || v === "local") ? v : "sonnet";
+return (v === "opus" || v === "local" || v === "auto") ? v : "sonnet";
 }
 
 // CapCut outline ON/OFF ("S"=Simple, "B"=Batch). Default ON. Sent as
@@ -3585,9 +3591,59 @@ r.addEventListener("change", () => {
 const adv = getVariationConfigMode() === "advanced";
 vPresetPanel.style.display = adv ? "none" : "block";
 vAdvancedPanel.style.display = adv ? "block" : "none";
+if (adv) vAdvRenderFav();
 updateVariationEstimate();
 });
 });
+// P5/P6 — structure HTML réelle (cartes <details> authored). Le JS ne fait que
+// gérer favoris / recherche / repli. Aucune reconstruction du DOM au chargement.
+function _vFavs(){ try{ return JSON.parse(localStorage.getItem("vAdvFavs")||"[]"); }catch(e){ return []; } }
+function _vSetFavs(a){ try{ localStorage.setItem("vAdvFavs", JSON.stringify(a.slice(0,10))); }catch(e){} }
+function vAdvToggleFav(key){ let a=_vFavs(); a = a.includes(key)? a.filter(x=>x!==key) : [...a,key].slice(0,10); _vSetFavs(a); vAdvRenderFav(); }
+let _vFavDrag=null;
+function vAdvRenderFav(){
+  const favs=_vFavs();
+  document.querySelectorAll(".v-fav-btn").forEach(b=>{ const on=favs.includes(b.dataset.fav); b.textContent=on?"★":"☆"; b.classList.toggle("on",on); });
+  const bar=document.getElementById("vAdvFavBar"); if(!bar) return;
+  if(!favs.length){ bar.style.display="none"; bar.innerHTML=""; return; }
+  bar.style.display="flex";
+  bar.innerHTML=`<span class="v-fav-lbl">⭐ Favoris (glisse pour réorganiser) :</span>`+favs.map(k=>{
+    const row=document.querySelector(`.v-slider-row[data-k="${k}"]`);
+    const name=row?(row.querySelector("label").childNodes[0].textContent||k).trim():k;
+    return `<span class="v-fav-chip" draggable="true" data-fav="${k}" onclick="vAdvScrollTo('${k}')">${name} <b onclick="event.stopPropagation();vAdvToggleFav('${k}')" title="Retirer">✕</b></span>`;
+  }).join("");
+  // Drag & drop pour réordonner
+  bar.querySelectorAll(".v-fav-chip").forEach(chip=>{
+    chip.addEventListener("dragstart", e=>{ _vFavDrag=chip.dataset.fav; chip.classList.add("drag"); try{ e.dataTransfer.effectAllowed="move"; }catch(_){}});
+    chip.addEventListener("dragend", ()=>{ chip.classList.remove("drag"); _vFavDrag=null; });
+    chip.addEventListener("dragover", e=>{ e.preventDefault(); });
+    chip.addEventListener("drop", e=>{ e.preventDefault(); const from=_vFavDrag, to=chip.dataset.fav; if(!from||from===to) return;
+      let a=_vFavs(); a=a.filter(x=>x!==from); const i=a.indexOf(to); a.splice(i,0,from); _vSetFavs(a); vAdvRenderFav(); });
+  });
+}
+function vAdvScrollTo(key){
+  const row=document.querySelector(`.v-slider-row[data-k="${key}"]`); if(!row) return;
+  const card=row.closest(".v-adv-card"); if(card) card.open=true;
+  row.scrollIntoView({block:"center"}); row.classList.add("v-flash"); setTimeout(()=>row.classList.remove("v-flash"),900);
+  // Focus automatique du curseur (min, ou le slider simple pour metadata).
+  const sl=document.getElementById("vAdvMin_"+key)||document.getElementById("vAdv_"+key);
+  if(sl) setTimeout(()=>{ try{ sl.focus({preventScroll:true}); }catch(_){ sl.focus(); } }, 60);
+}
+function _vNoAccent(s){ return (s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase(); }
+function vAdvSearch(q){
+  q=_vNoAccent((q||"").trim()); let first=null;
+  document.querySelectorAll("#vAdvancedPanel .v-slider-row").forEach(row=>{
+    const t=row.dataset.label || _vNoAccent(row.querySelector("label").textContent);
+    const hit=!q||t.includes(q); row.style.display=hit?"":"none"; if(hit&&q&&!first) first=row;
+  });
+  document.querySelectorAll("#vAdvancedPanel .v-adv-card").forEach(c=>{
+    const any=[...c.querySelectorAll(".v-slider-row")].some(r=>r.style.display!=="none");
+    c.style.display=any?"":"none"; if(q&&any) c.open=true;
+  });
+  if(first){ const card=first.closest(".v-adv-card"); if(card) card.open=true; first.scrollIntoView({block:"center"}); first.classList.add("v-flash"); setTimeout(()=>first.classList.remove("v-flash"),900);
+    const sl=first.querySelector("input[type=range]"); if(sl) setTimeout(()=>{ try{ sl.focus({preventScroll:true}); }catch(_){} },60); }
+}
+function vAdvCollapseAll(collapse){ document.querySelectorAll("#vAdvancedPanel .v-adv-card").forEach(c=>c.open=!collapse); }
 
 // ── Advanced Mode: 16 individual sliders ──
 const ADVANCED_SLIDER_KEYS_CLIENT = [
@@ -3596,20 +3652,23 @@ const ADVANCED_SLIDER_KEYS_CLIENT = [
 "fps", "bitrate", "metadata",
 ];
 
+const ADVANCED_SLIDER_DEFAULT_CLIENT = 50;
+const _vClamp = v => Math.max(0, Math.min(100, parseInt(v, 10) || 0));
+// getAdvancedConfig : chaque paramètre = plage {min,max} (double-curseur),
+// sauf 'metadata' (probabilité simple). Format backend INCHANGÉ (déjà
+// rétro-compatible {min,max}).
 function getAdvancedConfig() {
 const cfg = {};
-const rangeOn = !!(document.getElementById("vRangeMode") && document.getElementById("vRangeMode").checked);
-const clamp = v => Math.max(0, Math.min(100, parseInt(v, 10) || 0));
 ADVANCED_SLIDER_KEYS_CLIENT.forEach(key => {
-const el = document.getElementById("vAdv_" + key);
-const base = el ? clamp(el.value) : ADVANCED_SLIDER_DEFAULT_CLIENT;
-if (rangeOn && key !== "metadata") {
-const mn = document.getElementById("vAdvMin_" + key), mx = document.getElementById("vAdvMax_" + key);
-const a = mn ? clamp(mn.value) : base, b = mx ? clamp(mx.value) : base;
-cfg[key] = { min: Math.min(a, b), max: Math.max(a, b) };
-} else {
-cfg[key] = base;
+if (key === "metadata") {
+const el = document.getElementById("vAdv_metadata");
+cfg.metadata = el ? _vClamp(el.value) : ADVANCED_SLIDER_DEFAULT_CLIENT;
+return;
 }
+const mn = document.getElementById("vAdvMin_" + key), mx = document.getElementById("vAdvMax_" + key);
+const a = mn ? _vClamp(mn.value) : ADVANCED_SLIDER_DEFAULT_CLIENT;
+const b = mx ? _vClamp(mx.value) : ADVANCED_SLIDER_DEFAULT_CLIENT;
+cfg[key] = { min: Math.min(a, b), max: Math.max(a, b) };
 });
 return cfg;
 }
@@ -3619,61 +3678,53 @@ const a = document.getElementById("vAppSource"), o = document.getElementById("vO
 if (a && a.value) fd.append("app_source", a.value);
 if (o && o.value) fd.append("origin", o.value);
 }
-// Mode plage : une seule ligne claire par réglage → « min X → max Y »
-// (deux champs numériques). Le curseur simple est masqué en mode plage.
-function _vClampMM(el){ let v=Math.max(0,Math.min(100,parseInt(el.value,10)||0)); el.value=v; return v; }
-function vToggleRangeMode() {
-const on = !!(document.getElementById("vRangeMode") && document.getElementById("vRangeMode").checked);
-document.querySelectorAll('#vAdvancedPanel input[data-vadv]').forEach(sl => {
-const key = sl.dataset.vadv; if (key === "metadata") return;
-const row = sl.closest(".v-slider-row"); if (!row) return;
-const valSpan = document.getElementById("vAdv_" + key + "_val");
-let mm = row.querySelector(".v-mm");
-if (on && !mm) {
-const cur = parseInt(sl.value, 10) || 50;
-mm = document.createElement("div"); mm.className = "v-mm";
-mm.innerHTML = `<span class="v-mm-lbl">min</span>`
-+ `<input type="number" min="0" max="100" id="vAdvMin_${key}" class="v-mm-num" value="${cur}">`
-+ `<span class="v-mm-arrow">→ max</span>`
-+ `<input type="number" min="0" max="100" id="vAdvMax_${key}" class="v-mm-num" value="${Math.min(100, cur + 20)}">`;
-row.appendChild(mm);
-const mn = mm.querySelector("#vAdvMin_" + key), mx = mm.querySelector("#vAdvMax_" + key);
-// Auto-correction min>max (échange), clamp 0-100.
-mn.addEventListener("input", () => { _vClampMM(mn); if (+mn.value > +mx.value) mx.value = mn.value; });
-mx.addEventListener("input", () => { _vClampMM(mx); if (+mx.value < +mn.value) mn.value = mx.value; });
+// P4 — double-curseur : croisement corrigé (swap), remplissage + valeurs live,
+// et miroir caché vAdv_<key>=min (préserve les lecteurs legacy des IDs vAdv_*).
+function _vDualSync(key){
+  const mn=document.getElementById("vAdvMin_"+key), mx=document.getElementById("vAdvMax_"+key);
+  if(!mn||!mx) return;
+  // Croisement NATUREL (comme DaVinci/CapCut) : on NE swappe PAS les valeurs des
+  // poignées — la poignée déplacée passe librement de l'autre côté. La plage
+  // effective est simplement min/max des deux, calculée à la lecture.
+  const a=+mn.value, b=+mx.value; const lo=Math.min(a,b), hi=Math.max(a,b);
+  // La poignée au-dessus (dans la pile) devient saisissable : on donne la
+  // priorité pointeur à celle qui vient d'être bougée via z-index.
+  if(document.activeElement===mn){ mn.style.zIndex=3; mx.style.zIndex=2; }
+  else if(document.activeElement===mx){ mx.style.zIndex=3; mn.style.zIndex=2; }
+  const dual=mn.closest(".v-dual");
+  if(dual){ const fill=dual.querySelector(".v-dual-fill"); if(fill){ fill.style.left=lo+"%"; fill.style.width=(hi-lo)+"%"; }
+    const lab=document.getElementById("vAdv_"+key+"_val"); if(lab) lab.textContent=`${lo} → ${hi}`; }
+  const hid=document.getElementById("vAdv_"+key); if(hid) hid.value=lo;   // miroir compat (= min effectif)
+  if(typeof updateVariationEstimate==="function") updateVariationEstimate();
 }
-if (mm) mm.style.display = on ? "flex" : "none";
-sl.style.display = on ? "none" : "";
-if (valSpan) valSpan.style.display = on ? "none" : "";
-row.classList.toggle("range-on", on);
-});
-}
+// setAdvancedConfig : accepte {min,max} (nouveau) OU un entier (anciens presets)
+// → dans ce cas min=max=entier. Rétro-compatible avec tous les presets sauvegardés.
 function setAdvancedConfig(cfg) {
 ADVANCED_SLIDER_KEYS_CLIENT.forEach(key => {
-const el = document.getElementById("vAdv_" + key);
-const val = document.getElementById("vAdv_" + key + "_val");
-if (!el) return;
 const raw = (cfg && cfg[key] != null) ? cfg[key] : ADVANCED_SLIDER_DEFAULT_CLIENT;
-const v = Math.max(0, Math.min(100, parseInt(raw, 10) || ADVANCED_SLIDER_DEFAULT_CLIENT));
-el.value = v;
-if (val) val.textContent = v;
-});
-updateVariationEstimate();
+if (key === "metadata") {
+const el = document.getElementById("vAdv_metadata"), val = document.getElementById("vAdv_metadata_val");
+const v = _vClamp(typeof raw === "object" ? (raw.min != null ? raw.min : 50) : raw);
+if (el) el.value = v; if (val) val.textContent = v;
+return;
 }
-const ADVANCED_SLIDER_DEFAULT_CLIENT = 50;
-ADVANCED_SLIDER_KEYS_CLIENT.forEach(key => {
-const el = document.getElementById("vAdv_" + key);
-const val = document.getElementById("vAdv_" + key + "_val");
-if (!el) return;
-el.addEventListener("input", () => {
-if (val) val.textContent = el.value;
-updateVariationEstimate();
+let lo, hi;
+if (raw && typeof raw === "object") { lo = _vClamp(raw.min); hi = _vClamp(raw.max); }
+else { lo = hi = _vClamp(raw); }
+if (lo > hi) { const t = lo; lo = hi; hi = t; }
+const mn = document.getElementById("vAdvMin_" + key), mx = document.getElementById("vAdvMax_" + key);
+if (mn) mn.value = lo; if (mx) mx.value = hi;
+_vDualSync(key);
 });
-});
-
+if (typeof updateVariationEstimate === "function") updateVariationEstimate();
+}
 document.getElementById("vRandomizeBtn").addEventListener("click", () => {
 const cfg = {};
-ADVANCED_SLIDER_KEYS_CLIENT.forEach(key => { cfg[key] = Math.floor(Math.random() * 101); });
+ADVANCED_SLIDER_KEYS_CLIENT.forEach(key => {
+if (key === "metadata") { cfg.metadata = Math.floor(Math.random() * 101); return; }
+const a = Math.floor(Math.random() * 101), b = Math.floor(Math.random() * 101);
+cfg[key] = { min: Math.min(a, b), max: Math.max(a, b) };
+});
 setAdvancedConfig(cfg);
 const msg = document.getElementById("vPresetMsg");
 msg.textContent = "🎲 Configuration aléatoire générée — vous pouvez la sauvegarder en préréglage.";
@@ -3706,10 +3757,7 @@ const name = (nameEl.value || "").trim();
 if (!name) { msg.textContent = "Donnez un nom au préréglage."; msg.style.color = "var(--error)"; return; }
 msg.textContent = "Sauvegarde…"; msg.style.color = "var(--muted)";
 try {
-const fd = new FormData();
-fd.append("name", name);
-fd.append("config_json", JSON.stringify(getAdvancedConfig()));
-const r = await fetch("/variation_preset_save", { method: "POST", body: fd });
+const r = await fetch("/variation_preset_save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name, config: getAdvancedConfig() }) });
 const d = await r.json();
 if (!r.ok || d.error) throw new Error(d.error || r.statusText);
 msg.textContent = `✅ Préréglage "${name}" sauvegardé.`; msg.style.color = "var(--success)";
@@ -3727,7 +3775,8 @@ const presets = JSON.parse(sel.dataset.presets || "[]");
 const picked = presets.find(p => String(p.id) === sel.value);
 if (!picked) { msg.textContent = "Sélectionnez un préréglage à charger."; msg.style.color = "var(--error)"; return; }
 try {
-setAdvancedConfig(JSON.parse(picked.config_json));
+// Le endpoint /variation_presets renvoie déjà config en objet (min/max ou entier).
+setAdvancedConfig(picked.config || (picked.config_json ? JSON.parse(picked.config_json) : {}));
 msg.textContent = `📂 Préréglage "${picked.name}" chargé.`; msg.style.color = "var(--success)";
 } catch(e) {
 msg.textContent = "❌ Préréglage invalide."; msg.style.color = "var(--error)";
@@ -3758,7 +3807,9 @@ const EST_COST_PER_SECOND_PER_VARIANT_CLIENT = 0.002; // mirrors EST_VARIATION_C
 function estimateVariationLoadFactor() {
 if (getVariationConfigMode() === "advanced") {
 const cfg = getAdvancedConfig();
-const avg = ADVANCED_SLIDER_KEYS_CLIENT.reduce((s, k) => s + cfg[k], 0) / ADVANCED_SLIDER_KEYS_CLIENT.length;
+// cfg[k] = {min,max} (double-curseur) ou entier (metadata) → on prend le milieu.
+const midOf = v => (v && typeof v === "object") ? (v.min + v.max) / 2 : v;
+const avg = ADVANCED_SLIDER_KEYS_CLIENT.reduce((s, k) => s + midOf(cfg[k]), 0) / ADVANCED_SLIDER_KEYS_CLIENT.length;
 return 0.35 + (avg / 100) * 0.55; // ~0.35x .. 0.90x source duration per variant
 }
 const strength = getVariationStrength();
@@ -5326,7 +5377,7 @@ function rCapOpen(id, previewReelIdx){
   rPlayerWire();
   // Après le layout du modal, ré-applique la taille/position RÉELLES → le texte
   // s'affiche immédiatement à la bonne taille, sans premier déplacement.
-  requestAnimationFrame(()=>{ if(rActiveSegRow) rEditApplyToBox(); rTimelineRender(); rPlayerTick(); });
+  requestAnimationFrame(()=>{ if(rActiveSegRow) rEditApplyToBox(); rTimelineRender(); rPlayerTick(); rEditMusRender(); });
 }
 // Remplit le sélecteur de dossier de l'éditeur.
 function rCapFolderFill(cur){
@@ -5408,7 +5459,7 @@ function rCapAddSeg(s){
   row.dataset.w  = Math.round(((hasPos?s.width_pct:rGlobalPos.w/100))*100);
   row.dataset.size = (((hasPos?s.fontsize_pct:rGlobalPos.size/100))*100).toFixed(1);
   row.dataset.align = (hasPos && s.align) ? s.align : rGlobalPos.align;
-  row.innerHTML=`<div class="r-seg-head"><button type="button" class="r-seg-active" onclick="rSegSelect(this.closest('.r-seg'))">🎯 Positionner</button><button type="button" class="r-emoji-btn" onclick="rEmojiOpen(this.closest('.r-seg').querySelector('textarea'), this)" title="Emojis">😀</button><span class="r-seg-posbadge"></span></div>
+  row.innerHTML=`<div class="r-seg-head"><button type="button" class="r-seg-active" onclick="rSegSelect(this.closest('.r-seg'), event)">🎯 Positionner</button><button type="button" class="r-emoji-btn" onclick="rEmojiOpen(this.closest('.r-seg').querySelector('textarea'), this)" title="Emojis">😀</button><span class="r-seg-posbadge"></span></div>
     <textarea placeholder="Écris ton texte ici" oninput="rSegSelect(this.closest('.r-seg'));rEditRenderText();rTimelineRender()">${rEsc((s&&s.text)||"")}</textarea>
     <div class="r-seg-times">start <input type="number" step="0.1" min="0" class="r-seg-start" value="${s&&s.start_time!=null?s.start_time:""}" oninput="rTimelineRender()">
     end <input type="number" step="0.1" min="0" class="r-seg-end" value="${s&&s.end_time!=null?s.end_time:""}" oninput="rTimelineRender()">
@@ -5418,11 +5469,23 @@ function rCapAddSeg(s){
 }
 function rSegDelete(row){ const wasActive=(row===rActiveSegRow); row.remove(); if(wasActive){ const n=document.querySelector("#rCapSegs .r-seg"); rActiveSegRow=null; if(n) rSegSelect(n); else rEditRenderText(); } }
 function rSegBadge(row){ const b=row.querySelector(".r-seg-posbadge"); if(!b) return; b.textContent = row.dataset.haspos==="1" ? `⟐ ${row.dataset.cx}% · ${row.dataset.cy}%` : "hérite position globale"; b.classList.toggle("own", row.dataset.haspos==="1"); }
-function rSegSelect(row){
+// Multi-sélection de segments (Cmd/Ctrl = ajout/retrait · Shift = plage). Le
+// segment ACTIF (poignées + sliders) est toujours inclus dans la sélection.
+let rSelSegs = new Set();
+let _rLastSegRow = null;
+function rSegSelectedRows(){ return [...document.querySelectorAll("#rCapSegs .r-seg")].filter(r=>rSelSegs.has(r)); }
+function rSegSelect(row, ev){
   if(!row) return;
-  rActiveSegRow=row;
-  document.querySelectorAll("#rCapSegs .r-seg").forEach(r=>r.classList.toggle("active", r===row));
-  // charge la position effective du segment dans les sliders
+  const rows=[...document.querySelectorAll("#rCapSegs .r-seg")];
+  if(ev && (ev.metaKey||ev.ctrlKey)){ if(rSelSegs.has(row)&&rSelSegs.size>1) rSelSegs.delete(row); else rSelSegs.add(row); }
+  else if(ev && ev.shiftKey && _rLastSegRow && rows.includes(_rLastSegRow)){
+    const i=rows.indexOf(_rLastSegRow), j=rows.indexOf(row); const a=Math.min(i,j), b=Math.max(i,j);
+    rSelSegs=new Set(); for(let k=a;k<=b;k++) rSelSegs.add(rows[k]);
+  } else { rSelSegs=new Set([row]); }
+  rSelSegs.add(row);
+  rActiveSegRow=row; _rLastSegRow=row;
+  rows.forEach(r=>{ r.classList.toggle("active", r===row); r.classList.toggle("multisel", rSelSegs.has(r)&&r!==row); });
+  // charge la position effective du segment ACTIF dans les sliders
   document.getElementById("rPosX").value=row.dataset.cx;
   document.getElementById("rPosY").value=row.dataset.cy;
   document.getElementById("rPosW").value=row.dataset.w;
@@ -5433,13 +5496,18 @@ function rSegSelect(row){
   rEditApplyToBox();
   rTimelineRender();
 }
+// Applique une position/opération à TOUS les segments sélectionnés (transformation groupée).
+function _rApplyToSelection(fn){ const sel=rSegSelectedRows(); (sel.length?sel:[rActiveSegRow]).forEach(r=>{ if(r){ fn(r); rSegBadge(r); } }); }
 function rUpdateActiveLabel(){
   const lbl=document.getElementById("rActiveLabel"); if(!lbl) return;
   const rows=[...document.querySelectorAll("#rCapSegs .r-seg")];
   const i=rows.indexOf(rActiveSegRow);
   if(i<0){ lbl.textContent="Segment actif : —"; return; }
   const txt=(rActiveSegRow.querySelector("textarea").value||"").split("\n")[0].slice(0,32);
-  lbl.textContent=`Segment actif : ${i+1}/${rows.length} — ${txt||"(vide)"}`;
+  const n=rSelSegs.size;
+  lbl.textContent = n>1
+    ? `${n} segments sélectionnés (déplacement/positions groupés) — actif : ${i+1}/${rows.length}`
+    : `Segment actif : ${i+1}/${rows.length} — ${txt||"(vide)"}`;
 }
 // ═══════════ V3 — Lecteur, Timeline, Emoji, Suggestions tags ═══════════
 function _rFmtT(s){ s=Math.max(0,s||0); const m=Math.floor(s/60), r=Math.floor(s%60); return m+":"+String(r).padStart(2,"0"); }
@@ -5622,7 +5690,8 @@ function rEditPos(){
 }
 function rEditAlign(al){ rEdit.align=(["left","center","right"].includes(al)?al:"center");
   document.querySelectorAll(".r-align-btn").forEach(b=>b.classList.toggle("active",b.dataset.al===rEdit.align));
-  rEditPos(); }
+  rEditPos();
+  if(rSelSegs.size>1){ _rApplyToSelection(r=>{ r.dataset.haspos="1"; r.dataset.align=rEdit.align; }); rEditRenderGhosts(); } }
 function rEditApplyAll(){
   const cx=Math.round(+rVal("rPosX")), cy=Math.round(+rVal("rPosY")), w=Math.round(+rVal("rPosW")), size=(+rVal("rPosSize")).toFixed(1), al=rEdit.align;
   document.querySelectorAll("#rCapSegs .r-seg").forEach(r=>{ r.dataset.haspos="1"; r.dataset.cx=cx; r.dataset.cy=cy; r.dataset.w=w; r.dataset.size=size; r.dataset.align=al; rSegBadge(r); });
@@ -5637,6 +5706,7 @@ function rEditSetPreviewReel(){
   const idx=rVal("rEditPreviewReel"); const v=document.getElementById("rEditVideo");
   if(idx!=="" && rReels[+idx]){ v.src=rReels[+idx].url; v.play().catch(()=>{}); } else { v.pause(); v.removeAttribute("src"); }
   rUpdateReelCounter();
+  if(typeof rEditMusRender==="function") rEditMusRender();
 }
 function rUpdateReelCounter(){
   const c=document.getElementById("rReelCounter"); if(!c) return;
@@ -5656,7 +5726,34 @@ function rEditStepReel(dir){
 }
 function rEditPrevReel(){ rEditStepReel(-1); }
 function rEditNextReel(){ rEditStepReel(1); }
-// Quick position presets (Module 8 UX) — set X/Y (and sensible width/size).
+// ── Bibliothèque musicale intégrée à l'éditeur (écoute + assignation) ──
+let _rEditMusAudio=null;
+function rEditMusRender(){
+  const box=document.getElementById("rEditMusList"); if(!box) return;
+  const q=(document.getElementById("rEditMusSearch").value||"").toLowerCase();
+  const pv=document.getElementById("rEditPreviewReel"); const pvIdx=pv?pv.value:"";
+  const reel=(pvIdx!==""&&rReels[+pvIdx])?rReels[+pvIdx]:null;
+  const hint=document.getElementById("rEditMusHint");
+  if(hint) hint.textContent = reel ? `Reel affiché : ${reel.file.name}` : "Choisis un reel de prévisualisation (‹ ›) pour assigner une musique.";
+  const items=rMusic.filter(m=>!q||m.name.toLowerCase().includes(q));
+  box.innerHTML = items.length ? items.map(m=>{
+    const on = reel && reel.musIds.includes(m.id);
+    return `<div class="r-editmus-item${on?' on':''}"><button type="button" class="r-pv-btn" onclick="rEditMusPlay(${m.id})" title="Écouter">▶</button><span class="r-editmus-name" title="${rEsc(m.name)}">${rEsc(m.name)}</span><button type="button" class="r-mini-btn" onclick="rEditMusAssign(${m.id})"${reel?'':' disabled'}>${on?'✓ assignée':'+ assigner'}</button></div>`;
+  }).join("") : '<div class="ws-empty" style="padding:8px">Aucune musique.</div>';
+}
+function rEditMusPlay(id){
+  if(!_rEditMusAudio){ _rEditMusAudio=document.createElement("audio"); _rEditMusAudio.style.display="none"; document.body.appendChild(_rEditMusAudio); }
+  if(_rEditMusAudio.dataset.id===String(id) && !_rEditMusAudio.paused){ _rEditMusAudio.pause(); return; }
+  _rEditMusAudio.src=`/reels_music_file/${id}`; _rEditMusAudio.dataset.id=String(id); _rEditMusAudio.play().catch(()=>{});
+}
+function rEditMusAssign(id){
+  const pv=document.getElementById("rEditPreviewReel"); const pvIdx=pv?pv.value:"";
+  if(pvIdx===""||!rReels[+pvIdx]){ alert("Choisis d'abord un reel de prévisualisation (‹ ›)."); return; }
+  const reel=rReels[+pvIdx];
+  if(reel.musIds.includes(id)) reel.musIds=reel.musIds.filter(x=>x!==id); else _rAddId(reel.musIds, id);
+  rRenderReels(); rUpdateInfo(); rEditMusRender();
+}
+// Quick position presets — appliquent la position à TOUTE la sélection.
 function rEditQuick(kind){
   const set=(id,v)=>{ const e=document.getElementById(id); if(e) e.value=v; };
   if(kind==="center"){ set("rPosX",50); set("rPosY",50); }
@@ -5664,6 +5761,8 @@ function rEditQuick(kind){
   else if(kind==="middle"){ set("rPosX",50); set("rPosY",50); }
   else if(kind==="top"){ set("rPosX",50); set("rPosY",14); }
   rEditPos();
+  if(rSelSegs.size>1){ const cx=Math.round(+rVal("rPosX")), cy=Math.round(+rVal("rPosY"));
+    _rApplyToSelection(r=>{ r.dataset.haspos="1"; r.dataset.cx=cx; r.dataset.cy=cy; }); rEditRenderGhosts(); }
 }
 // ── Transformation directe de la box active — déplacement + poignées
 //    (côtés = largeur, angles = taille + largeur). Pointer Events. (#3) ──
@@ -5671,13 +5770,17 @@ function rEditQuick(kind){
   const box=document.getElementById("rEditCaption"); if(!box) return;
   const stage=()=>document.getElementById("rEditStage");
   const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
-  let mode=null, sx=0, sy=0, x0=0,y0=0,w0=0,sz0=0;
+  let mode=null, sx=0, sy=0, x0=0,y0=0,w0=0,sz0=0, group=[];
   const move=e=>{
     if(!mode) return; const rc=stage().getBoundingClientRect();
     const dxp=(e.clientX-sx)/rc.width*100, dyp=(e.clientY-sy)/rc.height*100;
     if(mode==="move"){
-      document.getElementById("rPosX").value=Math.round(clamp(x0+dxp,0,100));
-      document.getElementById("rPosY").value=Math.round(clamp(y0+dyp,0,100));
+      const nx=Math.round(clamp(x0+dxp,0,100)), ny=Math.round(clamp(y0+dyp,0,100));
+      document.getElementById("rPosX").value=nx;
+      document.getElementById("rPosY").value=ny;
+      // Déplacement GROUPÉ : même delta pour tous les segments sélectionnés (écarts conservés).
+      const ddx=nx-x0, ddy=ny-y0;
+      group.forEach(g=>{ g.row.dataset.cx=Math.round(clamp(g.cx+ddx,0,100)); g.row.dataset.cy=Math.round(clamp(g.cy+ddy,0,100)); g.row.dataset.haspos="1"; rSegBadge(g.row); });
     } else if(mode==="e"){ document.getElementById("rPosW").value=Math.round(clamp(w0+dxp*2,20,100)); }
     else if(mode==="w"){ document.getElementById("rPosW").value=Math.round(clamp(w0-dxp*2,20,100)); }
     else { // angles : largeur (horizontal) + taille de police (vertical)
@@ -5688,11 +5791,13 @@ function rEditQuick(kind){
     }
     rEditPos();
   };
-  const up=()=>{ mode=null; box.classList.remove("drag"); document.removeEventListener("pointermove",move); document.removeEventListener("pointerup",up); };
+  const up=()=>{ mode=null; group=[]; box.classList.remove("drag"); document.removeEventListener("pointermove",move); document.removeEventListener("pointerup",up); };
   box.addEventListener("pointerdown", e=>{
     mode = e.target && e.target.dataset ? (e.target.dataset.h || "move") : "move";
     sx=e.clientX; sy=e.clientY;
     x0=+rVal("rPosX"); y0=+rVal("rPosY"); w0=+rVal("rPosW"); sz0=parseFloat(rVal("rPosSize"))||5;
+    group = (mode==="move" && rSelSegs.size>1)
+      ? rSegSelectedRows().filter(r=>r!==rActiveSegRow).map(r=>({row:r, cx:+r.dataset.cx, cy:+r.dataset.cy})) : [];
     box.classList.add("drag"); try{ box.setPointerCapture(e.pointerId); }catch(_){}
     e.preventDefault(); e.stopPropagation();
     document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
@@ -5719,7 +5824,7 @@ function rEditRenderGhosts(){
     g.style.fontSize=Math.max(11, sh*((+row.dataset.size)/100))+"px"; g.style.textAlign=row.dataset.align||"center";
     const txt=(row.querySelector("textarea").value||"").trim();
     g.innerHTML=txt?rTwemojiHtml(txt):"…";
-    g.addEventListener("pointerdown", ev=>{ ev.preventDefault(); ev.stopPropagation(); rSegSelect(row); try{ row.scrollIntoView({block:"nearest"}); }catch(_){}
+    g.addEventListener("pointerdown", ev=>{ ev.preventDefault(); ev.stopPropagation(); rSegSelect(row, ev); try{ row.scrollIntoView({block:"nearest"}); }catch(_){}
     });
     stage.appendChild(g);
   });
