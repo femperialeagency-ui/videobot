@@ -2185,6 +2185,45 @@ def analyze_with_tesseract_fallback(frame_paths: list) -> list:
     return lines
 
 
+def _analyze_local_engine(path_b):
+    """OCR LOCAL pro (module ocr_local.py) : multi-frame, fusion temporelle,
+    start/end + géométrie en %. Repli automatique sur la détection mono-frame
+    historique si le pipeline échoue ou ne trouve rien. Ne lève JAMAIS —
+    aucun appel API (0 coût Anthropic/Vision)."""
+    try:
+        import ocr_local
+        lines, meta = ocr_local.analyze_video_local(path_b)
+        for _l in lines:
+            _l.pop("_conf", None)
+        try:
+            import sys as _s
+            print(f"[OCR_LOCAL] frames={meta.get('frames')} conf={meta.get('confidence')} "
+                  f"segments={len(lines)} needs_vision={meta.get('needs_vision')}", file=_s.stderr)
+        except Exception:
+            pass
+        if lines:
+            return lines
+    except Exception as e:
+        try:
+            import sys as _s
+            print(f"[OCR_LOCAL] pipeline error → fallback mono-frame: {e}", file=_s.stderr)
+        except Exception:
+            pass
+    # Repli historique : détection mono-frame (jamais d'exception non gérée).
+    frames = []
+    try:
+        frames = extract_frames(path_b, count=4, scale="scale=1080:-2")
+        return analyze_with_tesseract_fallback(frames)
+    except Exception:
+        return []
+    finally:
+        for f in frames:
+            try:
+                Path(f).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+
 # ── Emoji investigation: debug-only detection helper ──────────────
 # Pure observation utility — scans a string and reports which Unicode
 # codepoints fall in the emoji ranges (grouping adjacent codepoints
@@ -3291,19 +3330,10 @@ def analyze():
         source = None
         lines = []
         if _use_local:
-            # OCR LOCAL : Tesseract uniquement, JAMAIS Anthropic/Vision.
-            frames = extract_frames(path_b, count=4, scale=_fallback_scale)
-            try:
-                lines = analyze_with_tesseract_fallback(frames)
-            except Exception:
-                lines = []
+            # OCR LOCAL PRO (module ocr_local) : 0 appel API, timing + géométrie.
+            lines = _analyze_local_engine(path_b)
             if lines:
                 source = "local"
-            for f in frames:
-                try:
-                    Path(f).unlink(missing_ok=True)
-                except Exception:
-                    pass
         else:
             if has_key:
                 # Timed detection for ALL modes: sample frames across the timeline
@@ -3736,12 +3766,8 @@ def batch_detect():
         lines = []
         frames = []
         if _use_local:
-            # OCR LOCAL : Tesseract uniquement, JAMAIS Anthropic/Vision.
-            frames = extract_frames(path_b, count=4, scale=_fallback_scale)
-            try:
-                lines = analyze_with_tesseract_fallback(frames)
-            except Exception:
-                lines = []
+            # OCR LOCAL PRO (module ocr_local) : 0 appel API, timing + géométrie.
+            lines = _analyze_local_engine(path_b)
             if lines:
                 source = "local"
         else:
