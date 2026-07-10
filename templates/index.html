@@ -1080,6 +1080,24 @@ body {
 .r-cap-box:hover { outline:1px dashed rgba(255,255,255,.35); }
 #rEditCaptionText.is-placeholder { opacity:.5; font-style:italic; }
 .r-cap-box.drag { cursor:grabbing; outline:1px dashed rgba(255,255,255,.8); }
+/* Cadre de transformation : la box active affiche ses poignées au survol/drag */
+.r-cap-box { outline:1px dashed rgba(255,255,255,0); }
+.r-cap-box:hover, .r-cap-box.drag { outline:1px dashed rgba(124,92,255,.9); }
+.r-h { position:absolute; width:11px; height:11px; background:#fff; border:1px solid var(--accent); border-radius:50%; opacity:0; transition:opacity .1s; z-index:5; }
+.r-cap-box:hover .r-h, .r-cap-box.drag .r-h { opacity:1; }
+.r-h.w { left:-6px; top:50%; transform:translateY(-50%); cursor:ew-resize; }
+.r-h.e { right:-6px; top:50%; transform:translateY(-50%); cursor:ew-resize; }
+.r-h.nw{ left:-6px; top:-6px; cursor:nwse-resize; }
+.r-h.ne{ right:-6px; top:-6px; cursor:nesw-resize; }
+.r-h.sw{ left:-6px; bottom:-6px; cursor:nesw-resize; }
+.r-h.se{ right:-6px; bottom:-6px; cursor:nwse-resize; }
+/* Segments non actifs visibles à l'instant courant (cliquables) */
+.r-cap-ghost { position:absolute; transform:translate(-50%,-50%); text-align:center; color:#fff; font-weight:800;
+  line-height:1.1; cursor:pointer; user-select:none; text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 3px rgba(0,0,0,.9);
+  -webkit-text-stroke:1px #000; padding:2px; opacity:.72; outline:1px dashed rgba(255,255,255,.25); z-index:2; }
+.r-cap-ghost:hover { opacity:1; outline-color:rgba(255,255,255,.6); }
+/* Emoji Twemoji dans la preview (WYSIWYG, mêmes images qu'à l'export) */
+.r-emoji-img { height:1em; width:1em; vertical-align:-0.15em; display:inline-block; margin:0 .02em; }
 .r-quick-row { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
 .r-quick-row .v-ghost-btn { font-size:.7rem; padding:4px 9px; }
 .r-seg { transition:border-color .12s, background .12s; }
@@ -2415,7 +2433,7 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
         <div class="r-stage" id="rEditStage">
           <video id="rEditVideo" muted playsinline loop></video>
           <div class="r-safe" id="rEditSafe" style="display:none;"></div>
-          <div class="r-cap-box" id="rEditCaption"><span id="rEditCaptionText">Caption</span></div>
+          <div class="r-cap-box" id="rEditCaption"><span id="rEditCaptionText">Caption</span><span class="r-h w" data-h="w"></span><span class="r-h e" data-h="e"></span><span class="r-h nw" data-h="nw"></span><span class="r-h ne" data-h="ne"></span><span class="r-h sw" data-h="sw"></span><span class="r-h se" data-h="se"></span></div>
         </div>
         <div class="r-reelswitch">
           <button type="button" class="r-nav-btn" onclick="rEditPrevReel()" title="Reel précédent">‹</button>
@@ -5442,6 +5460,7 @@ function rPlayerTick(){
   const dt=document.getElementById("rDurTime"); if(dt) dt.textContent=_rFmtT(dur);
   const ph=document.getElementById("rTlPlayhead"); if(ph) ph.style.left=(cur/dur*100)+"%";
   const pb=document.getElementById("rPlayBtn"); if(pb) pb.textContent=(v&&!v.paused&&v.src)?"⏸":"▶";
+  if(document.getElementById("rCapModal").style.display==="flex") rEditRenderGhosts();
 }
 function rPlayerWire(){
   const v=document.getElementById("rEditVideo"); if(!v||v.dataset.pwired) return; v.dataset.pwired="1";
@@ -5510,7 +5529,11 @@ let _rEmojiTarget=null, _rEmojiCat="Récents";
 function rEmojiRecents(){ try{ return JSON.parse(localStorage.getItem("rEmojiRecent")||"[]"); }catch(e){ return []; } }
 function rEmojiPushRecent(ch){ try{ let a=rEmojiRecents().filter(x=>x!==ch); a.unshift(ch); a=a.slice(0,24); localStorage.setItem("rEmojiRecent",JSON.stringify(a)); }catch(e){} }
 function rEmojiOpen(ta, btn){
-  _rEmojiTarget=ta; const p=document.getElementById("rEmojiPanel"); if(!p||!ta) return;
+  const p=document.getElementById("rEmojiPanel"); if(!p||!ta) return;
+  // Toggle : re-clic sur le MÊME segment referme (#1).
+  if(p.style.display==="block" && _rEmojiTarget===ta){ rEmojiClose(); return; }
+  // Ouvrir (sur un autre segment → ferme implicitement l'ancien en changeant de cible).
+  _rEmojiTarget=ta;
   const r=(btn||ta).getBoundingClientRect();
   p.style.display="block";
   p.style.left=Math.min(window.innerWidth-330, Math.max(8, r.left))+"px";
@@ -5518,6 +5541,9 @@ function rEmojiOpen(ta, btn){
   document.getElementById("rEmojiSearch").value=""; _rEmojiCat="Récents"; rEmojiTabs(); rEmojiRender();
 }
 function rEmojiClose(){ const p=document.getElementById("rEmojiPanel"); if(p) p.style.display="none"; _rEmojiTarget=null; }
+// Échap ferme le picker ; clic/pointeur extérieur ferme aussi (#1).
+document.addEventListener("keydown", e=>{ if(e.key==="Escape"){ const p=document.getElementById("rEmojiPanel"); if(p && p.style.display==="block"){ e.stopPropagation(); rEmojiClose(); } } }, true);
+document.addEventListener("pointerdown", e=>{ const p=document.getElementById("rEmojiPanel"); if(!p || p.style.display!=="block") return; if(e.target.closest("#rEmojiPanel") || e.target.closest(".r-emoji-btn")) return; rEmojiClose(); }, true);
 function rEmojiTabs(){
   const t=document.getElementById("rEmojiTabs"); if(!t) return;
   const cats=["Récents",...Object.keys(R_EMOJI)];
@@ -5551,11 +5577,24 @@ function rCapCollect(){
   });
   return segs;
 }
+// WYSIWYG emoji : la preview affiche les MÊMES images Twemoji que l'export
+// FFmpeg (static/emoji/twemoji/72x72) → ce qu'on voit = ce qui sera généré.
+const _R_EMOJI_RE=/(\p{Extended_Pictographic}(?:‍\p{Extended_Pictographic}|[\u{1f3fb}-\u{1f3ff}️])*|[\u{1f1e6}-\u{1f1ff}]{2})/gu;
+function _rTwName(cluster){ const hasZWJ=cluster.includes("‍"); const parts=[]; for(const c of cluster){ const cp=c.codePointAt(0); if(cp===0xFE0F && !hasZWJ) continue; parts.push(cp.toString(16)); } return parts.join("-"); }
+function _rTwemojiLine(raw){
+  let out="", last=0;
+  raw.replace(_R_EMOJI_RE, (m, _g, idx)=>{ out+=rEsc(raw.slice(last, idx));
+    const nm=_rTwName(m);
+    out+=`<img class="r-emoji-img" src="/static/emoji/twemoji/72x72/${nm}.png" alt="${rEsc(m)}" draggable="false" onerror="this.replaceWith(document.createTextNode(this.alt))">`;
+    last=idx+m.length; return m; });
+  out+=rEsc(raw.slice(last)); return out;
+}
+function rTwemojiHtml(raw){ return (raw||"").split("\n").map(_rTwemojiLine).join("<br>"); }
 function rEditRenderText(){
   const row=rActiveSegRow; const raw=(row&&row.querySelector("textarea").value.trim())||"";
   const el=document.getElementById("rEditCaptionText");
   // Placeholder visuel (jamais enregistré comme contenu) quand le segment est vide.
-  if(raw){ el.innerHTML=rEsc(raw).replace(/\n/g,"<br>"); el.classList.remove("is-placeholder"); }
+  if(raw){ el.innerHTML=rTwemojiHtml(raw); el.classList.remove("is-placeholder"); }
   else { el.textContent="Écris ton texte ici"; el.classList.add("is-placeholder"); }
   rUpdateActiveLabel();
 }
@@ -5573,6 +5612,7 @@ function rEditApplyToBox(){
   box.style.fontSize=Math.max(11, sh*(sz/100))+"px";
   box.style.textAlign=rEdit.align;
   rEditRenderText();
+  rEditRenderGhosts();
 }
 // Édition (slider/drag/align/quick) → écrit dans le SEGMENT ACTIF (crée un override).
 function rEditPos(){
@@ -5625,21 +5665,65 @@ function rEditQuick(kind){
   else if(kind==="top"){ set("rPosX",50); set("rPosY",14); }
   rEditPos();
 }
-// drag caption box — Pointer Events (souris + trackpad + tactile).
-(function rEditDrag(){
+// ── Transformation directe de la box active — déplacement + poignées
+//    (côtés = largeur, angles = taille + largeur). Pointer Events. (#3) ──
+(function rEditTransform(){
   const box=document.getElementById("rEditCaption"); if(!box) return;
-  let dragging=false;
-  const clampPct=(v)=>Math.max(0,Math.min(100,Math.round(v)));
-  const move=e=>{ if(!dragging) return;
-    const stage=document.getElementById("rEditStage"); const rc=stage.getBoundingClientRect();
-    document.getElementById("rPosX").value=clampPct(((e.clientX-rc.left)/rc.width)*100);
-    document.getElementById("rPosY").value=clampPct(((e.clientY-rc.top)/rc.height)*100);
-    rEditPos(); };
-  box.addEventListener("pointerdown", e=>{ dragging=true; box.classList.add("drag"); try{ box.setPointerCapture(e.pointerId); }catch(_){ } e.preventDefault(); });
-  box.addEventListener("pointermove", move);
-  box.addEventListener("pointerup", e=>{ dragging=false; box.classList.remove("drag"); try{ box.releasePointerCapture(e.pointerId); }catch(_){ } });
-  box.addEventListener("pointercancel", ()=>{ dragging=false; box.classList.remove("drag"); });
+  const stage=()=>document.getElementById("rEditStage");
+  const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+  let mode=null, sx=0, sy=0, x0=0,y0=0,w0=0,sz0=0;
+  const move=e=>{
+    if(!mode) return; const rc=stage().getBoundingClientRect();
+    const dxp=(e.clientX-sx)/rc.width*100, dyp=(e.clientY-sy)/rc.height*100;
+    if(mode==="move"){
+      document.getElementById("rPosX").value=Math.round(clamp(x0+dxp,0,100));
+      document.getElementById("rPosY").value=Math.round(clamp(y0+dyp,0,100));
+    } else if(mode==="e"){ document.getElementById("rPosW").value=Math.round(clamp(w0+dxp*2,20,100)); }
+    else if(mode==="w"){ document.getElementById("rPosW").value=Math.round(clamp(w0-dxp*2,20,100)); }
+    else { // angles : largeur (horizontal) + taille de police (vertical)
+      const wsign=(mode==="se"||mode==="ne")?1:-1;
+      document.getElementById("rPosW").value=Math.round(clamp(w0+wsign*dxp*2,20,100));
+      const vs=(mode==="se"||mode==="sw")? dyp : -dyp;
+      document.getElementById("rPosSize").value=(clamp(sz0+vs*0.14,2,14)).toFixed(1);
+    }
+    rEditPos();
+  };
+  const up=()=>{ mode=null; box.classList.remove("drag"); document.removeEventListener("pointermove",move); document.removeEventListener("pointerup",up); };
+  box.addEventListener("pointerdown", e=>{
+    mode = e.target && e.target.dataset ? (e.target.dataset.h || "move") : "move";
+    sx=e.clientX; sy=e.clientY;
+    x0=+rVal("rPosX"); y0=+rVal("rPosY"); w0=+rVal("rPosW"); sz0=parseFloat(rVal("rPosSize"))||5;
+    box.classList.add("drag"); try{ box.setPointerCapture(e.pointerId); }catch(_){}
+    e.preventDefault(); e.stopPropagation();
+    document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
+  });
 })();
+// ── Segments visibles simultanément à l'instant courant (#4) + clic direct (#5) ──
+function rEditCurrentTime(){ const v=document.getElementById("rEditVideo"); return (v&&isFinite(v.currentTime))?v.currentTime:0; }
+function rSegVisibleAt(row, t){
+  const s=parseFloat(row.querySelector(".r-seg-start").value), e=parseFloat(row.querySelector(".r-seg-end").value);
+  const hasS=isFinite(s), hasE=isFinite(e);
+  if(!hasS && !hasE) return true;   // segment sans timing → toujours visible
+  return t>=(hasS?s:0) && t<(hasE?e:1e9);
+}
+function rEditRenderGhosts(){
+  const stage=document.getElementById("rEditStage"); if(!stage) return;
+  stage.querySelectorAll(".r-cap-ghost").forEach(g=>g.remove());
+  const t=rEditCurrentTime();
+  const sh=stage.clientHeight || stage.getBoundingClientRect().height || (stage.clientWidth*16/9) || 480;
+  document.querySelectorAll("#rCapSegs .r-seg").forEach(row=>{
+    if(row===rActiveSegRow) return;
+    if(!rSegVisibleAt(row, t)) return;
+    const g=document.createElement("div"); g.className="r-cap-ghost";
+    g.style.left=(+row.dataset.cx)+"%"; g.style.top=(+row.dataset.cy)+"%"; g.style.width=(+row.dataset.w)+"%";
+    g.style.fontSize=Math.max(11, sh*((+row.dataset.size)/100))+"px"; g.style.textAlign=row.dataset.align||"center";
+    const txt=(row.querySelector("textarea").value||"").trim();
+    g.innerHTML=txt?rTwemojiHtml(txt):"…";
+    g.addEventListener("pointerdown", ev=>{ ev.preventDefault(); ev.stopPropagation(); rSegSelect(row); try{ row.scrollIntoView({block:"nearest"}); }catch(_){}
+    });
+    stage.appendChild(g);
+  });
+}
 async function rCapSave(keepOpen){
   const id=document.getElementById("rCapModalId").value;
   const name=(document.getElementById("rCapName").value||"").trim()||"Caption";
