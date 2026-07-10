@@ -1030,6 +1030,34 @@ body {
 /* Actions de la caption (bas de la colonne droite) */
 .r-edit-actions { display:flex; flex-direction:column; gap:8px; margin-top:4px; padding-top:10px; border-top:1px solid var(--border); }
 .r-edit-actions .primary-btn { width:100%; }
+/* V3 — Lecteur + scrubber */
+.r-transport { display:flex; align-items:center; gap:8px; }
+.r-time { font-size:.66rem; color:var(--muted); font-variant-numeric:tabular-nums; min-width:30px; }
+.r-scrub { flex:1 1 auto; min-width:0; accent-color:var(--accent); cursor:pointer; }
+/* V3 — Timeline */
+.r-timeline { position:relative; width:100%; min-height:34px; border:1px solid var(--border); border-radius:8px; background:repeating-linear-gradient(90deg,rgba(255,255,255,.03) 0 1px,transparent 1px 10%); overflow:hidden; }
+.r-tl-seg { position:absolute; height:22px; border-radius:6px; background:rgba(124,92,255,.35); border:1px solid rgba(124,92,255,.6); display:flex; align-items:center; cursor:grab; overflow:hidden; }
+.r-tl-seg.active { background:rgba(124,92,255,.6); border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
+.r-tl-label { flex:1 1 auto; font-size:.62rem; color:#fff; padding:0 6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; }
+.r-tl-h { width:8px; height:100%; flex:0 0 auto; cursor:ew-resize; background:rgba(255,255,255,.18); }
+.r-tl-playhead { position:absolute; top:0; bottom:0; width:2px; background:#ff5c8a; pointer-events:none; z-index:3; }
+/* V3 — Suggestions tags */
+.r-tagbox { position:relative; }
+.r-tag-suggest { display:none; position:absolute; top:calc(100% + 3px); left:0; right:0; z-index:60; max-height:180px; overflow-y:auto; background:rgba(18,19,26,.99); border:1px solid var(--border-strong); border-radius:9px; box-shadow:0 10px 28px rgba(0,0,0,.5); }
+.r-tag-opt { padding:7px 10px; font-size:.76rem; color:var(--text); cursor:pointer; }
+.r-tag-opt:hover { background:rgba(255,255,255,.06); }
+.r-tag-opt.create { color:var(--accent); font-weight:700; }
+/* V3 — Emoji */
+.r-emoji-btn { font-size:.9rem; border:1px solid var(--border); background:transparent; border-radius:7px; cursor:pointer; padding:1px 6px; }
+.r-emoji-panel { position:fixed; z-index:1000; width:320px; padding:8px; border-radius:12px; background:rgba(18,19,26,.99); border:1px solid var(--border-strong); box-shadow:0 14px 40px rgba(0,0,0,.6); }
+.r-emoji-top { display:flex; gap:6px; margin-bottom:6px; }
+.r-emoji-top .r-tool-input { flex:1 1 auto; }
+.r-emoji-tabs { display:flex; gap:3px; margin-bottom:6px; flex-wrap:wrap; }
+.r-emoji-tab { font-size:1rem; border:1px solid transparent; background:transparent; border-radius:7px; cursor:pointer; padding:2px 6px; }
+.r-emoji-tab.active { border-color:var(--accent); background:rgba(124,92,255,.15); }
+.r-emoji-grid { display:grid; grid-template-columns:repeat(8,1fr); gap:2px; max-height:220px; overflow-y:auto; }
+.r-emoji-cell { font-size:1.15rem; border:0; background:transparent; cursor:pointer; border-radius:6px; padding:4px 0; }
+.r-emoji-cell:hover { background:rgba(255,255,255,.08); }
 .r-active-label { font-size:.74rem; font-weight:700; color:var(--accent); padding:6px 10px; border:1px solid var(--border); border-radius:8px; background:rgba(124,92,255,.08); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .r-reelswitch { display:flex; align-items:center; gap:6px; }
 .r-reelswitch select { flex:1 1 auto; min-width:0; background:rgba(0,0,0,.25); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:5px 7px; font-size:.74rem; }
@@ -2395,8 +2423,17 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
           <button type="button" class="r-nav-btn" onclick="rEditNextReel()" title="Reel suivant">›</button>
           <span class="r-reelcount" id="rReelCounter"></span>
         </div>
+        <!-- Lecteur : play/pause + scrubber (V3 : contrôle visuel de la vidéo) -->
+        <div class="r-transport">
+          <button type="button" class="r-nav-btn" id="rPlayBtn" onclick="rPlayToggle()" title="Lecture / pause">▶</button>
+          <span class="r-time" id="rCurTime">0:00</span>
+          <input type="range" id="rScrub" class="r-scrub" min="0" max="1000" value="0" step="1" oninput="rScrubSeek()">
+          <span class="r-time" id="rDurTime">0:00</span>
+        </div>
+        <!-- Timeline : une barre par segment, déplaçable / étirable à la souris -->
+        <div class="r-timeline" id="rTimeline"><div class="r-tl-playhead" id="rTlPlayhead"></div></div>
         <div class="r-edit-line"><label class="r-chk"><input type="checkbox" id="rEditSafeChk" onchange="rEditToggleSafe()"> Zone de sécurité</label>
-          <span class="r-edit-hint">Glisse le texte sur la vidéo pour le positionner</span></div>
+          <span class="r-edit-hint">Glisse le texte sur la vidéo · glisse/étire les barres de la timeline</span></div>
       </div>
 
       <!-- ZONE CENTRE : réglages du segment actif (compact) -->
@@ -2441,8 +2478,10 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
           <select id="rCapFolderSel" class="r-folder-sel"><option value="">Sans dossier</option></select></div>
         <div class="r-modal-field"><label>Tags</label>
           <div class="r-chips" id="rCapTagChips"></div>
-          <input type="text" id="rCapTagInput" class="r-tool-input" placeholder="Ajouter un tag… (Entrée)" list="rCapTagList" onkeydown="rCapTagKey(event)" autocomplete="off">
-          <datalist id="rCapTagList"></datalist>
+          <div class="r-tagbox">
+            <input type="text" id="rCapTagInput" class="r-tool-input" placeholder="Ajouter un tag…" onkeydown="rCapTagKey(event)" oninput="rCapTagSuggestRender()" onfocus="rCapTagSuggestRender()" autocomplete="off">
+            <div class="r-tag-suggest" id="rCapTagSuggest"></div>
+          </div>
           <input type="hidden" id="rCapTags">
         </div>
         <div class="r-modal-field"><label>Segments</label>
@@ -2456,6 +2495,16 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
       </div>
     </div>
   </div>
+</div>
+
+<!-- Emoji picker (V3) — inséré directement dans le texte du segment -->
+<div id="rEmojiPanel" class="r-emoji-panel" style="display:none;">
+  <div class="r-emoji-top">
+    <input type="text" id="rEmojiSearch" class="r-tool-input" placeholder="Rechercher (feu, cœur, argent…)" oninput="rEmojiRender()">
+    <button type="button" class="r-nav-btn" onclick="rEmojiClose()" title="Fermer">✕</button>
+  </div>
+  <div class="r-emoji-tabs" id="rEmojiTabs"></div>
+  <div class="r-emoji-grid" id="rEmojiGrid"></div>
 </div>
 
 <!-- Modal assignation intelligente (Module 3) -->
@@ -5257,9 +5306,10 @@ function rCapOpen(id, previewReelIdx){
   // Câble une seule fois la suppression de chips par délégation.
   const chips=document.getElementById("rCapTagChips");
   if(chips && !chips.dataset.wired){ chips.dataset.wired="1"; chips.addEventListener("click", e=>{ const x=e.target.closest("b"); if(!x) return; const chip=x.closest(".r-chip"); if(chip) rCapTagRemove(chip.dataset.tag); }); }
+  rPlayerWire();
   // Après le layout du modal, ré-applique la taille/position RÉELLES → le texte
   // s'affiche immédiatement à la bonne taille, sans premier déplacement.
-  requestAnimationFrame(()=>{ if(rActiveSegRow) rEditApplyToBox(); });
+  requestAnimationFrame(()=>{ if(rActiveSegRow) rEditApplyToBox(); rTimelineRender(); rPlayerTick(); });
 }
 // Remplit le sélecteur de dossier de l'éditeur.
 function rCapFolderFill(cur){
@@ -5327,6 +5377,7 @@ function rCapLoad(id){
   (c&&c.segments||[]).forEach(s=>rCapAddSeg(s)); if(!(c&&c.segments&&c.segments.length)) rCapAddSeg();
   const first=document.querySelector("#rCapSegs .r-seg"); if(first) rSegSelect(first); else rEditRenderText();
   rCapPickRender();
+  rTimelineRender();
 }
 function rCapClose(){ const v=document.getElementById("rEditVideo"); if(v){v.pause();v.removeAttribute("src");} document.getElementById("rCapModal").style.display="none"; }
 function rCapToggleFav(){ const fb=document.getElementById("rCapFav"); const on=fb.dataset.on!=="1"; fb.dataset.on=on?"1":"0"; fb.textContent=on?"★":"☆"; fb.classList.toggle("off",!on); }
@@ -5340,10 +5391,10 @@ function rCapAddSeg(s){
   row.dataset.w  = Math.round(((hasPos?s.width_pct:rGlobalPos.w/100))*100);
   row.dataset.size = (((hasPos?s.fontsize_pct:rGlobalPos.size/100))*100).toFixed(1);
   row.dataset.align = (hasPos && s.align) ? s.align : rGlobalPos.align;
-  row.innerHTML=`<div class="r-seg-head"><button type="button" class="r-seg-active" onclick="rSegSelect(this.closest('.r-seg'))">🎯 Positionner ce segment</button><span class="r-seg-posbadge"></span></div>
-    <textarea placeholder="Écris ton texte ici" oninput="rSegSelect(this.closest('.r-seg'));rEditRenderText()">${rEsc((s&&s.text)||"")}</textarea>
-    <div class="r-seg-times">start <input type="number" step="0.1" min="0" class="r-seg-start" value="${s&&s.start_time!=null?s.start_time:""}">
-    end <input type="number" step="0.1" min="0" class="r-seg-end" value="${s&&s.end_time!=null?s.end_time:""}">
+  row.innerHTML=`<div class="r-seg-head"><button type="button" class="r-seg-active" onclick="rSegSelect(this.closest('.r-seg'))">🎯 Positionner</button><button type="button" class="r-emoji-btn" onclick="rEmojiOpen(this.closest('.r-seg').querySelector('textarea'), this)" title="Emojis">😀</button><span class="r-seg-posbadge"></span></div>
+    <textarea placeholder="Écris ton texte ici" oninput="rSegSelect(this.closest('.r-seg'));rEditRenderText();rTimelineRender()">${rEsc((s&&s.text)||"")}</textarea>
+    <div class="r-seg-times">start <input type="number" step="0.1" min="0" class="r-seg-start" value="${s&&s.start_time!=null?s.start_time:""}" oninput="rTimelineRender()">
+    end <input type="number" step="0.1" min="0" class="r-seg-end" value="${s&&s.end_time!=null?s.end_time:""}" oninput="rTimelineRender()">
     <button type="button" class="r-seg-del" onclick="rSegDelete(this.closest('.r-seg'))">retirer</button></div>`;
   box.appendChild(row); rSegBadge(row);
   return row;
@@ -5363,6 +5414,7 @@ function rSegSelect(row){
   document.querySelectorAll(".r-align-btn").forEach(b=>b.classList.toggle("active",b.dataset.al===rEdit.align));
   rUpdateActiveLabel();
   rEditApplyToBox();
+  rTimelineRender();
 }
 function rUpdateActiveLabel(){
   const lbl=document.getElementById("rActiveLabel"); if(!lbl) return;
@@ -5371,6 +5423,122 @@ function rUpdateActiveLabel(){
   if(i<0){ lbl.textContent="Segment actif : —"; return; }
   const txt=(rActiveSegRow.querySelector("textarea").value||"").split("\n")[0].slice(0,32);
   lbl.textContent=`Segment actif : ${i+1}/${rows.length} — ${txt||"(vide)"}`;
+}
+// ═══════════ V3 — Lecteur, Timeline, Emoji, Suggestions tags ═══════════
+function _rFmtT(s){ s=Math.max(0,s||0); const m=Math.floor(s/60), r=Math.floor(s%60); return m+":"+String(r).padStart(2,"0"); }
+function rEditDuration(){
+  const v=document.getElementById("rEditVideo");
+  let d=(v && isFinite(v.duration) && v.duration>0)?v.duration:0;
+  if(!d){ document.querySelectorAll("#rCapSegs .r-seg").forEach(r=>{ const e=parseFloat(r.querySelector(".r-seg-end").value); if(isFinite(e)) d=Math.max(d,e); }); }
+  return d||10;
+}
+// ── Lecteur ──
+function rPlayToggle(){ const v=document.getElementById("rEditVideo"); if(!v||!v.src) return; if(v.paused) v.play().catch(()=>{}); else v.pause(); }
+function rScrubSeek(){ const v=document.getElementById("rEditVideo"); const sc=document.getElementById("rScrub"); if(!v||!sc) return; v.currentTime=(+sc.value/1000)*rEditDuration(); rPlayerTick(); }
+function rPlayerTick(){
+  const v=document.getElementById("rEditVideo"); const dur=rEditDuration(); const cur=(v&&isFinite(v.currentTime))?v.currentTime:0;
+  const sc=document.getElementById("rScrub"); if(sc && document.activeElement!==sc) sc.value=Math.round(cur/dur*1000);
+  const ct=document.getElementById("rCurTime"); if(ct) ct.textContent=_rFmtT(cur);
+  const dt=document.getElementById("rDurTime"); if(dt) dt.textContent=_rFmtT(dur);
+  const ph=document.getElementById("rTlPlayhead"); if(ph) ph.style.left=(cur/dur*100)+"%";
+  const pb=document.getElementById("rPlayBtn"); if(pb) pb.textContent=(v&&!v.paused&&v.src)?"⏸":"▶";
+}
+function rPlayerWire(){
+  const v=document.getElementById("rEditVideo"); if(!v||v.dataset.pwired) return; v.dataset.pwired="1";
+  ["timeupdate","play","pause","seeked"].forEach(ev=>v.addEventListener(ev, rPlayerTick));
+  v.addEventListener("loadedmetadata", ()=>{ rPlayerTick(); rTimelineRender(); });
+}
+// ── Timeline (barres déplaçables / étirables) ──
+function rTimelineRender(){
+  const tl=document.getElementById("rTimeline"); if(!tl) return;
+  const dur=rEditDuration();
+  const rows=[...document.querySelectorAll("#rCapSegs .r-seg")];
+  tl.querySelectorAll(".r-tl-seg").forEach(e=>e.remove());
+  const lane=22, gap=4;
+  tl.style.height=(Math.max(1,rows.length)*(lane+gap)+8)+"px";
+  rows.forEach((row,i)=>{
+    const s=parseFloat(row.querySelector(".r-seg-start").value); const e=parseFloat(row.querySelector(".r-seg-end").value);
+    const st=isFinite(s)?Math.max(0,s):0; const en=isFinite(e)?Math.min(dur,e):dur;
+    const bar=document.createElement("div"); bar.className="r-tl-seg"+(row===rActiveSegRow?" active":"");
+    bar.style.left=(st/dur*100)+"%"; bar.style.width=(Math.max(0.02,(en-st)/dur)*100)+"%"; bar.style.top=(6+i*(lane+gap))+"px";
+    const txt=(row.querySelector("textarea").value||"").split("\n")[0].slice(0,20)||"(vide)";
+    bar.innerHTML=`<span class="r-tl-h l"></span><span class="r-tl-label">${rEsc(txt)}</span><span class="r-tl-h r"></span>`;
+    tl.appendChild(bar); rTlWire(bar,row);
+  });
+  rPlayerTick();
+}
+function rTlWire(bar,row){
+  const tl=document.getElementById("rTimeline");
+  let mode=null,sx=0,s0=0,e0=0;
+  const getSE=()=>{ const dur=rEditDuration(); const s=parseFloat(row.querySelector(".r-seg-start").value); const e=parseFloat(row.querySelector(".r-seg-end").value); return [isFinite(s)?s:0, isFinite(e)?e:dur]; };
+  const move=ev=>{ if(!mode) return; const dur=rEditDuration(); const rc=tl.getBoundingClientRect(); const d=(ev.clientX-sx)/rc.width*dur; let s=s0,e=e0;
+    if(mode==="move"){ s=s0+d; e=e0+d; if(s<0){e-=s;s=0;} if(e>dur){s-=(e-dur);e=dur;} }
+    else if(mode==="l"){ s=Math.min(e0-0.3, Math.max(0,s0+d)); }
+    else if(mode==="r"){ e=Math.max(s0+0.3, Math.min(dur,e0+d)); }
+    row.querySelector(".r-seg-start").value=s.toFixed(2); row.querySelector(".r-seg-end").value=e.toFixed(2);
+    bar.style.left=(s/dur*100)+"%"; bar.style.width=((e-s)/dur*100)+"%"; };
+  const up=()=>{ mode=null; document.removeEventListener("pointermove",move); document.removeEventListener("pointerup",up); rUpdateActiveLabel(); };
+  bar.addEventListener("pointerdown", e=>{ e.preventDefault(); rSegSelect(row);
+    mode = e.target.classList.contains("l") ? "l" : e.target.classList.contains("r") ? "r" : "move";
+    sx=e.clientX; [s0,e0]=getSE(); try{ bar.setPointerCapture(e.pointerId); }catch(_){}
+    document.addEventListener("pointermove",move); document.addEventListener("pointerup",up); });
+}
+// ── Suggestions de tags (autocomplétion cliquable) ──
+function rCapTagSuggestRender(){
+  const box=document.getElementById("rCapTagSuggest"); if(!box) return;
+  const q=(document.getElementById("rCapTagInput").value||"").trim().toLowerCase();
+  const cur=rCapTagsList().map(t=>t.toLowerCase());
+  const all=[...new Set(rCaptions.flatMap(c=>c.tags||[]))].sort((a,b)=>a.localeCompare(b));
+  let avail=all.filter(t=>!cur.includes(t.toLowerCase()) && (!q || t.toLowerCase().includes(q)));
+  let h=avail.map(t=>`<div class="r-tag-opt" onmousedown="event.preventDefault();rCapTagPick('${rEsc(t).replace(/'/g,"\\'")}')">🏷 ${rEsc(t)}</div>`).join("");
+  if(q && !all.some(t=>t.toLowerCase()===q)){ h=`<div class="r-tag-opt create" onmousedown="event.preventDefault();rCapTagPick('${rEsc(q).replace(/'/g,"\\'")}')">＋ Créer « ${rEsc(q)} »</div>`+h; }
+  box.innerHTML=h; box.style.display=h?"block":"none";
+}
+function rCapTagPick(t){ rCapTagAdd(t); const inp=document.getElementById("rCapTagInput"); if(inp) inp.value=""; rCapTagSuggestRender(); }
+document.addEventListener("click", e=>{ const b=document.getElementById("rCapTagSuggest"); if(b && !e.target.closest(".r-tagbox")) b.style.display="none"; });
+// ── Emoji picker ──
+const R_EMOJI = {
+  "Smileys":["😀","😃","😄","😁","😆","😅","😂","🤣","😊","😇","🙂","🙃","😉","😌","😍","🥰","😘","😋","😜","🤪","😝","🤗","🤭","🤔","😐","😶","😏","😒","🙄","😬","😔","😴","😷","🥵","🥶","😵","🤯","🥳","😎","🤓","🥺","😢","😭","😱","😤","😡","🤬","😈","💀","👻","🤡"],
+  "Gestes":["👍","👎","👏","🙌","🙏","🤝","✌️","🤞","🤟","🤘","👌","🤌","👈","👉","👆","👇","☝️","✋","👋","🤙","💪","🫶","✍️","🫰"],
+  "Cœurs":["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","♥️","💯","💥","💫","⭐","🌟","✨","🔥"],
+  "Symboles":["✅","❌","⚠️","🚫","💰","💵","🎯","🏆","👑","💎","🔔","📈","📉","⏰","⏳","🆕","🆓","‼️","❓","❗","➡️","⬆️","⬇️","🔴","🟢","🔵","⚫","⚪","🔝"],
+  "Objets":["📱","💻","🎥","📷","🎬","🎵","🎧","🎤","🎮","💡","🔑","🛒","🎁","📦","📌","✏️","📝","🔗","🧠","👀","💬","💭","🗣️","👇"],
+  "Nature":["🔥","💧","🌊","🌈","☀️","🌙","🌸","🌹","🍀","🐶","🐱","🦁","🦋","🍎","🍕","🍔","🍟","☕","🍺","🍑","🍒"]
+};
+const R_EMOJI_KW={"feu":"🔥","flamme":"🔥","coeur":"❤️","cœur":"❤️","amour":"❤️","argent":"💰","money":"💰","dollar":"💵","cible":"🎯","target":"🎯","trophée":"🏆","couronne":"👑","rire":"😂","pleure":"😭","choc":"😱","cerveau":"🧠","yeux":"👀","feu vert":"🟢","rouge":"🔴","etoile":"⭐","étoile":"⭐","pouce":"👍","muscle":"💪","priere":"🙏","prière":"🙏","musique":"🎵","video":"🎬","idée":"💡","fusée":"🚀","boom":"💥","diamant":"💎","cadeau":"🎁","nouveau":"🆕","gratuit":"🆓"};
+let _rEmojiTarget=null, _rEmojiCat="Récents";
+function rEmojiRecents(){ try{ return JSON.parse(localStorage.getItem("rEmojiRecent")||"[]"); }catch(e){ return []; } }
+function rEmojiPushRecent(ch){ try{ let a=rEmojiRecents().filter(x=>x!==ch); a.unshift(ch); a=a.slice(0,24); localStorage.setItem("rEmojiRecent",JSON.stringify(a)); }catch(e){} }
+function rEmojiOpen(ta, btn){
+  _rEmojiTarget=ta; const p=document.getElementById("rEmojiPanel"); if(!p||!ta) return;
+  const r=(btn||ta).getBoundingClientRect();
+  p.style.display="block";
+  p.style.left=Math.min(window.innerWidth-330, Math.max(8, r.left))+"px";
+  p.style.top=Math.min(window.innerHeight-360, r.bottom+6)+"px";
+  document.getElementById("rEmojiSearch").value=""; _rEmojiCat="Récents"; rEmojiTabs(); rEmojiRender();
+}
+function rEmojiClose(){ const p=document.getElementById("rEmojiPanel"); if(p) p.style.display="none"; _rEmojiTarget=null; }
+function rEmojiTabs(){
+  const t=document.getElementById("rEmojiTabs"); if(!t) return;
+  const cats=["Récents",...Object.keys(R_EMOJI)];
+  t.innerHTML=cats.map(c=>`<button type="button" class="r-emoji-tab${c===_rEmojiCat?' active':''}" onclick="_rEmojiCat='${c}';rEmojiTabs();rEmojiRender()">${c==="Récents"?"🕘":R_EMOJI[c][0]}</button>`).join("");
+}
+function rEmojiRender(){
+  const g=document.getElementById("rEmojiGrid"); if(!g) return;
+  const q=(document.getElementById("rEmojiSearch").value||"").trim().toLowerCase();
+  let list;
+  if(q){ const set=new Set(); Object.keys(R_EMOJI_KW).forEach(k=>{ if(k.includes(q)) set.add(R_EMOJI_KW[k]); }); list=[...set]; if(!list.length) list=Object.values(R_EMOJI).flat().slice(0,60); }
+  else if(_rEmojiCat==="Récents"){ list=rEmojiRecents(); if(!list.length) list=R_EMOJI["Smileys"].slice(0,24); }
+  else list=R_EMOJI[_rEmojiCat]||[];
+  g.innerHTML=list.map(ch=>`<button type="button" class="r-emoji-cell" onclick="rEmojiInsert('${ch}')">${ch}</button>`).join("");
+}
+function rEmojiInsert(ch){
+  const ta=_rEmojiTarget; if(!ta) return;
+  const st=ta.selectionStart||ta.value.length, en=ta.selectionEnd||ta.value.length;
+  ta.value=ta.value.slice(0,st)+ch+ta.value.slice(en);
+  const pos=st+ch.length; ta.selectionStart=ta.selectionEnd=pos; ta.focus();
+  rEmojiPushRecent(ch);
+  rSegSelect(ta.closest(".r-seg")); rEditRenderText();
 }
 function rCapCollect(){
   const segs=[];
