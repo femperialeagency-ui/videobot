@@ -995,10 +995,19 @@ body {
 .r-quickbar { align-items:center; padding-top:2px; }
 .r-quicklbl { font-size:.68rem; color:var(--muted); font-weight:600; }
 /* Sélecteur de mode + compteur (Module 1) */
-.r-genmode { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
-.r-genmode-lbl { font-size:.72rem; color:var(--muted); font-weight:600; }
-.r-genmode .r-tool-sel { min-width:min(420px,60vw); }
-.r-gencount { font-size:.8rem; font-weight:700; color:var(--accent); padding:3px 10px; border:1px solid rgba(124,92,255,.4); background:rgba(124,92,255,.1); border-radius:20px; }
+.r-genmode { display:flex; flex-direction:column; align-items:stretch; gap:8px; margin-bottom:10px; }
+.r-genmode-lbl { font-size:.72rem; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+.r-genmode-opts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+@media (max-width:900px){ .r-genmode-opts { grid-template-columns:1fr; } }
+.r-genmode-opt { display:flex; align-items:flex-start; gap:9px; padding:9px 11px; border:1px solid var(--border); border-radius:10px; cursor:pointer; transition:border-color .12s, background .12s; }
+.r-genmode-opt:hover { border-color:var(--border-strong); }
+.r-genmode-opt:has(input:checked) { border-color:var(--accent); background:rgba(124,92,255,.1); }
+.r-genmode-opt input { margin-top:3px; }
+.r-genmode-opt span { display:flex; flex-direction:column; gap:2px; line-height:1.3; }
+.r-genmode-opt b { font-size:.82rem; font-weight:700; color:var(--text); }
+.r-genmode-opt em { font-style:normal; font-size:.7rem; color:var(--muted); }
+.r-genmode-hint { font-size:.76rem; color:var(--muted); }
+.r-gencount { align-self:flex-start; font-size:.8rem; font-weight:700; color:var(--accent); padding:3px 10px; border:1px solid rgba(124,92,255,.4); background:rgba(124,92,255,.1); border-radius:20px; }
 /* Dossiers / catégories (Modules 4 & 5) */
 .r-folderbar { display:flex; gap:5px; flex-wrap:wrap; padding:0 10px 7px; align-items:center; }
 .r-fchip { font-size:.74rem; padding:5px 12px; border-radius:20px; border:1px solid var(--border); color:var(--muted); background:rgba(255,255,255,.02); cursor:pointer; user-select:none; }
@@ -1903,7 +1912,6 @@ download as ZIP. No Claude Vision, no captions.
 </div>
 <div id="vPresetMsg" style="font-size:0.78rem;color:var(--muted);margin-top:8px;"></div>
 </div>
-</div>
 
 <!-- Estimated output -->
 <div class="card">
@@ -2420,13 +2428,13 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
       <div class="ws-stat ws-stat-status"><span class="ws-dot" id="rStatusDot"></span><span class="ws-stat-l" id="rInfoStatus">Prêt</span></div>
     </div>
     <div class="r-genmode">
-      <label class="r-genmode-lbl">Mode d'assignation</label>
-      <select id="rGenMode" class="r-tool-sel" onchange="rUpdateInfo()">
-        <option value="assigned">1 Reel = 1 Caption + 1 Musique (assignations)</option>
-        <option value="cap_all">Tous les Reels × toutes les Captions</option>
-        <option value="mus_all">Tous les Reels × toutes les Musiques</option>
-        <option value="full">Tous les Reels × toutes les Captions × toutes les Musiques</option>
-      </select>
+      <label class="r-genmode-lbl">Mode d'assignation des captions</label>
+      <div class="r-genmode-opts">
+        <label class="r-genmode-opt"><input type="radio" name="rGenMode" value="one_to_one" checked onchange="rUpdateInfo()"><span><b>Une caption par vidéo (1:1)</b><em>Vidéo 1 → Caption 1, Vidéo 2 → Caption 2… · une seule caption par vidéo</em></span></label>
+        <label class="r-genmode-opt"><input type="radio" name="rGenMode" value="all_x_all" onchange="rUpdateInfo()"><span><b>Toutes les captions × toutes les vidéos</b><em>chaque vidéo reçoit chaque caption · vidéos × captions</em></span></label>
+        <label class="r-genmode-opt"><input type="radio" name="rGenMode" value="same_caption" onchange="rUpdateInfo()"><span><b>Même caption sur toutes les vidéos</b><em>une seule caption appliquée à toutes · N vidéos</em></span></label>
+      </div>
+      <div class="r-genmode-hint" id="rGenModeHint"></div>
       <span class="r-gencount" id="rGenCount">0 vidéo à générer</span>
     </div>
     <button id="rGenBtn" class="primary-btn ws-gen-btn" onclick="reelsGenerate()" disabled>▶ Générer les reels</button>
@@ -3517,8 +3525,14 @@ async function rZipBackground(kind, id, btn, filenames){
         }catch(e){ clearInterval(iv); reject(e); }
       }, 700);
     });
-    // Téléchargement natif — le navigateur gère lui-même la progression.
-    window.location.href = "/zip_build_file?build_id=" + encodeURIComponent(bid);
+    // Téléchargement natif via un vrai lien <a download> (plus fiable que
+    // window.location sur les gros fichiers : ne navigue pas la page, laisse le
+    // gestionnaire de téléchargement de Chrome gérer Range/reprise). Le ZIP
+    // n'est PAS supprimé côté serveur pendant le download (purge > 2 h).
+    const url = "/zip_build_file?build_id=" + encodeURIComponent(bid);
+    const a = document.createElement("a");
+    a.href = url; a.download = ""; a.rel = "noopener";
+    document.body.appendChild(a); a.click(); a.remove();
     btn.textContent = "✅ Téléchargement lancé";
     return true;
   }catch(e){ alert("Erreur ZIP : " + e.message); btn.textContent = orig; return false; }
@@ -6163,32 +6177,50 @@ function rPreviewRenderCtl(){
     <button type="button" class="r-pv-btn danger" onclick="rStopPreview()" title="Fermer">✕</button>`;
 }
 
-// ── Assignation "tout croiser" (Module 1) — nombre de vidéos ──
-function rGenMode(){ return rVal("rGenMode") || "assigned"; }
-// Un reel avec plusieurs captions → 1 vidéo par caption (× musiques). Le mode
-// choisit si on croise avec TOUTE la bibliothèque ou juste les assignations.
-function _rJobCaps(r,mode){ return (mode==="cap_all"||mode==="full") ? (rCaptions.length?rCaptions.map(c=>c.id):[null]) : (r.capIds.length?r.capIds.slice():[null]); }
-function _rJobMus(r,mode){ return (mode==="mus_all"||mode==="full") ? (rMusic.length?rMusic.map(m=>m.id):[null]) : (r.musIds.length?r.musIds.slice():[null]); }
+// ── 3 modes d'assignation des captions (pilotés par la BIBLIOTHÈQUE) ──
+//  one_to_one  : vidéo i → caption i (boucle si moins de captions que de
+//                vidéos ; captions en trop ignorées) → 1 caption / vidéo · N vidéos.
+//  all_x_all   : chaque vidéo × chaque caption → vidéos × captions.
+//  same_caption: une seule caption (la 1re de la bibliothèque) sur toutes → N vidéos.
+// La musique reste celle assignée au reel (1re piste) — une par job, ne
+// multiplie jamais le nombre de sorties (l'estimation reste exacte, pilotée
+// par les captions, conforme à la spec).
+function rGenMode(){ const el=document.querySelector('input[name="rGenMode"]:checked'); return el?el.value:"one_to_one"; }
+function _rCapIds(){ return rCaptions.map(c=>c.id); }
+function _rReelMus(r){ return (r.musIds && r.musIds.length) ? r.musIds[0] : null; }
+
 function rGenCount(){
-  const mode=rGenMode(); if(!rReels.length) return 0;
-  let total=0; rReels.forEach(r=>{ total += _rJobCaps(r,mode).length * _rJobMus(r,mode).length; });
-  return total;
+  if(!rReels.length) return 0;
+  const nC=_rCapIds().length;
+  if(rGenMode()==="all_x_all") return rReels.length * Math.max(1, nC);
+  return rReels.length;               // one_to_one & same_caption : 1 sortie / vidéo
 }
 // Construit la liste des jobs (reelIndex, capId, musId, name) selon le mode.
 function rBuildJobs(){
-  const mode=rGenMode(); const jobs=[];
+  const mode=rGenMode(); const caps=_rCapIds(); const nC=caps.length; const jobs=[];
   rReels.forEach((r,i)=>{
     const base=(r.file.name.replace(/\.[^.]+$/,"")||`reel_${i+1}`);
-    const caps=_rJobCaps(r,mode), mus=_rJobMus(r,mode);
-    caps.forEach((cid,ci)=>mus.forEach((mid,mi)=>{
-      let name=base;
-      if(caps.length>1) name+=`_c${ci+1}`;
-      if(mus.length>1) name+=`_m${mi+1}`;
-      if(caps.length<=1 && mus.length<=1) name+=`_reel`;
-      jobs.push({i, capId:cid, musId:mid, name});
-    }));
+    const mid=_rReelMus(r);
+    if(mode==="all_x_all"){
+      const list = nC ? caps : [null];
+      list.forEach((cid,ci)=>{ jobs.push({i, capId:cid, musId:mid, name: base + (nC>1?`_c${ci+1}`:"_reel")}); });
+    } else if(mode==="same_caption"){
+      jobs.push({i, capId:(nC?caps[0]:null), musId:mid, name: base+"_reel"});
+    } else { // one_to_one
+      jobs.push({i, capId:(nC?caps[i % nC]:null), musId:mid, name: base+"_reel"});
+    }
   });
   return jobs;
+}
+// Libellé d'estimation détaillé selon le mode (affiché sous les options).
+function rGenModeHint(){
+  const el=document.getElementById("rGenModeHint"); if(!el) return;
+  const nR=rReels.length, nC=rCaptions.length, out=rGenCount();
+  let f="";
+  if(rGenMode()==="all_x_all") f=`${nR} vidéo${nR>1?"s":""} × ${nC} caption${nC>1?"s":""} = ${out}`;
+  else if(rGenMode()==="same_caption") f=`${nR} vidéo${nR>1?"s":""} × 1 caption = ${out}`;
+  else f=`${nR} vidéo${nR>1?"s":""} → ${out} sortie${out>1?"s":""} (1 caption chacune)`;
+  el.textContent = nR ? `Estimation : ${f}` : "Ajoute des reels pour estimer.";
 }
 
 // ── Info ──
@@ -6197,6 +6229,7 @@ function rUpdateInfo(){
   const nOut=rGenCount();
   set("rInfoReels", rReels.length); set("rInfoCap", rCaptions.length); set("rInfoMus", rMusic.length); set("rInfoOut", nOut);
   const gc=document.getElementById("rGenCount"); if(gc) gc.textContent = `${nOut} vidéo${nOut>1?"s":""} à générer`;
+  rGenModeHint();
   const gen=document.getElementById("rGenBtn"); if(gen) gen.disabled = rReels.length===0 || rReelsRunning;
   const dot=document.getElementById("rStatusDot"), lbl=document.getElementById("rInfoStatus");
   if(dot && !rReelsRunning){ if(rReview.length){ dot.className="ws-dot done"; if(lbl)lbl.textContent="Terminé · "+rReview.length; } else { dot.className="ws-dot ready"; if(lbl)lbl.textContent="Prêt"; } }

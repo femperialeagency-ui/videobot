@@ -3857,7 +3857,10 @@ def zip_build_status():
         return jsonify({"error": "Accès refusé"}), 403
     # Interruption (redémarrage serveur) : plus d'avancement et pas prêt.
     err = d.get("error")
-    if not d.get("ready") and not err and (time.time() - d.get("updated", 0)) > 90:
+    # Tolérance portée à 180 s : sur un très gros ZIP (ex. 280–500 vidéos), une
+    # seule écriture de fichier volumineux peut prendre du temps sans que le
+    # build soit réellement interrompu.
+    if not d.get("ready") and not err and (time.time() - d.get("updated", 0)) > 180:
         err = "Préparation interrompue — relance le téléchargement."
     total = max(1, d["total"])
     return jsonify({"total": d["total"], "done": d["done"],
@@ -3881,15 +3884,36 @@ def zip_build_file():
     if not os.path.exists(zp):
         return jsonify({"error": "ZIP introuvable sur le disque"}), 404
 
-    @after_this_request
-    def _rm(resp, _zp=zp, _bid=bid):
-        try: os.remove(_zp)
-        except Exception: pass
-        try: os.remove(str(_zip_json_path(_bid)))
-        except Exception: pass
-        return resp
+    # IMPORTANT : on ne SUPPRIME PLUS le ZIP ici. Chrome (surtout sur les gros
+    # fichiers) peut émettre une requête Range initiale, puis une seconde requête
+    # pour la suite / une reprise : si on supprimait le fichier dès la 1re
+    # réponse, la seconde requête tombait sur un fichier absent → « Fichier non
+    # disponible sur le site ». On garde donc le ZIP sur le disque (support des
+    # requêtes Range = reprise possible), et il est purgé par le nettoyage des
+    # builds > 2 h (déclenché à chaque nouveau build) ou par /zip_build_cleanup.
+    resp = send_file(zp, as_attachment=True, download_name=d["name"],
+                     mimetype="application/zip", conditional=True, etag=True)
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["Accept-Ranges"] = "bytes"
+    return resp
 
-    return send_file(zp, as_attachment=True, download_name=d["name"], mimetype="application/zip")
+
+@app.route("/zip_build_cleanup", methods=["POST"])
+def zip_build_cleanup():
+    """Suppression EXPLICITE du ZIP (appelée par le client bien après la fin du
+    téléchargement). Best-effort : ne renvoie jamais d'erreur bloquante. Le
+    fichier reste de toute façon purgé par _zip_cleanup_stale (> 2 h)."""
+    try:
+        bid = (request.get_json(force=True) or {}).get("build_id", "")
+        d = _zip_read(bid)
+        if d and d.get("uid") == _zip_uid():
+            try: os.remove(str(_zip_data_path(bid)))
+            except Exception: pass
+            try: os.remove(str(_zip_json_path(bid)))
+            except Exception: pass
+    except Exception:
+        pass
+    return jsonify({"ok": True})
 
 
 @app.route("/batch_zip", methods=["POST"])
