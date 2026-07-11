@@ -303,13 +303,22 @@ VARIATION_DEFAULT_STRENGTH = "light"  # used whenever the request omits/sends an
 # Deliberately limited to real, currently-common devices — no fictional
 # "future" hardware, no GPS fields (per spec's forbidden list).
 VARIATION_METADATA_PROFILES = [
-    {"label": "iPhone 14 Pro",     "encoder": "HEVC",       "software": "iOS 17.4",    "comment": "Recorded on iPhone 14 Pro"},
-    {"label": "iPhone 15 Pro",     "encoder": "HEVC",       "software": "iOS 17.5",    "comment": "Recorded on iPhone 15 Pro"},
-    {"label": "iPhone 16 Pro",     "encoder": "HEVC",       "software": "iOS 18.1",    "comment": "Recorded on iPhone 16 Pro"},
-    {"label": "Samsung Galaxy S23","encoder": "Lavc60.3",   "software": "Android 14",  "comment": "Galaxy S23 camera"},
-    {"label": "Samsung Galaxy S24","encoder": "Lavc60.16",  "software": "Android 14",  "comment": "Galaxy S24 camera"},
-    {"label": "Google Pixel 8",    "encoder": "Lavc60.3.100","software": "Android 15", "comment": "Pixel 8 camera"},
+    {"label": "iPhone 14 Pro",     "encoder": "HEVC",       "software": "iOS 17.4",    "comment": "Recorded on iPhone 14 Pro", "platform": "apple",   "make": "Apple",   "model": "iPhone 14 Pro"},
+    {"label": "iPhone 15 Pro",     "encoder": "HEVC",       "software": "iOS 17.5",    "comment": "Recorded on iPhone 15 Pro", "platform": "apple",   "make": "Apple",   "model": "iPhone 15 Pro"},
+    {"label": "iPhone 16 Pro",     "encoder": "HEVC",       "software": "iOS 18.1",    "comment": "Recorded on iPhone 16 Pro", "platform": "apple",   "make": "Apple",   "model": "iPhone 16 Pro"},
+    {"label": "Samsung Galaxy S23","encoder": "Lavc60.3",   "software": "Android 14",  "comment": "Galaxy S23 camera",         "platform": "android", "make": "samsung", "model": "SM-S911B"},
+    {"label": "Samsung Galaxy S24","encoder": "Lavc60.16",  "software": "Android 14",  "comment": "Galaxy S24 camera",         "platform": "android", "make": "samsung", "model": "SM-S921B"},
+    {"label": "Google Pixel 8",    "encoder": "Lavc60.3.100","software": "Android 15", "comment": "Pixel 8 camera",            "platform": "android", "make": "Google",  "model": "Pixel 8"},
 ]
+# Handlers plausibles (varient naturellement d'un export à l'autre) : Apple écrit
+# "Core Media Video/Audio", Android écrit "VideoHandle/SoundHandle" ou vide.
+_HANDLER_POOL = {
+    "apple":   {"v": ["Core Media Video", "Core Media Video "],           "a": ["Core Media Audio", "Core Media Audio "]},
+    "android": {"v": ["VideoHandle", "ISO Media file produced by Google", "Video Media Handler"], "a": ["SoundHandle", "Audio Media Handler"]},
+}
+# Marques de conteneur MP4 réalistes (major_brand) et versions mineures.
+_MAJOR_BRANDS = ["mp42", "isom", "iso5", "M4V "]
+_MINOR_VERSIONS = ["0", "1", "512", "537199360"]
 
 # ── App-source / origine simulée (métadonnées uniquement — n'altère JAMAIS
 # l'image ni l'audio ; pas de GPS). ──
@@ -1190,6 +1199,62 @@ def _pick_advanced_metadata_profile(level: float, rng: "random.Random") -> dict:
     return baseline
 
 
+def _safety_clamp_params(params: dict) -> dict:
+    """Couche de sécurité ULTIME appliquée à TOUT jeu de paramètres de
+    variation (préréglages ET avancé, 1 vidéo ET plusieurs vidéos — c'est le
+    même moteur). Deux étages :
+      1) bornes dures GARANTIES sûres par paramètre (aucune valeur ne peut
+         seule produire une image blanche/grise/noire/glitch/crop absurde/
+         zoom excessif/rotation cassée/bruit excessif) ;
+      2) réduction CUMULÉE : si la somme des intensités visuelles dépasse un
+         budget, on ramène proportionnellement CHAQUE effet vers le neutre —
+         on préfère une variation un peu plus douce à une vidéo inutilisable.
+    Rétro-compatible (les presets restent valides) et ne lève jamais. 'gamma'
+    reste optionnel : on ne le force que s'il est déjà présent (le mode
+    Préréglages ne le fournit pas → formule d'origine inchangée)."""
+    p = dict(params or {})
+    def cl(k, lo, hi, default):
+        try: v = float(p.get(k, default))
+        except Exception: v = default
+        v = max(lo, min(hi, v)); p[k] = v; return v
+    has_gamma = p.get("gamma") is not None
+    b  = cl("brightness",   -0.10, 0.10, 0.0)
+    c  = cl("contrast",      0.90, 1.12, 1.0)
+    s  = cl("saturation",    0.88, 1.15, 1.0)
+    g  = cl("gamma",         0.90, 1.12, 1.0) if has_gamma else 1.0
+    z  = cl("zoom",          1.00, 1.08, 1.0)
+    cr = cl("crop_pct",      0.00, 0.05, 0.0)
+    ro = cl("rotation_deg", -1.20, 1.20, 0.0)
+    cl("speed",              0.94, 1.06, 1.0)
+    cl("pitch",              0.97, 1.03, 1.0)
+    cl("volume",             0.85, 1.15, 1.0)
+    n  = cl("noise_strength", 0.0, 5.0, 0.0)
+    sh = cl("sharpen_amount", 0.0, 0.4, 0.0)
+    bl = cl("blur_sigma",     0.0, 1.2, 0.0)
+    cl("bitrate_mult",       0.80, 1.30, 1.0)
+    try: p["fps_delta"] = max(-10, min(10, int(p.get("fps_delta", 0) or 0)))
+    except Exception: p["fps_delta"] = 0
+    # ── Étage 2 : réduction cumulée (charge visuelle normalisée ~[0..1] chacun) ──
+    load = (abs(b) / 0.10 + abs(c - 1) / 0.15 + abs(s - 1) / 0.15
+            + (abs(g - 1) / 0.10 if has_gamma else 0.0)
+            + n / 5.0 + bl / 1.2 + sh / 0.4
+            + (z - 1) / 0.08 + cr / 0.05 + abs(ro) / 1.20)
+    BUDGET = 2.2   # au-delà, on considère le cumul d'effets potentiellement risqué
+    if load > BUDGET:
+        f = BUDGET / load
+        p["brightness"]     = b * f
+        p["contrast"]       = 1 + (c - 1) * f
+        p["saturation"]     = 1 + (s - 1) * f
+        if has_gamma: p["gamma"] = 1 + (g - 1) * f
+        p["noise_strength"] = n * f
+        p["blur_sigma"]     = bl * f
+        p["sharpen_amount"] = sh * f
+        p["zoom"]           = 1 + (z - 1) * f
+        p["crop_pct"]       = cr * f
+        p["rotation_deg"]   = ro * f
+    return p
+
+
 def _build_variation_filter_graph(params: dict, src_w: int, src_h: int):
     """
     Builds the -vf / -af FFmpeg filter strings for ONE variation from an
@@ -1204,6 +1269,11 @@ def _build_variation_filter_graph(params: dict, src_w: int, src_h: int):
     """
     src_w = max(2, int(src_w or 1280))
     src_h = max(2, int(src_h or 720))
+
+    # Sécurité : clamps durs + réduction cumulée AVANT toute construction de
+    # filtre. Rend impossible toute sortie inutilisable, même en réglages
+    # extrêmes. Les clamps par filtre ci-dessous restent en 2e ligne de défense.
+    params = _safety_clamp_params(params)
 
     # ── Video filter chain ──
     vf_parts = []
@@ -1349,8 +1419,11 @@ def _build_variation_ffmpeg_cmd(path_in: str, path_out: str, params: dict,
     """
     vf, af, _out_fps = _build_variation_filter_graph(params, src_w, src_h)
 
-    bitrate_mult = max(0.7, min(1.4, float(params.get("bitrate_mult", 1.0))))
-    target_kbps  = max(400, int(src_bitrate_kbps * bitrate_mult))
+    # Bitrate : jamais assez bas pour détruire la vidéo. On borne le multiplicateur
+    # ET on impose un plancher RELATIF à la source (≥ 75% du débit source, min 600k)
+    # → pas de compression qui « détruit » l'image.
+    bitrate_mult = max(0.8, min(1.3, float(params.get("bitrate_mult", 1.0))))
+    target_kbps  = max(600, int(src_bitrate_kbps * 0.75), int(src_bitrate_kbps * bitrate_mult))
 
     # App-source & origine simulée (métadonnées seulement) : surchargent le
     # profil appareil si demandé, sans jamais toucher au flux vidéo/audio.
@@ -1396,7 +1469,38 @@ def _build_variation_ffmpeg_cmd(path_in: str, path_out: str, params: dict,
             "-metadata:s:a:0", f"language={origin_meta['lang']}",
             "-metadata", f"country={origin_meta['country']}",
         ]
+
+    # ── Métadonnées enrichies (LOT 4) — tout ce qui varie naturellement d'un
+    # export réel à l'autre, sans jamais toucher au flux ni casser la
+    # compatibilité MP4 : make/model appareil, handlers de stream, timestamps
+    # de stream, marque de conteneur, version mineure, tool d'encodage. ──
+    plat = (profile.get("platform") or "").lower()
+    make = (app_meta or {}).get("make") or profile.get("make")
+    model = (app_meta or {}).get("model") or profile.get("model")
+    hp = _HANDLER_POOL.get(plat)
+    if hp:
+        cmd += [
+            "-metadata:s:v:0", f"handler_name={random.choice(hp['v'])}",
+            "-metadata:s:a:0", f"handler_name={random.choice(hp['a'])}",
+        ]
+    # creation_time aussi au niveau des streams (comme les vrais fichiers appareil)
     cmd += [
+        "-metadata:s:v:0", f"creation_time={creation_time}",
+        "-metadata:s:a:0", f"creation_time={creation_time}",
+    ]
+    if plat == "apple":
+        if make:  cmd += ["-metadata", f"com.apple.quicktime.make={make}"]
+        if model: cmd += ["-metadata", f"com.apple.quicktime.model={model}"]
+        cmd += ["-metadata", f"com.apple.quicktime.creationdate={creation_time}"]
+    elif plat == "android":
+        if make:  cmd += ["-metadata", f"com.android.manufacturer={make}"]
+        if model: cmd += ["-metadata", f"com.android.model={model}"]
+        cmd += ["-metadata", f"com.android.version={(soft or 'Android 14').split()[-1]}"]
+
+    cmd += [
+        # Marque de conteneur + version mineure (varient entre appareils/apps).
+        "-brand", random.choice(_MAJOR_BRANDS),
+        "-metadata", f"minor_version={random.choice(_MINOR_VERSIONS)}",
         "-movflags", "+faststart",
         "-loglevel", "error",
         str(path_out),

@@ -1888,6 +1888,25 @@ download as ZIP. No Claude Vision, no captions.
 <div id="vCountWarning" style="display:none;color:var(--error);font-size:0.8rem;margin-top:8px;">Maximum 100 variations allowed.</div>
 </div>
 
+<!-- Contrôles de variation : même moteur que « Plusieurs vidéos »
+     (Préréglages / Avancé). Restauré : toggle + intensité + doubles curseurs. -->
+<div class="v-section-label"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.5 5.5 H14.5 M3.5 9 H14.5 M3.5 12.5 H14.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="5.5" r="1.5" fill="currentColor"/><circle cx="11.5" cy="9" r="1.5" fill="currentColor"/><circle cx="6" cy="12.5" r="1.5" fill="currentColor"/></svg></span> Contrôles de variation</div>
+<div class="v-modeswitch">
+<label><input type="radio" name="vConfigMode" value="preset" checked> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 15 L11 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M14.5 2.6 L15 3.8 L16.2 4.3 L15 4.8 L14.5 6 L14 4.8 L12.8 4.3 L14 3.8 Z" fill="currentColor"/></svg></span> Mode Préréglages <span style="font-weight:500;opacity:.8">(débutant)</span></label>
+<label><input type="radio" name="vConfigMode" value="advanced"> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3.4 a3 3 0 0 0-4 3.7 L4 11.2 a1.5 1.5 0 0 0 2.1 2.1 l4.1-4.1 a3 3 0 0 0 3.7-4 l-2 2-1.4-.4-.4-1.4 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span> Mode Avancé <span style="font-weight:500;opacity:.8">(16 réglages min → max)</span></label>
+</div>
+
+<!-- Preset panel (intensité) -->
+<div id="vPresetPanel">
+<div style="font-size:0.84rem;font-weight:600;margin-bottom:8px;color:var(--text)">Intensité des variations</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;">
+<label class="v-opt"><input type="radio" name="vStrength" value="light" checked> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="3" height="4" rx="1" fill="currentColor"/><rect x="7.5" y="7" width="3" height="8" rx="1" fill="currentColor" opacity=".22"/><rect x="12" y="3" width="3" height="12" rx="1" fill="currentColor" opacity=".22"/></svg></span> Légère</label>
+<label class="v-opt"><input type="radio" name="vStrength" value="medium"> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="3" height="4" rx="1" fill="currentColor"/><rect x="7.5" y="7" width="3" height="8" rx="1" fill="currentColor"/><rect x="12" y="3" width="3" height="12" rx="1" fill="currentColor" opacity=".22"/></svg></span> Moyenne</label>
+<label class="v-opt"><input type="radio" name="vStrength" value="strong"> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="3" height="4" rx="1" fill="currentColor"/><rect x="7.5" y="7" width="3" height="8" rx="1" fill="currentColor"/><rect x="12" y="3" width="3" height="12" rx="1" fill="currentColor"/></svg></span> Forte</label>
+</div>
+<div style="font-size:0.78rem;color:var(--muted);margin-top:8px;">Légère = changements discrets (recommandé). Plus l'intensité augmente, plus les vidéos générées diffèrent visuellement de la source.</div>
+</div>
+
 <!-- Advanced mode panel -->
 <div id="vAdvancedPanel">
 <div class="v-adv-topbar"><input type="text" id="vAdvSearch" class="r-tool-input" placeholder="🔎 Rechercher (lum, meta, vitesse…)" oninput="vAdvSearch(this.value)"><button type="button" class="r-mini-btn" onclick="vAdvCollapseAll(false)">▾ Tout développer</button><button type="button" class="r-mini-btn" onclick="vAdvCollapseAll(true)">▸ Tout réduire</button><button type="button" class="r-mini-btn" id="vResetAdvBtn">↺ Réinitialiser tous</button><button type="button" class="r-mini-btn r-accent" id="vRandomizeBtn">🎲 Randomiser</button></div>
