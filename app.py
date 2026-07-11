@@ -2416,10 +2416,112 @@ def _load_caption_font(fontsize: int):
 # for plain text). Graphics: Twemoji, CC-BY 4.0 (see static/emoji/twemoji/
 # NOTICE.txt). No Apple emoji, no Apple CDN, no Apple files.
 # ══════════════════════════════════════════════════════════════════
+# POURQUOI PAS D'EMOJIS APPLE (licence) — À NE PAS "CORRIGER" :
+#   Les emojis Apple (police "Apple Color Emoji", jeu iOS/macOS) sont des
+#   œuvres propriétaires protégées. La licence logicielle Apple (SLA) réserve
+#   ces glyphes aux plateformes Apple : on n'a PAS le droit de les extraire,
+#   redistribuer, ni les intégrer dans un produit tiers / un rendu serveur.
+#   Les recopier ou les servir depuis un CDN reviendrait à distribuer des
+#   assets Apple sans licence = risque juridique. C'est pour cela qu'aucun
+#   fichier/police/CDN Apple n'est utilisé ici.
+#
+# CHOIX DU JEU LE PLUS "APPLE-LIKE" (open-source, licence permissive) :
+#   1. Fluent Emoji (Microsoft, MIT) — le plus premium / proche du rendu iOS,
+#      mais nommé par description CLDR ("smiling face"), pas par code-point →
+#      impose une table de correspondance nom→codepoint pour l'export FFmpeg.
+#   2. OpenMoji (CC-BY-SA 4.0) — PNG 72×72 nommés par code-point (1F600.png),
+#      mapping direct, style cohérent.
+#   3. Noto Emoji (Google, Apache-2.0) — filet de sécurité déjà présent.
+#   Jeu ACTIF = Twemoji (déjà bundlé, CC-BY 4.0, nommage code-point). La
+#   bascule vers un autre jeu est centralisée dans _EMOJI_SET ci-dessous :
+#   il suffit de déposer le pack sous static/emoji/<set>/72x72 avec le même
+#   nommage code-point puis de changer cette seule constante — le picker, la
+#   preview et l'export FFmpeg suivent automatiquement (WYSIWYG garanti).
+# ══════════════════════════════════════════════════════════════════
 
-_TWEMOJI_DIR  = Path(__file__).parent / "static" / "emoji" / "twemoji" / "72x72"
+# Source de vérité UNIQUE du jeu d'emoji (partagée backend + frontend via la
+# route /emoji_set). Changer ces 2 valeurs suffit à basculer tout le rendu.
+_EMOJI_SET  = "twemoji"          # jeu de SECOURS bundlé (couverture complète)
+_EMOJI_SIZE = "72x72"
+
+_TWEMOJI_DIR  = Path(__file__).parent / "static" / "emoji" / _EMOJI_SET / _EMOJI_SIZE
 _LOCAL_TWEMOJI = None              # cached source instance (lazy)
 _LOCAL_TWEMOJI_BUILT = False       # whether we've attempted to build it
+
+# ══════════════════════════════════════════════════════════════════
+# JEU D'EMOJI ACTIF : Fluent Emoji 3D (Microsoft, licence MIT) — le plus
+# proche d'Apple visuellement. SYSTÈME PARESSEUX (pas de bundle de 4000 PNG) :
+#   • un petit index texte (static/emoji/fluent_index.json, ~220 Ko) mappe
+#     nos noms code-point → l'asset Fluent sur le CDN jsdelivr ;
+#   • au PREMIER usage d'un emoji (picker/preview via la route /emoji, ou
+#     export FFmpeg via pilmoji), on télécharge CE seul PNG, on le met en
+#     cache disque (static/emoji/fluent/72x72/<name>.png), puis on le sert ;
+#   • ainsi le dossier ne contient QUE les emojis réellement utilisés.
+# UNE SEULE COUCHE D'ABSTRACTION = _emoji_local_file(name) : picker, preview,
+# rendu FFmpeg et export final passent tous par elle → WYSIWYG strict.
+# Fallback chaîné, jamais cassé : Fluent (si mappé + réseau OK) → Twemoji
+# bundlé (couverture totale, ex. drapeaux que Fluent n'a pas) → natif.
+# Changer de bibliothèque plus tard = remplacer l'index + le CDN ci-dessous.
+# ══════════════════════════════════════════════════════════════════
+_EMOJI_CACHE_DIR = Path(__file__).parent / "static" / "emoji" / "fluent" / _EMOJI_SIZE
+_EMOJI_INDEX_PATH = Path(__file__).parent / "static" / "emoji" / "fluent_index.json"
+_EMOJI_INDEX = None
+_EMOJI_INDEX_BASE = "https://cdn.jsdelivr.net/gh/microsoft/fluentui-emoji"
+
+
+def _load_emoji_index():
+    """Charge (une fois) l'index code-point→asset Fluent. Jamais d'exception."""
+    global _EMOJI_INDEX, _EMOJI_INDEX_BASE
+    if _EMOJI_INDEX is not None:
+        return _EMOJI_INDEX
+    try:
+        import json as _json
+        data = _json.loads(_EMOJI_INDEX_PATH.read_text(encoding="utf-8"))
+        _EMOJI_INDEX = data.get("map", {}) or {}
+        _EMOJI_INDEX_BASE = data.get("base", _EMOJI_INDEX_BASE)
+    except Exception as e:
+        import sys as _sys
+        print(f"[EMOJI] index Fluent indisponible ({e}) → fallback Twemoji", file=_sys.stderr)
+        _EMOJI_INDEX = {}
+    return _EMOJI_INDEX
+
+
+def _emoji_local_file(name: str):
+    """Résout un nom code-point (ex. '1f525', '1f44d-1f3fd') vers un fichier
+    PNG LOCAL, en téléchargeant l'asset Fluent au premier usage puis en le
+    mettant en cache. Fallback : Twemoji bundlé, sinon None. C'est l'UNIQUE
+    point d'accès aux assets emoji (route web + pilmoji) → garantit le WYSIWYG.
+    Ne lève jamais d'exception."""
+    import sys as _sys
+    try:
+        cached = _EMOJI_CACHE_DIR / f"{name}.png"
+        if cached.exists() and cached.stat().st_size > 0:
+            return cached
+        rel = _load_emoji_index().get(name)
+        if rel:
+            try:
+                import urllib.parse as _up, urllib.request as _ur, tempfile as _tf, os as _os
+                url = _EMOJI_INDEX_BASE + "/" + _up.quote(rel)
+                _EMOJI_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                req = _ur.Request(url, headers={"User-Agent": "ViralScale/1.0"})
+                with _ur.urlopen(req, timeout=8) as resp:
+                    blob = resp.read()
+                if blob:
+                    # écriture atomique (multi-worker/threads safe)
+                    fd, tmp = _tf.mkstemp(dir=str(_EMOJI_CACHE_DIR), suffix=".part")
+                    with _os.fdopen(fd, "wb") as fh:
+                        fh.write(blob)
+                    _os.replace(tmp, str(cached))
+                    return cached
+            except Exception as e:
+                print(f"[EMOJI] Fluent download MISS {name} ({e}) → Twemoji", file=_sys.stderr)
+        # fallback Twemoji bundlé (couverture complète)
+        tw = _TWEMOJI_DIR / f"{name}.png"
+        if tw.exists():
+            return tw
+    except Exception as e:
+        print(f"[EMOJI] résolution échouée {name} ({e})", file=_sys.stderr)
+    return None
 
 
 def _twemoji_codepoints(emoji_str: str) -> str:
@@ -2449,21 +2551,22 @@ def _get_local_twemoji_source():
         from pilmoji.source import BaseSource
 
         class LocalTwemojiSource(BaseSource):
-            """Serves Twemoji 72x72 PNGs from disk; None for any missing
-            emoji (→ fallback handles it). No network, never raises.
-            Logs: MISS + source/mode always (diagnostic), HIT only when
-            OCR_EMOJI_DEBUG=1 (avoids per-emoji spam in prod)."""
+            """Sert les PNG emoji depuis le résolveur UNIQUE _emoji_local_file
+            (Fluent téléchargé/caché au 1er usage → Twemoji bundlé → None). Le
+            rendu FFmpeg utilise donc EXACTEMENT les mêmes assets que le picker
+            et la preview (WYSIWYG). None pour tout emoji manquant (→ fallback
+            natif de pilmoji). Ne lève jamais. HIT loggé si OCR_EMOJI_DEBUG=1."""
             def get_emoji(self, emoji, /):
                 try:
-                    name = _twemoji_codepoints(emoji) + ".png"
-                    p = _TWEMOJI_DIR / name
-                    if p.exists():
+                    name = _twemoji_codepoints(emoji)
+                    p = _emoji_local_file(name)
+                    if p is not None:
                         if _dbg:
-                            print(f"[TWEMOJI] HIT emoji={emoji!r} file={name}", file=_sys.stderr)
+                            print(f"[EMOJI] HIT emoji={emoji!r} file={p.name}", file=_sys.stderr)
                         return BytesIO(p.read_bytes())
-                    print(f"[TWEMOJI] MISS emoji={emoji!r} file={name}", file=_sys.stderr)
+                    print(f"[EMOJI] MISS emoji={emoji!r} name={name}", file=_sys.stderr)
                 except Exception as e:
-                    print(f"[TWEMOJI] MISS emoji={emoji!r} (error: {e})", file=_sys.stderr)
+                    print(f"[EMOJI] MISS emoji={emoji!r} (error: {e})", file=_sys.stderr)
                 return None
 
             def get_discord_emoji(self, id, /):
@@ -3265,7 +3368,29 @@ def index():
         dashboard_summary=dashboard_summary,
         dashboard_usage_by_mode=dashboard_usage_by_mode,
         dashboard_recent_activity=dashboard_recent_activity,
+        # LOT 3 — point d'accès emoji UNIQUE (route paresseuse Fluent→Twemoji).
+        # Picker, preview et export FFmpeg passent tous par /emoji/<name>.png →
+        # exactement les mêmes assets partout (WYSIWYG garanti).
+        emoji_base="/emoji",
     )
+
+
+@app.route("/emoji/<name>.png")
+def emoji_asset(name):
+    """Point d'accès UNIQUE aux assets emoji pour le picker et la preview.
+    Résout via _emoji_local_file (Fluent téléchargé+caché au 1er usage, sinon
+    Twemoji bundlé). Le rendu FFmpeg passe par le même résolveur → WYSIWYG.
+    404 si aucun asset (le front bascule alors sur l'emoji natif via onerror)."""
+    import re as _re
+    from flask import send_file
+    if not _re.fullmatch(r"[0-9a-f]{1,6}(?:-[0-9a-f]{1,6})*", name or ""):
+        return ("", 404)
+    p = _emoji_local_file(name)
+    if p is None:
+        return ("", 404)
+    resp = send_file(str(p), mimetype="image/png", conditional=True)
+    resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return resp
 
 
 @app.route("/analyze", methods=["POST"])

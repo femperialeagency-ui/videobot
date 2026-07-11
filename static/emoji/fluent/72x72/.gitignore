@@ -1,0 +1,3 @@
+# cache emoji Fluent téléchargé à la demande (ne pas versionner les PNG)
+*.png
+*.part

@@ -917,12 +917,19 @@ body {
 .ws-lbl { color:var(--text); }
 .ws-sep { width:1px; height:18px; background:var(--border); }
 .ws-genbar { display:flex; flex-direction:column; gap:10px; }
-/* P3 — Paramètres Batch en 3 sections claires */
-/* 3 colonnes EXACTEMENT égales (minmax(0,1fr)) + même alignement, séparées par le gap. */
-.ws-settings-3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:22px; align-items:start; }
-@media (max-width:820px){ .ws-settings-3 { grid-template-columns:1fr; } }
-.ws-set-sec { display:flex; flex-direction:column; gap:7px; min-width:0; }
-.ws-set-h { font-size:.66rem; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:3px; height:14px; }
+/* LOT 5 — Paramètres Batch : 3 cartes EXACTEMENT égales (minmax(0,1fr)),
+   nettement plus lisibles. Chaque groupe est une carte à part entière
+   (fond + bordure + padding identiques) avec un en-tête à icône, pour
+   qu'on distingue au premier coup d'œil Mode / OCR / Options. */
+.ws-settings-3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; align-items:stretch; }
+@media (max-width:900px){ .ws-settings-3 { grid-template-columns:1fr; } }
+.ws-set-sec { display:flex; flex-direction:column; gap:8px; min-width:0;
+  background:rgba(255,255,255,.025); border:1px solid var(--border);
+  border-radius:12px; padding:13px 13px 14px; }
+.ws-set-h { display:flex; align-items:center; gap:7px; font-size:.72rem; font-weight:800;
+  text-transform:uppercase; letter-spacing:.05em; color:var(--text);
+  margin:0 0 4px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+.ws-set-h::before { content:attr(data-ico); font-size:.95rem; }
 .v-opt2 { display:flex; align-items:center; gap:9px; padding:7px 9px; border:1px solid var(--border); border-radius:9px; cursor:pointer; transition:border-color .12s, background .12s; }
 .v-opt2:hover { border-color:var(--border-strong); }
 .v-opt2:has(input:checked) { border-color:var(--accent); background:rgba(124,92,255,.09); }
@@ -1043,6 +1050,13 @@ body {
 .r-edit-box { width:min(1320px,98vw); }
 /* GAUCHE preview XL · CENTRE réglages compacts · DROITE gestion caption */
 .r-edit3 { display:grid; grid-template-columns:minmax(280px,344px) 248px minmax(280px,1fr); gap:14px; align-items:start; }
+/* LOT 1 — mode « espace de travail maximal » : la colonne centrale (réglages
+   de position) est repliée par défaut à l'ouverture de l'éditeur, ce qui
+   donne un maximum de largeur à l'aperçu du reel (gauche) et à la gestion
+   des captions (droite). Réversible d'un clic via le bouton ⚙. La position
+   reste éditable en glissant directement le texte sur la vidéo. */
+.r-edit3.r-nocenter { grid-template-columns:minmax(360px,1.25fr) minmax(320px,1fr); }
+.r-edit3.r-nocenter .r-edit-center { display:none; }
 .r-edit-left { display:flex; flex-direction:column; gap:8px; }
 .r-edit-center { min-width:0; display:flex; flex-direction:column; gap:8px; }
 .r-edit-right { min-width:0; max-height:80vh; overflow-y:auto; display:flex; flex-direction:column; gap:10px; padding-right:2px; }
@@ -1059,6 +1073,15 @@ body {
 .r-presets-acc > summary::-webkit-details-marker { display:none; }
 .r-presets-acc[open] > summary { color:var(--text); }
 .r-presets-acc .r-preset-bar, .r-presets-acc .r-preset-add { margin:0 10px 10px; }
+/* LOT 2 — Onglets instantanés Captions / Musiques (style CapCut, sans scroll) */
+.r-edit-tabs { display:flex; gap:6px; margin-bottom:10px; }
+.r-edit-tab { flex:1; padding:9px 8px; border:1px solid var(--border); border-radius:9px;
+  background:var(--panel2,rgba(255,255,255,.03)); color:var(--muted,#9aa); font-size:.8rem;
+  font-weight:700; cursor:pointer; transition:.12s; }
+.r-edit-tab:hover { color:var(--text); }
+.r-edit-tab.active { background:rgba(124,92,255,.16); color:#cdbcff; border-color:rgba(124,92,255,.5); }
+.r-edit-tabpane { animation:rTabIn .12s ease; }
+@keyframes rTabIn { from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:none} }
 /* Changer de caption (repliable, compact) */
 .r-capswitch { border:1px solid var(--border); border-radius:8px; }
 .r-capswitch > summary { list-style:none; cursor:pointer; padding:8px 11px; font-size:.76rem; font-weight:700; color:var(--text); }
@@ -1602,12 +1625,19 @@ SIMPLE MODE
 <div class="adv-params-body">
 <div class="adv-row">
 <span class="adv-lbl">OCR :</span>
-<label class="v-opt"><input type="radio" name="ocrModeS" value="auto"> Auto hybride 🤖 <span style="font-weight:500;opacity:.7">(local + Vision si besoin — coût réduit)</span></label>
-<label class="v-opt"><input type="radio" name="ocrModeS" value="local"> Local ⚡ <span style="font-weight:500;opacity:.7">(0 coût API · Tesseract)</span></label>
-<label class="v-opt"><input type="radio" name="ocrModeS" value="sonnet" checked> Sonnet ⭐ <span style="font-weight:500;opacity:.7">(Recommandé)</span></label>
-<label class="v-opt"><input type="radio" name="ocrModeS" value="opus"> Opus 👑 <span style="font-weight:500;opacity:.7">(Qualité max)</span></label>
+<label class="v-opt"><input type="radio" name="ocrModeS" value="local"> Local <span style="font-weight:500;opacity:.7">(gratuit)</span></label>
+<label class="v-opt"><input type="radio" name="ocrModeS" value="auto" checked> Auto ⭐ <span style="font-weight:500;opacity:.7">(recommandé)</span></label>
+<label class="v-opt"><input type="radio" name="ocrModeS" value="vision" onchange="_ocrVisAdv('S')"> Vision <span style="font-weight:500;opacity:.7">(haute qualité)</span></label>
 <button type="button" class="v-ghost-btn" onclick="reanalyzeNoCache()" title="Force une nouvelle analyse Vision en ignorant le cache OCR">🔄 Réanalyser sans cache</button>
 </div>
+<details class="adv-params" id="ocrAdvS" style="margin:6px 0 0;">
+<summary><span class="adv-chev">▸</span> Paramètres avancés <span class="adv-hint">modèle Vision</span></summary>
+<div class="adv-params-body"><div class="adv-row">
+<span class="adv-lbl">Vision :</span>
+<label class="v-opt"><input type="radio" name="ocrVisionS" value="sonnet" checked onchange="_ocrPickVision('S')"> Sonnet ⭐</label>
+<label class="v-opt"><input type="radio" name="ocrVisionS" value="opus" onchange="_ocrPickVision('S')"> Opus 👑 <span style="font-weight:500;opacity:.7">(qualité maximale)</span></label>
+</div></div>
+</details>
 <div class="adv-row">
 <span class="adv-lbl">Contour CapCut :</span>
 <label class="v-opt"><input type="radio" name="capcutOutlineS" value="1" checked> Activé</label>
@@ -1715,20 +1745,25 @@ BATCH MODE
     <div class="ws-settings-title"><span class="ws-step-badge">3</span> Mode Batch &amp; paramètres</div>
     <div class="ws-settings-3">
       <div class="ws-set-sec">
-        <div class="ws-set-h">Mode de génération</div>
+        <div class="ws-set-h" data-ico="🎛️">Mode de génération</div>
         <label class="v-opt2"><input type="radio" name="bStrategy" value="matrix" checked onchange="onBatchStrategyChange()"> <span><b>Matrice (A × B)</b><em>toutes les combinaisons</em></span></label>
         <label class="v-opt2"><input type="radio" name="bStrategy" value="pairing" onchange="onBatchStrategyChange()"> <span><b>Pairing / Shuffle</b><em>appariement 1-à-1</em></span></label>
         <label class="v-opt2"><input type="radio" name="bStrategy" value="variations" onchange="onBatchStrategyChange()"> <span><b>Variations par A ⭐</b><em>N sorties par vidéo A</em></span></label>
       </div>
       <div class="ws-set-sec">
-        <div class="ws-set-h">Moteur OCR</div>
-        <label class="v-opt2"><input type="radio" name="ocrModeB" value="auto"> <span><b>Auto hybride 🤖</b><em>local + Vision si besoin</em></span></label>
-        <label class="v-opt2"><input type="radio" name="ocrModeB" value="local"> <span><b>Local ⚡</b><em>0 coût API · Tesseract</em></span></label>
-        <label class="v-opt2"><input type="radio" name="ocrModeB" value="sonnet" checked> <span><b>Sonnet ⭐</b><em>recommandé</em></span></label>
-        <label class="v-opt2"><input type="radio" name="ocrModeB" value="opus"> <span><b>Opus 👑</b><em>qualité maximale</em></span></label>
+        <div class="ws-set-h" data-ico="🔍">Moteur OCR</div>
+        <label class="v-opt2"><input type="radio" name="ocrModeB" value="local"> <span><b>Local</b><em>gratuit</em></span></label>
+        <label class="v-opt2"><input type="radio" name="ocrModeB" value="auto" checked> <span><b>Auto ⭐</b><em>recommandé</em></span></label>
+        <label class="v-opt2"><input type="radio" name="ocrModeB" value="vision" onchange="_ocrVisAdv('B')"> <span><b>Vision</b><em>haute qualité</em></span></label>
+        <details class="adv-params" id="ocrAdvB" style="margin:8px 0 0;">
+        <summary><span class="adv-chev">▸</span> Paramètres avancés <span class="adv-hint">modèle Vision</span></summary>
+        <div class="adv-params-body" style="padding-top:6px">
+        <label class="v-opt2" style="margin:0 0 6px"><input type="radio" name="ocrVisionB" value="sonnet" checked onchange="_ocrPickVision('B')"> <span><b>Sonnet ⭐</b><em>recommandé</em></span></label>
+        <label class="v-opt2" style="margin:0"><input type="radio" name="ocrVisionB" value="opus" onchange="_ocrPickVision('B')"> <span><b>Opus 👑</b><em>qualité maximale</em></span></label>
+        </div></details>
       </div>
       <div class="ws-set-sec">
-        <div class="ws-set-h">Options</div>
+        <div class="ws-set-h" data-ico="⚙️">Options</div>
         <label class="v-opt2"><input type="radio" name="capcutOutlineB" value="1" checked> <span><b>Contour CapCut activé</b><em>liseré style CapCut</em></span></label>
         <label class="v-opt2"><input type="radio" name="capcutOutlineB" value="0"> <span><b>Contour désactivé</b><em>texte sans liseré</em></span></label>
       </div>
@@ -2421,6 +2456,7 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
     <div class="r-modal-head">
       <span id="rCapModalTitle">Éditeur de caption</span>
       <span style="display:flex;gap:8px;align-items:center;">
+        <button type="button" class="v-ghost-btn" id="rCapPosToggle" onclick="rEditTogglePos()" title="Afficher / masquer les réglages de position (X, Y, taille, presets)">⚙ Réglages position</button>
         <button type="button" class="r-fav-btn" id="rCapFav" onclick="rCapToggleFav()" title="Favori">☆</button>
         <button type="button" class="ws-icon-btn r-live" onclick="rCapClose()">✕</button>
       </span>
@@ -2485,8 +2521,15 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
         </details>
       </div>
 
-      <!-- ZONE DROITE : gestion de la caption -->
+      <!-- ZONE DROITE : gestion de la caption — onglets instantanés (LOT 2) -->
       <div class="r-edit-right">
+        <div class="r-edit-tabs" role="tablist">
+          <button type="button" class="r-edit-tab active" id="rEditTabCaptions" role="tab" aria-selected="true" onclick="rEditTab('captions')">📝 Captions</button>
+          <button type="button" class="r-edit-tab" id="rEditTabMusic" role="tab" aria-selected="false" onclick="rEditTab('music')">🎵 Musiques</button>
+        </div>
+
+        <!-- Onglet Captions -->
+        <div class="r-edit-tabpane" id="rEditPaneCaptions">
         <details class="r-capswitch" id="rCapSwitch">
           <summary>🔀 Changer de caption</summary>
           <div class="r-cap-pick" id="rCapPickList"></div>
@@ -2505,12 +2548,15 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
         <div class="r-modal-field"><label>Segments</label>
           <div id="rCapSegs"></div>
           <button type="button" class="r-mini-btn" onclick="rCapAddSeg();rSegSelect(document.querySelector('#rCapSegs .r-seg:last-child'))">＋ Ajouter un segment</button></div>
-        <details class="r-capswitch" id="rEditMusPanel">
-          <summary>🎵 Musiques — écouter &amp; assigner</summary>
-          <input type="text" id="rEditMusSearch" class="r-tool-input" placeholder="Rechercher une musique…" oninput="rEditMusRender()" style="margin:6px 0;">
+        </div>
+
+        <!-- Onglet Musiques -->
+        <div class="r-edit-tabpane" id="rEditPaneMusic" style="display:none;">
+          <input type="text" id="rEditMusSearch" class="r-tool-input" placeholder="Rechercher une musique…" oninput="rEditMusRender()" style="margin:0 0 6px;">
           <div class="r-editmus-hint" id="rEditMusHint"></div>
           <div class="r-editmus-list" id="rEditMusList"></div>
-        </details>
+        </div>
+
         <div class="r-edit-actions">
           <button type="button" class="primary-btn" id="rCapSaveBtn" onclick="rCapSave()">💾 Créer la caption</button>
           <button type="button" class="v-ghost-btn ws-danger" id="rCapDelBtn" onclick="rCapDeleteCurrent()" style="display:none;">🗑 Supprimer</button>
@@ -2672,13 +2718,33 @@ return (s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
 .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 }
 
-// OCR: read the Sonnet/Opus choice for a scope ("S"=Simple, "B"=Batch).
-// Default "sonnet" (recommended). Sent as ocr_mode to /analyze and
-// /batch_detect; selects the Vision model + cache (v1-sonnet / v1-opus).
+// OCR: read the user's choice for a scope ("S"=Simple, "B"=Batch).
+// Interface simplifiée : 3 choix visibles — Local (gratuit) / Auto ⭐
+// (recommandé) / Vision (haute qualité). Le modèle Vision précis (Sonnet/Opus)
+// n'apparaît que sous "Paramètres avancés". On mappe donc l'UI vers les
+// valeurs backend attendues par /analyze & /batch_detect : local / auto /
+// sonnet / opus. "vision" => on lit le sous-choix Sonnet/Opus (défaut Sonnet).
 function getOcrMode(scope) {
 const el = document.querySelector('input[name="ocrMode' + scope + '"]:checked');
-const v = el ? el.value : "sonnet";
-return (v === "opus" || v === "local" || v === "auto") ? v : "sonnet";
+const v = el ? el.value : "auto";
+if (v === "vision") {
+const adv = document.querySelector('input[name="ocrVision' + scope + '"]:checked');
+return (adv && adv.value === "opus") ? "opus" : "sonnet";
+}
+return (v === "local" || v === "auto") ? v : "auto";
+}
+
+// Révèle/ouvre le bloc "Paramètres avancés" (modèle Vision) quand l'utilisateur
+// choisit Vision, pour qu'il puisse préciser Sonnet/Opus s'il le souhaite.
+function _ocrVisAdv(scope) {
+const d = document.getElementById("ocrAdv" + scope);
+if (d) d.open = true;
+}
+// Si l'utilisateur choisit explicitement un modèle Vision (Sonnet/Opus) dans
+// les avancés, on bascule automatiquement le choix principal sur "Vision".
+function _ocrPickVision(scope) {
+const v = document.querySelector('input[name="ocrMode' + scope + '"][value="vision"]');
+if (v) v.checked = true;
 }
 
 // CapCut outline ON/OFF ("S"=Simple, "B"=Batch). Default ON. Sent as
@@ -5366,6 +5432,8 @@ function rCapOpen(id, previewReelIdx){
   // s'appuie sur stage.clientHeight, qui vaut 0 tant que le modal est caché
   // (c'était la cause du texte minuscule tant qu'on n'avait pas déplacé).
   document.getElementById("rCapModal").style.display="flex";
+  if(typeof rEditTab==="function") rEditTab("captions");  // toujours ouvrir sur Captions
+  _rEditSetPos(false);  // LOT 1 : ouvrir en mode « espace maximal » (colonne Position repliée)
   rEditFillPreviewReels();
   const pv=document.getElementById("rEditPreviewReel"); if(previewReelIdx!=null){ pv.value=String(previewReelIdx); } rEditSetPreviewReel();
   rPresetRenderBar();
@@ -5623,8 +5691,8 @@ function rEmojiRender(){
   if(q){ const set=new Set(); Object.keys(R_EMOJI_KW).forEach(k=>{ if(k.includes(q)) set.add(R_EMOJI_KW[k]); }); list=[...set]; if(!list.length) list=Object.values(R_EMOJI).flat().slice(0,60); }
   else if(_rEmojiCat==="Récents"){ list=rEmojiRecents(); if(!list.length) list=R_EMOJI["Smileys"].slice(0,24); }
   else list=R_EMOJI[_rEmojiCat]||[];
-  // Picker en Twemoji aussi (identique à la preview et à l'export FFmpeg).
-  g.innerHTML=list.map(ch=>`<button type="button" class="r-emoji-cell" onclick="rEmojiInsert('${ch}')"><img class="r-emoji-img" src="/static/emoji/twemoji/72x72/${_rTwName(ch)}.png" alt="${ch}" draggable="false" onerror="this.replaceWith(document.createTextNode(this.alt))"></button>`).join("");
+  // Picker : même jeu d'emoji que la preview et l'export FFmpeg (_R_EMOJI_BASE).
+  g.innerHTML=list.map(ch=>`<button type="button" class="r-emoji-cell" onclick="rEmojiInsert('${ch}')"><img class="r-emoji-img" src="${_R_EMOJI_BASE}/${_rTwName(ch)}.png" alt="${ch}" draggable="false" onerror="this.replaceWith(document.createTextNode(this.alt))"></button>`).join("");
 }
 function rEmojiInsert(ch){
   const ta=_rEmojiTarget; if(!ta) return;
@@ -5645,15 +5713,19 @@ function rCapCollect(){
   });
   return segs;
 }
-// WYSIWYG emoji : la preview affiche les MÊMES images Twemoji que l'export
-// FFmpeg (static/emoji/twemoji/72x72) → ce qu'on voit = ce qui sera généré.
+// WYSIWYG emoji : la preview ET le picker affichent les MÊMES images que
+// l'export FFmpeg. Le dossier du jeu d'emoji vient du backend (_EMOJI_SET,
+// injecté ici) → une seule source de vérité. Changer le jeu côté backend
+// suffit : picker + preview + export basculent ensemble. Pas d'emoji Apple
+// (licence propriétaire — voir le bloc de commentaire dans app.py).
+const _R_EMOJI_BASE="{{ emoji_base|default('/emoji', true) }}";
 const _R_EMOJI_RE=/(\p{Extended_Pictographic}(?:‍\p{Extended_Pictographic}|[\u{1f3fb}-\u{1f3ff}️])*|[\u{1f1e6}-\u{1f1ff}]{2})/gu;
 function _rTwName(cluster){ const hasZWJ=cluster.includes("‍"); const parts=[]; for(const c of cluster){ const cp=c.codePointAt(0); if(cp===0xFE0F && !hasZWJ) continue; parts.push(cp.toString(16)); } return parts.join("-"); }
 function _rTwemojiLine(raw){
   let out="", last=0;
   raw.replace(_R_EMOJI_RE, (m, _g, idx)=>{ out+=rEsc(raw.slice(last, idx));
     const nm=_rTwName(m);
-    out+=`<img class="r-emoji-img" src="/static/emoji/twemoji/72x72/${nm}.png" alt="${rEsc(m)}" draggable="false" onerror="this.replaceWith(document.createTextNode(this.alt))">`;
+    out+=`<img class="r-emoji-img" src="${_R_EMOJI_BASE}/${nm}.png" alt="${rEsc(m)}" draggable="false" onerror="this.replaceWith(document.createTextNode(this.alt))">`;
     last=idx+m.length; return m; });
   out+=rEsc(raw.slice(last)); return out;
 }
@@ -5726,6 +5798,36 @@ function rEditStepReel(dir){
 }
 function rEditPrevReel(){ rEditStepReel(-1); }
 function rEditNextReel(){ rEditStepReel(1); }
+// LOT 2 — bascule instantanée entre les onglets Captions / Musiques de la
+// colonne droite de l'éditeur (aucun reload, aucun scroll : simple toggle
+// d'affichage). On (re)rend la liste musicale à l'ouverture de son onglet.
+function rEditTab(which){
+  const cap = which !== "music";
+  const pC=document.getElementById("rEditPaneCaptions"), pM=document.getElementById("rEditPaneMusic");
+  const tC=document.getElementById("rEditTabCaptions"), tM=document.getElementById("rEditTabMusic");
+  if(!pC||!pM) return;
+  pC.style.display = cap ? "" : "none";
+  pM.style.display = cap ? "none" : "";
+  if(tC){ tC.classList.toggle("active", cap); tC.setAttribute("aria-selected", cap?"true":"false"); }
+  if(tM){ tM.classList.toggle("active", !cap); tM.setAttribute("aria-selected", cap?"false":"true"); }
+  if(!cap && typeof rEditMusRender==="function") rEditMusRender();
+}
+// LOT 1 — repli/dépli de la colonne centrale « Position » pour maximiser la
+// largeur de travail (aperçu du reel + gestion des captions). Le glisser du
+// texte sur la vidéo reste dispo même colonne repliée. rAF pour re-caler le
+// texte (la largeur du stage change quand la grille se réorganise).
+function _rEditSetPos(show){
+  const grid=document.querySelector("#rCapModal .r-edit3");
+  const btn=document.getElementById("rCapPosToggle");
+  if(!grid) return;
+  grid.classList.toggle("r-nocenter", !show);
+  if(btn){ btn.classList.toggle("active", show); btn.textContent = show ? "⚙ Masquer réglages" : "⚙ Réglages position"; }
+  requestAnimationFrame(()=>{ if(typeof rActiveSegRow!=="undefined" && rActiveSegRow && typeof rEditApplyToBox==="function") rEditApplyToBox(); if(typeof rTimelineRender==="function") rTimelineRender(); });
+}
+function rEditTogglePos(){
+  const grid=document.querySelector("#rCapModal .r-edit3");
+  _rEditSetPos(grid ? grid.classList.contains("r-nocenter") : true);
+}
 // ── Bibliothèque musicale intégrée à l'éditeur (écoute + assignation) ──
 let _rEditMusAudio=null;
 function rEditMusRender(){
