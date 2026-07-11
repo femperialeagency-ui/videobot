@@ -499,6 +499,24 @@ color: var(--accent2); opacity: .85; margin: 4px 0 9px; display: flex; align-ite
 .v-slider-row .v-dual-r::-moz-range-track { background: transparent; }
 .v-slider-row .v-dual-r::-moz-range-thumb { pointer-events: auto; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); cursor: pointer; }
 .v-dual-vals { position: absolute; right: 0; top: 6px; width: 44px; text-align: right; font-size: .66rem; color: var(--accent2); font-weight: 700; }
+/* ── Composant de plage min/max MUTUALISÉ (1 vidéo + plusieurs vidéos) ──
+   UN SEUL rail visible, deux poignées sur ce rail, zone colorée entre min et
+   max, valeurs « min → max » à droite. Aucune 2e ligne. Souris/trackpad/clavier. */
+.v-adv-row { display: grid; grid-template-columns: 116px 1fr 64px; align-items: center; gap: 10px; margin: 10px 0; }
+.v-adv-lab { font-size: .8rem; color: var(--text); }
+.rng { position: relative; height: 24px; }
+.rng-track { position: absolute; left: 0; right: 0; top: 10px; height: 4px; background: var(--border); border-radius: 3px; }
+.rng-fill { position: absolute; top: 10px; height: 4px; left: 0; width: 0; background: var(--accent); border-radius: 3px; }
+.rng input[type=range] { position: absolute; left: 0; top: 0; width: 100%; height: 24px; margin: 0; padding: 0; background: transparent; -webkit-appearance: none; appearance: none; pointer-events: none; }
+.rng input[type=range]::-webkit-slider-runnable-track { -webkit-appearance: none; height: 24px; background: transparent; border: none; }
+.rng input[type=range]::-moz-range-track { height: 24px; background: transparent; border: none; }
+.rng input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 15px; height: 15px; margin-top: 5px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.45); }
+.rng input[type=range]::-moz-range-thumb { pointer-events: auto; width: 15px; height: 15px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.45); }
+.rng input[type=range]:focus { outline: none; }
+.rng input[type=range]:focus::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgba(124,92,255,.35); }
+.rng-single .rng-fill { background: var(--accent2); }
+.rng-val { font-size: .72rem; font-weight: 700; color: var(--accent2); text-align: right; white-space: nowrap; }
+.v-adv-foot { margin-top: 8px; display: flex; justify-content: flex-end; }
 /* Barre de contrôles globaux */
 .v-adv-topbar { display: flex; gap: 8px; margin: 6px 0; flex-wrap: wrap; align-items: center; }
 .v-adv-topbar .r-tool-input { flex: 1 1 200px; min-width: 160px; }
@@ -1909,15 +1927,11 @@ download as ZIP. No Claude Vision, no captions.
 
 <!-- Advanced mode panel -->
 <div id="vAdvancedPanel">
-<div class="v-adv-topbar"><input type="text" id="vAdvSearch" class="r-tool-input" placeholder="🔎 Rechercher (lum, meta, vitesse…)" oninput="vAdvSearch(this.value)"><button type="button" class="r-mini-btn" onclick="vAdvCollapseAll(false)">▾ Tout développer</button><button type="button" class="r-mini-btn" onclick="vAdvCollapseAll(true)">▸ Tout réduire</button><button type="button" class="r-mini-btn" id="vResetAdvBtn">↺ Réinitialiser tous</button><button type="button" class="r-mini-btn r-accent" id="vRandomizeBtn">🎲 Randomiser</button></div>
-<div class="v-adv-favbar" id="vAdvFavBar" style="display:none;"></div>
-<div style="font-size:0.76rem;color:var(--muted);margin:2px 0 10px;">Chaque réglage a une plage <b>min → max</b> : chaque variation tire une valeur aléatoire dans cette plage. 0 = neutre · 100 = variation maximale sûre.</div>
-<details class="v-adv-card" open><summary><span class="v-dot" style="background:var(--accent);color:var(--accent)"></span> Visuel</summary><div class="v-adv-body"><div class="v-slider-row" data-k="brightness" data-label="luminosite"><label for="vAdvMin_brightness">Luminosité<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="brightness" title="Épingler ce réglage" onclick="vAdvToggleFav('brightness')">☆</button><span class="v-info" title="Luminosité — Effet : éclaircit/assombrit chaque variation (±10% max). Risque : au-delà de ~80, écart de luminosité visible entre sorties. Recommandé : 20–60.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_brightness" class="v-dual-r" value="50" oninput="_vDualSync('brightness')"><input type="range" min="0" max="100" id="vAdvMax_brightness" class="v-dual-r" value="50" oninput="_vDualSync('brightness')"><span class="v-dual-vals" id="vAdv_brightness_val">50 → 50</span></div><input type="hidden" id="vAdv_brightness" data-vadv="brightness" value="50"></div><div class="v-slider-row" data-k="contrast" data-label="contraste"><label for="vAdvMin_contrast">Contraste<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="contrast" title="Épingler ce réglage" onclick="vAdvToggleFav('contrast')">☆</button><span class="v-info" title="Contraste — Effet : fait varier le contraste (±15% max). Risque : trop haut = image délavée ou bouchée. Recommandé : 20–60.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_contrast" class="v-dual-r" value="50" oninput="_vDualSync('contrast')"><input type="range" min="0" max="100" id="vAdvMax_contrast" class="v-dual-r" value="50" oninput="_vDualSync('contrast')"><span class="v-dual-vals" id="vAdv_contrast_val">50 → 50</span></div><input type="hidden" id="vAdv_contrast" data-vadv="contrast" value="50"></div><div class="v-slider-row" data-k="saturation" data-label="saturation"><label for="vAdvMin_saturation">Saturation<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="saturation" title="Épingler ce réglage" onclick="vAdvToggleFav('saturation')">☆</button><span class="v-info" title="Saturation — Effet : module l'intensité des couleurs (±15% max). Risque : très haut = couleurs criardes ou ternes. Recommandé : 20–60.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_saturation" class="v-dual-r" value="50" oninput="_vDualSync('saturation')"><input type="range" min="0" max="100" id="vAdvMax_saturation" class="v-dual-r" value="50" oninput="_vDualSync('saturation')"><span class="v-dual-vals" id="vAdv_saturation_val">50 → 50</span></div><input type="hidden" id="vAdv_saturation" data-vadv="saturation" value="50"></div><div class="v-slider-row" data-k="gamma" data-label="gamma"><label for="vAdvMin_gamma">Gamma<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="gamma" title="Épingler ce réglage" onclick="vAdvToggleFav('gamma')">☆</button><span class="v-info" title="Gamma — Effet : ajuste les tons moyens indépendamment de la luminosité (±10%). Risque : excès = image plate ou trop dense. Recommandé : 10–50.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_gamma" class="v-dual-r" value="50" oninput="_vDualSync('gamma')"><input type="range" min="0" max="100" id="vAdvMax_gamma" class="v-dual-r" value="50" oninput="_vDualSync('gamma')"><span class="v-dual-vals" id="vAdv_gamma_val">50 → 50</span></div><input type="hidden" id="vAdv_gamma" data-vadv="gamma" value="50"></div><div class="v-slider-row" data-k="noise" data-label="bruit / grain"><label for="vAdvMin_noise">Bruit / Grain<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="noise" title="Épingler ce réglage" onclick="vAdvToggleFav('noise')">☆</button><span class="v-info" title="Bruit / Grain — Effet : ajoute un grain fin pour casser l'empreinte numérique. Risque : fort = grésillement visible, perte de netteté. Recommandé : 10–40.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_noise" class="v-dual-r" value="50" oninput="_vDualSync('noise')"><input type="range" min="0" max="100" id="vAdvMax_noise" class="v-dual-r" value="50" oninput="_vDualSync('noise')"><span class="v-dual-vals" id="vAdv_noise_val">50 → 50</span></div><input type="hidden" id="vAdv_noise" data-vadv="noise" value="50"></div><div class="v-slider-row" data-k="sharpness" data-label="nettete"><label for="vAdvMin_sharpness">Netteté<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="sharpness" title="Épingler ce réglage" onclick="vAdvToggleFav('sharpness')">☆</button><span class="v-info" title="Netteté — Effet : accentue légèrement les contours. Risque : trop = halos/artefacts sur les bords. Recommandé : 10–40.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_sharpness" class="v-dual-r" value="50" oninput="_vDualSync('sharpness')"><input type="range" min="0" max="100" id="vAdvMax_sharpness" class="v-dual-r" value="50" oninput="_vDualSync('sharpness')"><span class="v-dual-vals" id="vAdv_sharpness_val">50 → 50</span></div><input type="hidden" id="vAdv_sharpness" data-vadv="sharpness" value="50"></div><div class="v-slider-row" data-k="blur" data-label="flou"><label for="vAdvMin_blur">Flou<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="blur" title="Épingler ce réglage" onclick="vAdvToggleFav('blur')">☆</button><span class="v-info" title="Flou — Effet : adoucit très légèrement l'image. Risque : fort = image molle/floue. Recommandé : 0–30.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_blur" class="v-dual-r" value="50" oninput="_vDualSync('blur')"><input type="range" min="0" max="100" id="vAdvMax_blur" class="v-dual-r" value="50" oninput="_vDualSync('blur')"><span class="v-dual-vals" id="vAdv_blur_val">50 → 50</span></div><input type="hidden" id="vAdv_blur" data-vadv="blur" value="50"></div><div class="v-slider-row" data-k="zoom" data-label="zoom"><label for="vAdvMin_zoom">Zoom<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="zoom" title="Épingler ce réglage" onclick="vAdvToggleFav('zoom')">☆</button><span class="v-info" title="Zoom — Effet : agrandit un peu le cadrage (jusqu'à +8%). Risque : fort = perte de bords, léger crop. Recommandé : 10–50.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_zoom" class="v-dual-r" value="50" oninput="_vDualSync('zoom')"><input type="range" min="0" max="100" id="vAdvMax_zoom" class="v-dual-r" value="50" oninput="_vDualSync('zoom')"><span class="v-dual-vals" id="vAdv_zoom_val">50 → 50</span></div><input type="hidden" id="vAdv_zoom" data-vadv="zoom" value="50"></div><div class="v-slider-row" data-k="crop" data-label="recadrage"><label for="vAdvMin_crop">Recadrage<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="crop" title="Épingler ce réglage" onclick="vAdvToggleFav('crop')">☆</button><span class="v-info" title="Recadrage — Effet : recadre subtilement (±4%). Risque : fort = éléments importants coupés. Recommandé : 0–40.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_crop" class="v-dual-r" value="50" oninput="_vDualSync('crop')"><input type="range" min="0" max="100" id="vAdvMax_crop" class="v-dual-r" value="50" oninput="_vDualSync('crop')"><span class="v-dual-vals" id="vAdv_crop_val">50 → 50</span></div><input type="hidden" id="vAdv_crop" data-vadv="crop" value="50"></div><div class="v-slider-row" data-k="rotation" data-label="rotation"><label for="vAdvMin_rotation">Rotation<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="rotation" title="Épingler ce réglage" onclick="vAdvToggleFav('rotation')">☆</button><span class="v-info" title="Rotation — Effet : incline très légèrement l'image (±1° max au curseur 100). Risque : fort = coins visibles / rendu penché (le moteur reste borné à 1°). Recommandé : 0–30.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_rotation" class="v-dual-r" value="50" oninput="_vDualSync('rotation')"><input type="range" min="0" max="100" id="vAdvMax_rotation" class="v-dual-r" value="50" oninput="_vDualSync('rotation')"><span class="v-dual-vals" id="vAdv_rotation_val">50 → 50</span></div><input type="hidden" id="vAdv_rotation" data-vadv="rotation" value="50"></div></div></details>
-<details class="v-adv-card" open><summary><span class="v-dot" style="background:var(--accent2);color:var(--accent2)"></span> Mouvement</summary><div class="v-adv-body"><div class="v-slider-row" data-k="speed" data-label="vitesse video"><label for="vAdvMin_speed">Vitesse vidéo<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="speed" title="Épingler ce réglage" onclick="vAdvToggleFav('speed')">☆</button><span class="v-info" title="Vitesse vidéo — Effet : fait varier la vitesse de lecture (±3%). Risque : fort = décalage audio/vidéo perceptible. Recommandé : 10–50.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_speed" class="v-dual-r" value="50" oninput="_vDualSync('speed')"><input type="range" min="0" max="100" id="vAdvMax_speed" class="v-dual-r" value="50" oninput="_vDualSync('speed')"><span class="v-dual-vals" id="vAdv_speed_val">50 → 50</span></div><input type="hidden" id="vAdv_speed" data-vadv="speed" value="50"></div></div></details>
-<details class="v-adv-card" open><summary><span class="v-dot" style="background:var(--accent3);color:var(--accent3)"></span> Audio</summary><div class="v-adv-body"><div class="v-slider-row" data-k="volume" data-label="volume audio"><label for="vAdvMin_volume">Volume audio<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="volume" title="Épingler ce réglage" onclick="vAdvToggleFav('volume')">☆</button><span class="v-info" title="Volume audio — Effet : ajuste le niveau sonore (±5%). Risque : fort = variations de volume audibles entre sorties. Recommandé : 10–60.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_volume" class="v-dual-r" value="50" oninput="_vDualSync('volume')"><input type="range" min="0" max="100" id="vAdvMax_volume" class="v-dual-r" value="50" oninput="_vDualSync('volume')"><span class="v-dual-vals" id="vAdv_volume_val">50 → 50</span></div><input type="hidden" id="vAdv_volume" data-vadv="volume" value="50"></div><div class="v-slider-row" data-k="pitch" data-label="tonalite audio"><label for="vAdvMin_pitch">Tonalité audio<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="pitch" title="Épingler ce réglage" onclick="vAdvToggleFav('pitch')">☆</button><span class="v-info" title="Tonalité audio — Effet : décale subtilement la tonalité audio (±2%). Risque : fort = voix qui sonne artificielle. Recommandé : 0–40.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_pitch" class="v-dual-r" value="50" oninput="_vDualSync('pitch')"><input type="range" min="0" max="100" id="vAdvMax_pitch" class="v-dual-r" value="50" oninput="_vDualSync('pitch')"><span class="v-dual-vals" id="vAdv_pitch_val">50 → 50</span></div><input type="hidden" id="vAdv_pitch" data-vadv="pitch" value="50"></div></div></details>
-<details class="v-adv-card" open><summary><span class="v-dot" style="background:var(--info);color:var(--info)"></span> Encodage</summary><div class="v-adv-body"><div class="v-slider-row" data-k="fps" data-label="variation fps"><label for="vAdvMin_fps">Variation FPS<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="fps" title="Épingler ce réglage" onclick="vAdvToggleFav('fps')">☆</button><span class="v-info" title="Variation FPS — Effet : modifie légèrement le nombre d'images/s (±10). Risque : fort = micro-saccades sur certaines plateformes. Recommandé : 10–50.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_fps" class="v-dual-r" value="50" oninput="_vDualSync('fps')"><input type="range" min="0" max="100" id="vAdvMax_fps" class="v-dual-r" value="50" oninput="_vDualSync('fps')"><span class="v-dual-vals" id="vAdv_fps_val">50 → 50</span></div><input type="hidden" id="vAdv_fps" data-vadv="fps" value="50"></div><div class="v-slider-row" data-k="bitrate" data-label="variation bitrate"><label for="vAdvMin_bitrate">Variation bitrate<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="bitrate" title="Épingler ce réglage" onclick="vAdvToggleFav('bitrate')">☆</button><span class="v-info" title="Variation bitrate — Effet : fait varier le débit d'encodage (±20%). Risque : très bas = compression visible ; très haut = fichier lourd. Recommandé : 20–70.">ⓘ</span></span></label><div class="v-dual"><div class="v-dual-rail"><div class="v-dual-fill"></div></div><input type="range" min="0" max="100" id="vAdvMin_bitrate" class="v-dual-r" value="50" oninput="_vDualSync('bitrate')"><input type="range" min="0" max="100" id="vAdvMax_bitrate" class="v-dual-r" value="50" oninput="_vDualSync('bitrate')"><span class="v-dual-vals" id="vAdv_bitrate_val">50 → 50</span></div><input type="hidden" id="vAdv_bitrate" data-vadv="bitrate" value="50"></div></div></details>
-<details class="v-adv-card"><summary><span class="v-dot" style="background:var(--warn);color:var(--warn)"></span> Métadonnées simulées</summary><div class="v-adv-body"><div class="v-meta-note">ℹ️ Ces réglages modifient uniquement les <b>métadonnées déclarées</b> du fichier (software, encoder, langue, pays, fuseau). Ils ne changent <b>pas</b> sa provenance réelle et ne prouvent pas que la vidéo vient réellement de CapCut, TikTok, Instagram ou d'un pays donné.</div><div class="v-slider-row" data-k="metadata" data-label="metadonnees aleatoire meta"><label for="vAdv_metadata">Aléatoire métadonnées<span class="v-row-tools"><button type="button" class="v-fav-btn" data-fav="metadata" title="Épingler" onclick="vAdvToggleFav('metadata')">☆</button><span class="v-info" title="Aléatoire métadonnées — Effet : randomise date/appareil/identifiants déclarés. Risque : aucun visuel. Recommandé : 40–100.">ⓘ</span></span></label><input type="range" id="vAdv_metadata" min="0" max="100" value="50" data-vadv="metadata" oninput="document.getElementById('vAdv_metadata_val').textContent=this.value"><span class="v-slider-val" id="vAdv_metadata_val">50</span></div><div class="v-meta-origin"><div class="v-mo-field"><label for="vAppSource" title="Simulation metadata uniquement — ne change pas la provenance réelle">App simulée</label><select id="vAppSource" title="Écrit software/encoder/comment dans les métadonnées — simulation, pas de provenance réelle"><option value="">— Aucune —</option><option value="capcut">CapCut</option><option value="instagram">Instagram</option><option value="tiktok">TikTok</option><option value="iphone">iPhone Camera</option></select></div><div class="v-mo-field"><label for="vOrigin" title="Simulation metadata uniquement — langue/pays/fuseau">Origine simulée</label><select id="vOrigin" title="Écrit langue/pays/fuseau dans les métadonnées — simulation, pas de géoloc réelle"><option value="">— Aucune —</option><option value="usa">USA</option><option value="france">France</option><option value="uk">UK</option><option value="canada">Canada</option><option value="brazil">Brésil</option></select></div></div></div></details>
-
+<div id="vAdvBody"></div>
+<div class="v-meta-origin" style="margin-top:10px;">
+<div class="v-mo-field"><label for="vAppSource" title="Simulation metadata uniquement — ne change pas la provenance réelle">App simulée</label><select id="vAppSource" title="Écrit software/encoder/comment dans les métadonnées — simulation, pas de provenance réelle"><option value="">— Aucune —</option><option value="capcut">CapCut</option><option value="instagram">Instagram</option><option value="tiktok">TikTok</option><option value="iphone">iPhone Camera</option></select></div>
+<div class="v-mo-field"><label for="vOrigin" title="Simulation metadata uniquement — langue/pays/fuseau">Origine simulée</label><select id="vOrigin" title="Écrit langue/pays/fuseau dans les métadonnées — simulation, pas de géoloc réelle"><option value="">— Aucune —</option><option value="usa">USA</option><option value="france">France</option><option value="uk">UK</option><option value="canada">Canada</option><option value="brazil">Brésil</option></select></div>
+</div>
 </div>
 
 <div class="v-preset-row">
@@ -2022,51 +2036,19 @@ Vision, no captions, no Batch, no A+B→C.
 
 <!-- Advanced panel -->
 <div id="vmAdvancedPanel" style="display:none;">
-<div class="v-section-label"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3.4 a3 3 0 0 0-4 3.7 L4 11.2 a1.5 1.5 0 0 0 2.1 2.1 l4.1-4.1 a3 3 0 0 0 3.7-4 l-2 2-1.4-.4-.4-1.4 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span> Contrôles avancés</div>
-<div style="font-size:0.78rem;color:var(--muted);margin-bottom:10px;">0 = désactivé · 50 = recommandé · 100 = variation maximale (les vidéos restent toujours visuellement propres).</div>
-
-<div class="v-group-title"><span class="v-dot" style="background:var(--accent);color:var(--accent)"></span> Visuel</div>
-<div class="v-slider-row"><label for="vmAdv_brightness">Luminosité</label><input type="range" id="vmAdv_brightness" min="0" max="100" value="50" data-vmadv="brightness"><span class="v-slider-val" id="vmAdv_brightness_val">50</span></div>
-<div class="v-slider-row"><label for="vmAdv_contrast">Contraste</label><input type="range" id="vmAdv_contrast" min="0" max="100" value="50" data-vmadv="contrast"><span class="v-slider-val" id="vmAdv_contrast_val">50</span></div>
-<div class="v-slider-row"><label for="vmAdv_saturation">Saturation</label><input type="range" id="vmAdv_saturation" min="0" max="100" value="50" data-vmadv="saturation"><span class="v-slider-val" id="vmAdv_saturation_val">50</span></div>
-<div class="v-slider-row"><label for="vmAdv_gamma">Gamma</label><input type="range" id="vmAdv_gamma" min="0" max="100" value="50" data-vmadv="gamma"><span class="v-slider-val" id="vmAdv_gamma_val">50</span></div>
-<div class="v-slider-row"><label for="vmAdv_noise">Bruit / Grain</label><input type="range" id="vmAdv_noise" min="0" max="100" value="50" data-vmadv="noise"><span class="v-slider-val" id="vmAdv_noise_val">50</span></div>
-<div class="v-slider-row"><label for="vmAdv_sharpness">Netteté</label><input type="range" id="vmAdv_sharpness" min="0" max="100" value="50" data-vmadv="sharpness"><span class="v-slider-val" id="vmAdv_sharpness_val">50</span></div>
-<div class="v-slider-row"><label for="vmAdv_blur">Flou</label><input type="range" id="vmAdv_blur" min="0" max="100" value="50" data-vmadv="blur"><span class="v-slider-val" id="vmAdv_blur_val">50</span></div>
-<div class="v-slider-row"><label for="vmAdv_zoom">Zoom</label><input type="range" id="vmAdv_zoom" min="0" max="100" value="50" data-vmadv="zoom"><span class="v-slider-val" id="vmAdv_zoom_val">50</span></div>
-<div class="v-slider-row"><label for="vmAdv_crop">Recadrage</label><input type="range" id="vmAdv_crop" min="0" max="100" value="50" data-vmadv="crop"><span class="v-slider-val" id="vmAdv_crop_val">50</span></div>
-<div class="v-slider-row"><label for="vmAdv_rotation">Rotation</label><input type="range" id="vmAdv_rotation" min="0" max="100" value="50" data-vmadv="rotation"><span class="v-slider-val" id="vmAdv_rotation_val">50</span></div>
-
-<div class="v-group-title"><span class="v-dot" style="background:var(--accent2);color:var(--accent2)"></span> Mouvement</div>
-<div class="v-slider-row"><label for="vmAdv_speed">Vitesse vidéo</label><input type="range" id="vmAdv_speed" min="0" max="100" value="50" data-vmadv="speed"><span class="v-slider-val" id="vmAdv_speed_val">50</span></div>
-
-<div class="v-group-title"><span class="v-dot" style="background:var(--accent3);color:var(--accent3)"></span> Audio</div>
-<div class="v-slider-row"><label for="vmAdv_volume">Volume audio</label><input type="range" id="vmAdv_volume" min="0" max="100" value="50" data-vmadv="volume"><span class="v-slider-val" id="vmAdv_volume_val">50</span></div>
-<div class="v-slider-row"><label for="vmAdv_pitch">Tonalité audio</label><input type="range" id="vmAdv_pitch" min="0" max="100" value="50" data-vmadv="pitch"><span class="v-slider-val" id="vmAdv_pitch_val">50</span></div>
-
-<div class="v-group-title"><span class="v-dot" style="background:var(--info);color:var(--info)"></span> Encodage</div>
-<div class="v-slider-row"><label for="vmAdv_fps">Variation FPS</label><input type="range" id="vmAdv_fps" min="0" max="100" value="50" data-vmadv="fps"><span class="v-slider-val" id="vmAdv_fps_val">50</span></div>
-<div class="v-slider-row"><label for="vmAdv_bitrate">Variation bitrate</label><input type="range" id="vmAdv_bitrate" min="0" max="100" value="50" data-vmadv="bitrate"><span class="v-slider-val" id="vmAdv_bitrate_val">50</span></div>
-
-<div class="v-group-title"><span class="v-dot" style="background:var(--warn);color:var(--warn)"></span> Métadonnées</div>
-<div class="v-slider-row"><label for="vmAdv_metadata">Aléatoire métadonnées</label><input type="range" id="vmAdv_metadata" min="0" max="100" value="50" data-vmadv="metadata"><span class="v-slider-val" id="vmAdv_metadata_val">50</span></div>
-
-<div class="v-adv-actions">
-<button type="button" class="v-ghost-btn" id="vmRandomizeBtn"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span> Randomiser la configuration</button>
-<button type="button" class="v-ghost-btn" id="vmResetAdvBtn"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.5 7 H10.5 a3.3 3.3 0 0 1 0 6.6 H7.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 4.5 L4.5 7 L7 9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Réinitialiser (50)</button>
+<div id="vmAdvBody"></div>
 </div>
 
 <div class="v-preset-row">
 <input type="text" id="vmPresetName" placeholder="Nom du préréglage (ex: Multi V1)" maxlength="80">
-<button type="button" class="v-ghost-btn" id="vmSavePresetBtn"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.4 3 H12 L14.6 5.6 V14.2 a.6.6 0 0 1-.6.6 H3.4 a.6.6 0 0 1-.6-.6 V3.6 a.6.6 0 0 1 .6-.6 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><rect x="5.6" y="3" width="4.8" height="3.2" rx=".4" stroke="currentColor" stroke-width="1.2"/></svg></span> Sauvegarder</button>
+<button type="button" class="v-ghost-btn" id="vmSavePresetBtn">💾 Sauvegarder</button>
 </div>
 <div class="v-preset-row">
 <select id="vmPresetSelect"><option value="">— Charger un préréglage —</option></select>
-<button type="button" class="v-ghost-btn" id="vmLoadPresetBtn">Charger</button>
-<button type="button" class="v-ghost-btn" id="vmDeletePresetBtn">Supprimer</button>
+<button type="button" class="v-ghost-btn" id="vmLoadPresetBtn">📂 Charger</button>
+<button type="button" class="v-ghost-btn" id="vmDeletePresetBtn">🗑 Supprimer</button>
 </div>
 <div id="vmPresetMsg" style="font-size:0.78rem;color:var(--muted);margin-top:8px;"></div>
-</div>
 </div>
 
 <!-- Estimation -->
@@ -3690,59 +3672,12 @@ r.addEventListener("change", () => {
 const adv = getVariationConfigMode() === "advanced";
 vPresetPanel.style.display = adv ? "none" : "block";
 vAdvancedPanel.style.display = adv ? "block" : "none";
-if (adv) vAdvRenderFav();
+if (adv) vRenderAdv("vAdvBody", "vAdv");
 updateVariationEstimate();
 });
 });
-// P5/P6 — structure HTML réelle (cartes <details> authored). Le JS ne fait que
-// gérer favoris / recherche / repli. Aucune reconstruction du DOM au chargement.
-function _vFavs(){ try{ return JSON.parse(localStorage.getItem("vAdvFavs")||"[]"); }catch(e){ return []; } }
-function _vSetFavs(a){ try{ localStorage.setItem("vAdvFavs", JSON.stringify(a.slice(0,10))); }catch(e){} }
-function vAdvToggleFav(key){ let a=_vFavs(); a = a.includes(key)? a.filter(x=>x!==key) : [...a,key].slice(0,10); _vSetFavs(a); vAdvRenderFav(); }
-let _vFavDrag=null;
-function vAdvRenderFav(){
-  const favs=_vFavs();
-  document.querySelectorAll(".v-fav-btn").forEach(b=>{ const on=favs.includes(b.dataset.fav); b.textContent=on?"★":"☆"; b.classList.toggle("on",on); });
-  const bar=document.getElementById("vAdvFavBar"); if(!bar) return;
-  if(!favs.length){ bar.style.display="none"; bar.innerHTML=""; return; }
-  bar.style.display="flex";
-  bar.innerHTML=`<span class="v-fav-lbl">⭐ Favoris (glisse pour réorganiser) :</span>`+favs.map(k=>{
-    const row=document.querySelector(`.v-slider-row[data-k="${k}"]`);
-    const name=row?(row.querySelector("label").childNodes[0].textContent||k).trim():k;
-    return `<span class="v-fav-chip" draggable="true" data-fav="${k}" onclick="vAdvScrollTo('${k}')">${name} <b onclick="event.stopPropagation();vAdvToggleFav('${k}')" title="Retirer">✕</b></span>`;
-  }).join("");
-  // Drag & drop pour réordonner
-  bar.querySelectorAll(".v-fav-chip").forEach(chip=>{
-    chip.addEventListener("dragstart", e=>{ _vFavDrag=chip.dataset.fav; chip.classList.add("drag"); try{ e.dataTransfer.effectAllowed="move"; }catch(_){}});
-    chip.addEventListener("dragend", ()=>{ chip.classList.remove("drag"); _vFavDrag=null; });
-    chip.addEventListener("dragover", e=>{ e.preventDefault(); });
-    chip.addEventListener("drop", e=>{ e.preventDefault(); const from=_vFavDrag, to=chip.dataset.fav; if(!from||from===to) return;
-      let a=_vFavs(); a=a.filter(x=>x!==from); const i=a.indexOf(to); a.splice(i,0,from); _vSetFavs(a); vAdvRenderFav(); });
-  });
-}
-function vAdvScrollTo(key){
-  const row=document.querySelector(`.v-slider-row[data-k="${key}"]`); if(!row) return;
-  const card=row.closest(".v-adv-card"); if(card) card.open=true;
-  row.scrollIntoView({block:"center"}); row.classList.add("v-flash"); setTimeout(()=>row.classList.remove("v-flash"),900);
-  // Focus automatique du curseur (min, ou le slider simple pour metadata).
-  const sl=document.getElementById("vAdvMin_"+key)||document.getElementById("vAdv_"+key);
-  if(sl) setTimeout(()=>{ try{ sl.focus({preventScroll:true}); }catch(_){ sl.focus(); } }, 60);
-}
-function _vNoAccent(s){ return (s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase(); }
-function vAdvSearch(q){
-  q=_vNoAccent((q||"").trim()); let first=null;
-  document.querySelectorAll("#vAdvancedPanel .v-slider-row").forEach(row=>{
-    const t=row.dataset.label || _vNoAccent(row.querySelector("label").textContent);
-    const hit=!q||t.includes(q); row.style.display=hit?"":"none"; if(hit&&q&&!first) first=row;
-  });
-  document.querySelectorAll("#vAdvancedPanel .v-adv-card").forEach(c=>{
-    const any=[...c.querySelectorAll(".v-slider-row")].some(r=>r.style.display!=="none");
-    c.style.display=any?"":"none"; if(q&&any) c.open=true;
-  });
-  if(first){ const card=first.closest(".v-adv-card"); if(card) card.open=true; first.scrollIntoView({block:"center"}); first.classList.add("v-flash"); setTimeout(()=>first.classList.remove("v-flash"),900);
-    const sl=first.querySelector("input[type=range]"); if(sl) setTimeout(()=>{ try{ sl.focus({preventScroll:true}); }catch(_){} },60); }
-}
-function vAdvCollapseAll(collapse){ document.querySelectorAll("#vAdvancedPanel .v-adv-card").forEach(c=>c.open=!collapse); }
+// (Favoris / recherche / tout développer-réduire supprimés : interface avancée
+//  simplifiée — catégories repliables + doubles curseurs uniquement.)
 
 // ── Advanced Mode: 16 individual sliders ──
 const ADVANCED_SLIDER_KEYS_CLIENT = [
@@ -3753,6 +3688,79 @@ const ADVANCED_SLIDER_KEYS_CLIENT = [
 
 const ADVANCED_SLIDER_DEFAULT_CLIENT = 50;
 const _vClamp = v => Math.max(0, Math.min(100, parseInt(v, 10) || 0));
+
+// ══════════════════════════════════════════════════════════════════
+// Composant de plage min/max MUTUALISÉ — même HTML/CSS/JS/comportement pour
+// « 1 vidéo » (prefix "vAdv") ET « Plusieurs vidéos » (prefix "vmAdv").
+// Un seul rail, deux poignées, zone colorée, valeurs « min → max ». metadata
+// reste un curseur simple. Génère les IDs attendus par les lecteurs existants.
+// ══════════════════════════════════════════════════════════════════
+const VADV_CATS = [
+  {name:"Visuel",      dot:"var(--accent)",  keys:["brightness","contrast","saturation","gamma","noise","sharpness","blur","zoom","crop","rotation"]},
+  {name:"Mouvement",   dot:"var(--accent2)", keys:["speed"]},
+  {name:"Audio",       dot:"var(--accent3)", keys:["volume","pitch"]},
+  {name:"Encodage",    dot:"var(--info)",    keys:["fps","bitrate"]},
+  {name:"Métadonnées", dot:"var(--warn)",    keys:["metadata"]},
+];
+const VADV_LABELS = {brightness:"Luminosité",contrast:"Contraste",saturation:"Saturation",gamma:"Gamma",noise:"Bruit / Grain",sharpness:"Netteté",blur:"Flou",zoom:"Zoom",crop:"Recadrage",rotation:"Rotation",speed:"Vitesse vidéo",volume:"Volume audio",pitch:"Tonalité audio",fps:"Variation FPS",bitrate:"Variation bitrate",metadata:"Aléatoire métadonnées"};
+function _vRangeRow(prefix,key){
+  if(key==="metadata"){
+    return `<div class="v-adv-row"><label class="v-adv-lab">${VADV_LABELS[key]}</label>`
+      +`<div class="rng rng-single"><div class="rng-track"></div><div class="rng-fill" id="${prefix}_${key}_fill"></div>`
+      +`<input type="range" min="0" max="100" value="50" id="${prefix}_${key}" oninput="vRngSync('${prefix}','${key}')"></div>`
+      +`<span class="rng-val" id="${prefix}_${key}_val">50</span></div>`;
+  }
+  return `<div class="v-adv-row"><label class="v-adv-lab">${VADV_LABELS[key]}</label>`
+    +`<div class="rng"><div class="rng-track"></div><div class="rng-fill" id="${prefix}_${key}_fill"></div>`
+    +`<input type="range" min="0" max="100" value="50" id="${prefix}Min_${key}" oninput="vRngSync('${prefix}','${key}')">`
+    +`<input type="range" min="0" max="100" value="50" id="${prefix}Max_${key}" oninput="vRngSync('${prefix}','${key}')"></div>`
+    +`<span class="rng-val" id="${prefix}_${key}_val">50 → 50</span></div>`;
+}
+function vRngSync(prefix,key){
+  if(key==="metadata"){
+    const el=document.getElementById(prefix+"_"+key); if(!el) return;
+    const v=_vClamp(el.value);
+    const fill=document.getElementById(prefix+"_"+key+"_fill"); if(fill){ fill.style.left="0%"; fill.style.width=v+"%"; }
+    const lab=document.getElementById(prefix+"_"+key+"_val"); if(lab) lab.textContent=v;
+    _vAdvEstimate(prefix); return;
+  }
+  const mn=document.getElementById(prefix+"Min_"+key), mx=document.getElementById(prefix+"Max_"+key);
+  if(!mn||!mx) return;
+  const a=+mn.value, b=+mx.value, lo=Math.min(a,b), hi=Math.max(a,b);
+  // croisement NATUREL + priorité pointeur (z-index) à la poignée active.
+  if(document.activeElement===mn){ mn.style.zIndex=3; mx.style.zIndex=2; }
+  else if(document.activeElement===mx){ mx.style.zIndex=3; mn.style.zIndex=2; }
+  const fill=document.getElementById(prefix+"_"+key+"_fill"); if(fill){ fill.style.left=lo+"%"; fill.style.width=(hi-lo)+"%"; }
+  const lab=document.getElementById(prefix+"_"+key+"_val"); if(lab) lab.textContent=`${lo} → ${hi}`;
+  _vAdvEstimate(prefix);
+}
+function _vAdvEstimate(prefix){
+  // try/catch : le rendu initial des panneaux (au chargement) peut survenir
+  // avant l'initialisation d'autres variables lues par les estimations (TDZ) —
+  // on ne laisse jamais ça casser le script.
+  try {
+    if(prefix==="vAdv" && typeof updateVariationEstimate==="function") updateVariationEstimate();
+    else if(prefix==="vmAdv" && typeof updateVmEstimate==="function") updateVmEstimate();
+  } catch(e){}
+}
+function vRenderAdv(containerId, prefix){
+  const c=document.getElementById(containerId); if(!c || c.dataset.built==="1") return;
+  c.innerHTML = VADV_CATS.map((cat,ci)=>
+    `<details class="v-adv-card"${ci===0?" open":""}><summary><span class="v-dot" style="background:${cat.dot}"></span> ${cat.name}</summary>`
+    +`<div class="v-adv-body">${cat.keys.map(k=>_vRangeRow(prefix,k)).join("")}</div></details>`
+  ).join("") + `<div class="v-adv-foot"><button type="button" class="r-mini-btn" onclick="vRngReset('${prefix}')">↺ Réinitialiser</button></div>`;
+  c.dataset.built="1";
+  VADV_CATS.forEach(cat=>cat.keys.forEach(k=>vRngSync(prefix,k)));
+}
+function vRngReset(prefix){
+  VADV_CATS.forEach(cat=>cat.keys.forEach(k=>{
+    if(k==="metadata"){ const el=document.getElementById(prefix+"_"+k); if(el) el.value=50; }
+    else { const mn=document.getElementById(prefix+"Min_"+k), mx=document.getElementById(prefix+"Max_"+k); if(mn)mn.value=50; if(mx)mx.value=50; }
+    vRngSync(prefix,k);
+  }));
+}
+vRenderAdv("vAdvBody","vAdv");
+vRenderAdv("vmAdvBody","vmAdv");
 // getAdvancedConfig : chaque paramètre = plage {min,max} (double-curseur),
 // sauf 'metadata' (probabilité simple). Format backend INCHANGÉ (déjà
 // rétro-compatible {min,max}).
@@ -3777,25 +3785,8 @@ const a = document.getElementById("vAppSource"), o = document.getElementById("vO
 if (a && a.value) fd.append("app_source", a.value);
 if (o && o.value) fd.append("origin", o.value);
 }
-// P4 — double-curseur : croisement corrigé (swap), remplissage + valeurs live,
-// et miroir caché vAdv_<key>=min (préserve les lecteurs legacy des IDs vAdv_*).
-function _vDualSync(key){
-  const mn=document.getElementById("vAdvMin_"+key), mx=document.getElementById("vAdvMax_"+key);
-  if(!mn||!mx) return;
-  // Croisement NATUREL (comme DaVinci/CapCut) : on NE swappe PAS les valeurs des
-  // poignées — la poignée déplacée passe librement de l'autre côté. La plage
-  // effective est simplement min/max des deux, calculée à la lecture.
-  const a=+mn.value, b=+mx.value; const lo=Math.min(a,b), hi=Math.max(a,b);
-  // La poignée au-dessus (dans la pile) devient saisissable : on donne la
-  // priorité pointeur à celle qui vient d'être bougée via z-index.
-  if(document.activeElement===mn){ mn.style.zIndex=3; mx.style.zIndex=2; }
-  else if(document.activeElement===mx){ mx.style.zIndex=3; mn.style.zIndex=2; }
-  const dual=mn.closest(".v-dual");
-  if(dual){ const fill=dual.querySelector(".v-dual-fill"); if(fill){ fill.style.left=lo+"%"; fill.style.width=(hi-lo)+"%"; }
-    const lab=document.getElementById("vAdv_"+key+"_val"); if(lab) lab.textContent=`${lo} → ${hi}`; }
-  const hid=document.getElementById("vAdv_"+key); if(hid) hid.value=lo;   // miroir compat (= min effectif)
-  if(typeof updateVariationEstimate==="function") updateVariationEstimate();
-}
+// Compat : les anciens appels _vDualSync(key) délèguent au composant mutualisé.
+function _vDualSync(key){ vRngSync("vAdv", key); }
 // setAdvancedConfig : accepte {min,max} (nouveau) OU un entier (anciens presets)
 // → dans ce cas min=max=entier. Rétro-compatible avec tous les presets sauvegardés.
 function setAdvancedConfig(cfg) {
@@ -3817,23 +3808,9 @@ _vDualSync(key);
 });
 if (typeof updateVariationEstimate === "function") updateVariationEstimate();
 }
-document.getElementById("vRandomizeBtn").addEventListener("click", () => {
-const cfg = {};
-ADVANCED_SLIDER_KEYS_CLIENT.forEach(key => {
-if (key === "metadata") { cfg.metadata = Math.floor(Math.random() * 101); return; }
-const a = Math.floor(Math.random() * 101), b = Math.floor(Math.random() * 101);
-cfg[key] = { min: Math.min(a, b), max: Math.max(a, b) };
-});
-setAdvancedConfig(cfg);
-const msg = document.getElementById("vPresetMsg");
-msg.textContent = "🎲 Configuration aléatoire générée — vous pouvez la sauvegarder en préréglage.";
-msg.style.color = "var(--muted)";
-});
-document.getElementById("vResetAdvBtn").addEventListener("click", () => {
-const cfg = {};
-ADVANCED_SLIDER_KEYS_CLIENT.forEach(key => { cfg[key] = ADVANCED_SLIDER_DEFAULT_CLIENT; });
-setAdvancedConfig(cfg);
-});
+// (Barre d'outils avancée supprimée : recherche / favoris / tout développer /
+//  tout réduire / réinitialiser-tous / randomiser. Un seul bouton discret
+//  « Réinitialiser » est généré en bas du panneau par vRenderAdv.)
 
 // ── Save / Load / Delete presets (per-user, server-stored) ──
 async function refreshVariationPresets() {
@@ -4258,39 +4235,46 @@ r.addEventListener("change", () => {
 const adv = getVmConfigMode() === "advanced";
 vmPresetPanel.style.display = adv ? "none" : "block";
 vmAdvancedPanel.style.display = adv ? "block" : "none";
+if (adv) vRenderAdv("vmAdvBody", "vmAdv");
 updateVmEstimate();
 });
 });
 
-// ── Advanced sliders ──
+// ── Advanced sliders (composant mutualisé, doubles curseurs {min,max}) ──
+// metadata reste un entier simple ; les autres clés = {min,max}. Format
+// backend identique au mode « 1 vidéo » (_pick_advanced_variation_params
+// accepte {min,max} ET un entier → rétro-compatible avec les anciens presets).
 function getVmAdvancedConfig() {
 const cfg = {};
-VM_SLIDER_KEYS.forEach(k => { const el = document.getElementById("vmAdv_" + k); cfg[k] = el ? Math.max(0, Math.min(100, parseInt(el.value, 10) || 0)) : VM_SLIDER_DEFAULT; });
+VM_SLIDER_KEYS.forEach(k => {
+if (k === "metadata") { const el = document.getElementById("vmAdv_metadata"); cfg.metadata = el ? _vClamp(el.value) : VM_SLIDER_DEFAULT; return; }
+const mn = document.getElementById("vmAdvMin_" + k), mx = document.getElementById("vmAdvMax_" + k);
+const a = mn ? _vClamp(mn.value) : VM_SLIDER_DEFAULT, b = mx ? _vClamp(mx.value) : VM_SLIDER_DEFAULT;
+cfg[k] = { min: Math.min(a, b), max: Math.max(a, b) };
+});
 return cfg;
 }
 function setVmAdvancedConfig(cfg) {
 VM_SLIDER_KEYS.forEach(k => {
-const el = document.getElementById("vmAdv_" + k); const val = document.getElementById("vmAdv_" + k + "_val");
-if (!el) return;
 const raw = (cfg && cfg[k] != null) ? cfg[k] : VM_SLIDER_DEFAULT;
-const v = Math.max(0, Math.min(100, parseInt(raw, 10) || VM_SLIDER_DEFAULT));
-el.value = v; if (val) val.textContent = v;
+if (k === "metadata") {
+const el = document.getElementById("vmAdv_metadata");
+const v = _vClamp(typeof raw === "object" ? (raw.min != null ? raw.min : 50) : raw);
+if (el) el.value = v; vRngSync("vmAdv", k); return;
+}
+let lo, hi;
+if (raw && typeof raw === "object") { lo = _vClamp(raw.min); hi = _vClamp(raw.max); }
+else { lo = hi = _vClamp(raw); }
+if (lo > hi) { const t = lo; lo = hi; hi = t; }
+const mn = document.getElementById("vmAdvMin_" + k), mx = document.getElementById("vmAdvMax_" + k);
+if (mn) mn.value = lo; if (mx) mx.value = hi;
+vRngSync("vmAdv", k);
 });
 updateVmEstimate();
 }
-VM_SLIDER_KEYS.forEach(k => {
-const el = document.getElementById("vmAdv_" + k); const val = document.getElementById("vmAdv_" + k + "_val");
-if (!el) return;
-el.addEventListener("input", () => { if (val) val.textContent = el.value; updateVmEstimate(); });
-});
-document.getElementById("vmRandomizeBtn").addEventListener("click", () => {
-const cfg = {}; VM_SLIDER_KEYS.forEach(k => { cfg[k] = Math.floor(Math.random() * 101); });
-setVmAdvancedConfig(cfg);
-const m = document.getElementById("vmPresetMsg"); m.textContent = "🎲 Configuration aléatoire générée."; m.style.color = "var(--muted)";
-});
-document.getElementById("vmResetAdvBtn").addEventListener("click", () => {
-const cfg = {}; VM_SLIDER_KEYS.forEach(k => { cfg[k] = VM_SLIDER_DEFAULT; }); setVmAdvancedConfig(cfg);
-});
+// (Curseurs générés par vRenderAdv → pas de câblage input manuel ni de boutons
+//  Randomiser/Réinitialiser-tous ici ; bouton « Réinitialiser » discret généré
+//  en bas du panneau.)
 
 // ── Presets (reuse /variation_preset* endpoints with the CORRECT JSON
 // contract the server expects — {name, config} in, {config} out). ──
@@ -4374,7 +4358,7 @@ document.getElementById("vmEstCost").textContent = "$" + (VM_COST_PER_SECOND_PER
 } else { document.getElementById("vmEstTime").textContent = "—"; document.getElementById("vmEstCost").textContent = "—"; }
 
 let avgIntensity;
-if (getVmConfigMode() === "advanced") { const cfg = getVmAdvancedConfig(); avgIntensity = VM_SLIDER_KEYS.reduce((a, k) => a + cfg[k], 0) / VM_SLIDER_KEYS.length; }
+if (getVmConfigMode() === "advanced") { const cfg = getVmAdvancedConfig(); avgIntensity = VM_SLIDER_KEYS.reduce((a, k) => { const v = cfg[k]; const n = (v && typeof v === "object") ? ((+v.min + +v.max) / 2) : (+v || 0); return a + n; }, 0) / VM_SLIDER_KEYS.length; }
 else { const s = getVmStrength(); avgIntensity = s === "strong" ? 75 : s === "medium" ? 50 : 25; }
 updateVmScores(avgIntensity);
 }
