@@ -440,13 +440,14 @@ def analyze_video_local(video_path, hybrid_threshold=55.0):
             cur = caps[-1]
             cur["end"] = t
             cur["reads"] += 1
+            cur["readlist"].append((b["conf"], txt))
             sc = b["conf"] * len(txt)
             if sc > cur["best_score"]:
                 cur["best_score"] = sc; cur["best_text"] = txt; cur["best_conf"] = b["conf"]
         else:
             caps.append({"start": t, "end": t, "reads": 1,
                          "best_text": txt, "best_score": b["conf"] * len(txt),
-                         "best_conf": b["conf"]})
+                         "best_conf": b["conf"], "readlist": [(b["conf"], txt)]})
 
     # ── Fusion des captions ADJACENTES sur-segmentées : Tesseract lit parfois
     # une même caption très différemment d'une frame à l'autre (texte stylisé).
@@ -466,7 +467,7 @@ def analyze_video_local(video_path, hybrid_threshold=55.0):
     for c in caps:
         if merged and _mergeable(merged[-1], c):
             m = merged[-1]
-            m["end"] = c["end"]; m["reads"] += c["reads"]
+            m["end"] = c["end"]; m["reads"] += c["reads"]; m["readlist"] += c["readlist"]
             if c["best_score"] > m["best_score"]:
                 m["best_score"] = c["best_score"]; m["best_text"] = c["best_text"]; m["best_conf"] = c["best_conf"]
         else:
@@ -481,6 +482,24 @@ def analyze_video_local(video_path, hybrid_threshold=55.0):
         for c in caps:
             print(f"[TRACK] reads={c['reads']} conf={c['best_conf']:.0f} «{c['best_text'][:50]}»", file=_s.stderr)
 
+    # ── INCERTITUDE par caption (pour le mode Auto : fallback Vision ciblé). ──
+    # Signaux : confiance OCR moyenne + DÉSACCORD entre les lectures successives
+    # (mots instables / fragments ajoutés / troncatures se traduisent par des
+    # lectures divergentes). NE juge pas le contenu (pas de dictionnaire).
+    def _uncertainty(readlist, best):
+        confs = [c for c, _ in readlist] or [0.0]
+        mean_conf = sum(confs) / len(confs)
+        texts = [t for _, t in readlist]
+        # désaccord = 1 - similarité moyenne au texte représentatif
+        if len(texts) > 1:
+            sims = [_similar(best, t) for t in texts]
+            agree = sum(sims) / len(sims)
+        else:
+            agree = 1.0
+        disagree = 1.0 - agree
+        uncertain = (mean_conf < 84.0) or (disagree > 0.30)
+        return round(mean_conf, 1), round(disagree, 3), bool(uncertain)
+
     # ── ÉTAPE 4 — géométrie COHÉRENTE (médianes de la piste dominante) pour
     # TOUTES les captions : même taille, même alignement, même position. ──
     out = []
@@ -489,6 +508,7 @@ def analyze_video_local(video_path, hybrid_threshold=55.0):
         end = min(duration, c["end"] + frame_dt * 0.5)
         if end <= start:
             end = start + max(0.6, frame_dt)
+        mconf, disagree, uncertain = _uncertainty(c["readlist"], c["best_text"])
         out.append({
             "text": _trim_edge_noise(c["best_text"]),
             "start_time": round(start, 2), "end_time": round(end, 2),
@@ -496,6 +516,7 @@ def analyze_video_local(video_path, hybrid_threshold=55.0):
             "width_pct": round(dom_wp, 4), "fontsize_pct": round(dom_fp, 4),
             "align": dom_align, "bold": True, "color": "white",
             "_conf": round(c["best_conf"], 1),
+            "_mean_conf": mconf, "_disagree": disagree, "_uncertain": uncertain,
         })
 
     # non-chevauchement strict : chaque caption se ferme avant la suivante.

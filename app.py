@@ -1887,6 +1887,103 @@ def analyze_with_claude_vision(frame_paths: list, model: str = OCR_MODEL_SONNET)
     return normalized
 
 
+def _crop_caption_frame(video_path, line, out_path, pad=3.2):
+    """Extrait une frame au milieu de l'intervalle d'une caption et recadre une
+    bande horizontale (pleine largeur, ~3 lignes de haut) centrée sur la zone
+    de la caption locale. Sert à l'OCR Vision CIBLÉ du mode Auto."""
+    import subprocess as _sp
+    try:
+        mt = max(0.05, (float(line["start_time"]) + float(line["end_time"])) / 2.0)
+    except Exception:
+        mt = 0.5
+    tmp = out_path + ".full.png"
+    try:
+        _sp.run(["ffmpeg", "-y", "-ss", f"{mt:.3f}", "-i", str(video_path),
+                 "-frames:v", "1", tmp, "-loglevel", "error"],
+                capture_output=True, timeout=30)
+        if not os.path.exists(tmp):
+            return False
+        from PIL import Image
+        im = Image.open(tmp).convert("RGB")
+        W, H = im.size
+        cy = float(line.get("cy_pct", 0.66))
+        fh = float(line.get("fontsize_pct", 0.03)) or 0.03
+        halfh = min(0.30, max(0.06, fh * pad))
+        y0 = int(max(0.0, cy - halfh) * H)
+        y1 = int(min(1.0, cy + halfh) * H)
+        im.crop((0, y0, W, y1)).save(out_path)
+        return True
+    except Exception:
+        return False
+    finally:
+        try:
+            os.path.exists(tmp) and os.remove(tmp)
+        except Exception:
+            pass
+
+
+def _auto_refine_uncertain(video_path, lines, model: str = OCR_MODEL_SONNET):
+    """Mode AUTO — fallback Vision CIBLÉ : ne corrige QUE les captions locales
+    marquées incertaines (_uncertain), en UN SEUL appel Vision par vidéo B.
+    Vision se contente de RETRANSCRIRE le texte visible des zones recadrées ;
+    les timings, la position et la géométrie restent ceux de l'OCR local.
+    Retourne (lignes_corrigées, nb_appels_vision). Ne lève jamais."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    unc_idx = [i for i, l in enumerate(lines) if l.get("_uncertain")]
+    if not api_key or not unc_idx:
+        return lines, 0
+    import tempfile, shutil, sys as _sys
+    tmpdir = tempfile.mkdtemp(prefix="ocrcrop_")
+    try:
+        import anthropic
+        content, kept = [], []
+        for k, i in enumerate(unc_idx):
+            cp = os.path.join(tmpdir, f"c{k}.png")
+            if _crop_caption_frame(video_path, lines[i], cp):
+                with open(cp, "rb") as f:
+                    b64 = base64.standard_b64encode(f.read()).decode()
+                content.append({"type": "text", "text": f"Image {k}:"})
+                content.append({"type": "image", "source":
+                                {"type": "base64", "media_type": "image/png", "data": b64}})
+                kept.append((k, i))
+        if not kept:
+            return lines, 0
+        content.append({"type": "text", "text": (
+            "Chaque image montre UNE seule caption de vidéo sociale (parfois sur "
+            "plusieurs lignes). Retranscris EXACTEMENT le texte visible de chaque "
+            "image, en respectant l'orthographe et la ponctuation de la source, "
+            "en IGNORANT les emojis. N'invente rien, n'ajoute AUCUN mot non "
+            "visible. Réponds UNIQUEMENT en JSON : "
+            "[{\"i\": <numéro d'image>, \"text\": \"...\"}].")})
+        client = anthropic.Anthropic(api_key=api_key)
+        resp = client.messages.create(model=model, max_tokens=1024,
+                                       messages=[{"role": "user", "content": content}])
+        raw = resp.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        by = {int(d["i"]): (d.get("text") or "").strip()
+              for d in json.loads(raw) if "i" in d}
+        out = list(lines)
+        for k, i in kept:
+            t = (by.get(k) or "").strip()
+            if t:
+                out[i] = dict(out[i]); out[i]["text"] = t
+        return out, 1
+    except Exception as e:
+        print(f"[AUTO_VISION] refine échec ({e})", file=_sys.stderr)
+        return lines, 0
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def _strip_ocr_meta(lines):
+    """Retire les clés internes (_conf, _uncertain, _mean_conf, _disagree…)
+    avant renvoi/caching — le rendu n'a besoin que de text/timings/géométrie."""
+    return [{k: v for k, v in l.items() if not k.startswith("_")} for l in (lines or [])]
+
+
 def _emoji_cluster_count(text: str) -> int:
     """
     Batch-merge helper (emoji-preservation fix): counts emoji clusters in
@@ -3569,28 +3666,29 @@ def analyze():
         source = None
         lines = []
         if _use_local:
-            # OCR LOCAL PRO (module ocr_local) : 0 appel API, timing + géométrie.
-            lines = _analyze_local_engine(path_b)
+            # OCR LOCAL EXPLICITE : 0 appel API, aucun fallback Vision.
+            lines = _strip_ocr_meta(_analyze_local_engine(path_b))
             if lines:
                 source = "local"
         elif _use_auto:
-            # HYBRIDE : local d'abord. Si confiance faible (needs_vision) ET clé API
-            # dispo → Vision pour cette vidéo seulement (réduit le coût API au strict
-            # nécessaire tout en gardant la qualité Vision quand le local est incertain).
+            # AUTO : local (piste dominante → timings + géométrie) puis Vision
+            # CIBLÉ sur les seules captions incertaines, un seul appel par vidéo.
             _loc_lines, _meta = _analyze_local_engine_meta(path_b)
-            if _loc_lines and not _meta.get("needs_vision"):
-                lines, source = _loc_lines, "local"
+            if _loc_lines:
+                if has_key and any(l.get("_uncertain") for l in _loc_lines):
+                    _ref, _nc = _auto_refine_uncertain(path_b, _loc_lines, _model)
+                    lines, source = _ref, ("hybrid" if _nc > 0 else "local")
+                else:
+                    lines, source = _loc_lines, "local"
             elif has_key:
                 try:
                     _vis, _ = analyze_with_claude_vision_timed(path_b, model=_model)
                 except Exception:
                     _vis = []
-                if _vis:
-                    lines, source = _vis, "vision"
-                else:
-                    lines, source = _loc_lines, ("local" if _loc_lines else None)
+                lines, source = (_vis, "vision") if _vis else ([], None)
             else:
-                lines, source = _loc_lines, ("local" if _loc_lines else None)
+                lines, source = [], None
+            lines = _strip_ocr_meta(lines)
         else:
             if has_key:
                 # Timed detection for ALL modes: sample frames across the timeline
@@ -4243,21 +4341,31 @@ def batch_detect():
         frames = []
         if _use_local:
             # OCR LOCAL PRO (module ocr_local) : 0 appel API, timing + géométrie.
-            lines = _analyze_local_engine(path_b)
+            # Local EXPLICITE → aucun fallback Vision (résultat local tel quel).
+            lines = _strip_ocr_meta(_analyze_local_engine(path_b))
             if lines:
                 source = "local"
         elif _use_auto:
+            # AUTO : OCR local (piste dominante → timings + géométrie), puis
+            # fallback Vision CIBLÉ sur les SEULES captions incertaines, en UN
+            # SEUL appel Vision par vidéo B (mis en cache par hash ci-dessous →
+            # jamais rappelé pour chaque vidéo A en mode Matrice).
             _loc_lines, _meta = _analyze_local_engine_meta(path_b)
-            if _loc_lines and not _meta.get("needs_vision"):
-                lines, source = _loc_lines, "local"
+            if _loc_lines:
+                if has_key and any(l.get("_uncertain") for l in _loc_lines):
+                    _ref, _nc = _auto_refine_uncertain(path_b, _loc_lines, _model)
+                    lines, source = _ref, ("hybrid" if _nc > 0 else "local")
+                else:
+                    lines, source = _loc_lines, "local"
             elif has_key:
                 try:
                     _vis, _ = analyze_with_claude_vision_timed(path_b, model=_model)
                 except Exception:
                     _vis = []
-                lines, source = (_vis, "vision") if _vis else (_loc_lines, ("local" if _loc_lines else None))
+                lines, source = (_vis, "vision") if _vis else ([], None)
             else:
-                lines, source = _loc_lines, ("local" if _loc_lines else None)
+                lines, source = [], None
+            lines = _strip_ocr_meta(lines)
         else:
             # Identical sequence to /analyze: timed detection first, falling
             # back to the original single-pass detection if it finds nothing.
