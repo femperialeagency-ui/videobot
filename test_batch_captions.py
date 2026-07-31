@@ -155,5 +155,39 @@ else:
     check("sorties batch générées", False)
 shutil.rmtree(bdir, ignore_errors=True)
 
+# ── E) Garde-fou d'espace disque : purge des batches/ZIP temporaires ───
+import time as _t
+# vieux dossier de batch (> 3 h) → doit être purgé
+old = A.BATCH_DIR / "old_batch_e"; old.mkdir(parents=True, exist_ok=True)
+(old / "f.bin").write_bytes(b"x" * 1024)
+os.utime(old, (_t.time() - 4 * 3600, _t.time() - 4 * 3600))
+# dossier récent (< 10 min) → conservé (potentiellement en cours)
+recent = A.BATCH_DIR / "recent_batch_e"; recent.mkdir(parents=True, exist_ok=True)
+(recent / "f.bin").write_bytes(b"x" * 1024)
+# lot explicitement conservé : plus vieux que le seuil « en cours » (10 min)
+# donc éligible à la purge agressive, mais protégé par keep_batch_id. Reste
+# sous les 3 h pour survivre au nettoyage doux, comme le lot courant réel.
+keep = A.BATCH_DIR / "keep_batch_e"; keep.mkdir(parents=True, exist_ok=True)
+(keep / "f.bin").write_bytes(b"x" * 1024)
+os.utime(keep, (_t.time() - 3600, _t.time() - 3600))   # 1 h : gardé via keep_batch_id
+# ZIP orphelins → doivent être balayés
+zb = A.DATA_DIR / "zipbuild_teste.zip"; zb.write_bytes(b"x" * 1024)
+bz = A.DATA_DIR / "batch_teste.zip";    bz.write_bytes(b"x" * 1024)
+os.utime(zb, (_t.time() - 3 * 3600, _t.time() - 3 * 3600))
+os.utime(bz, (_t.time() - 3 * 3600, _t.time() - 3 * 3600))
+
+# _sweep_orphan_zips seul retire les ZIP > 2 h
+A._sweep_orphan_zips()
+check("disk: ZIP orphelin zipbuild_* purgé", not zb.exists())
+check("disk: ZIP orphelin batch_*.zip purgé", not bz.exists())
+
+# min_free démesuré → force la purge AGRESSIVE de façon déterministe
+A._free_disk_space(keep_batch_id="keep_batch_e", min_free=10**18)
+check("disk: vieux dossier de batch purgé", not old.exists())
+check("disk: lot en cours (keep) conservé", keep.exists())
+check("disk: dossier récent conservé", recent.exists())
+for d in (recent, keep):
+    shutil.rmtree(d, ignore_errors=True)
+
 print("\n" + ("✅ TOUS LES TESTS PASSENT" if not FAILS else f"❌ ÉCHECS: {FAILS}"))
 sys.exit(1 if FAILS else 0)

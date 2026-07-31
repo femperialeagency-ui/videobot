@@ -1035,6 +1035,71 @@ def _cleanup_stale_batches(max_age_hours: float = 3.0):
         pass
 
 
+# ── Garde-fou d'espace disque (disque persistant Render, /data) ─────
+# Un gros lot (ex. 12 A × 21 B = 252 sorties) écrit : sources stagées +
+# 252 vidéos C + un ZIP (copie STORED, ~taille des sorties). Sans purge,
+# le disque de 10 Go se remplit → « [Errno 28] No space left on device »
+# en plein staging. On nettoie AVANT de stager et on échoue proprement
+# (message clair, aucun fichier partiel laissé) si l'espace manque.
+_DISK_MIN_FREE_BYTES = 1_500_000_000   # plancher de sécurité : 1,5 Go
+
+
+def _disk_free_bytes(path=None):
+    try:
+        return shutil.disk_usage(str(path or DATA_DIR)).free
+    except Exception:
+        return None
+
+
+def _sweep_orphan_zips(max_age_s=7200):
+    """Supprime les ZIP temporaires laissés à la racine de DATA_DIR
+    (zipbuild_*.zip/.json, batch_*.zip) plus vieux que max_age_s.
+    _cleanup_stale_batches ne balayait QUE les dossiers de batch, jamais
+    ces ZIP — d'où une fuite d'espace sur les gros lots répétés."""
+    cutoff = time.time() - max_age_s
+    for pat in ("zipbuild_*.zip", "zipbuild_*.json", "batch_*.zip"):
+        try:
+            for f in DATA_DIR.glob(pat):
+                try:
+                    if f.is_file() and f.stat().st_mtime < cutoff:
+                        os.remove(str(f))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+
+def _free_disk_space(keep_batch_id=None, min_free=_DISK_MIN_FREE_BYTES):
+    """Libère de l'espace sur le disque persistant. 1) nettoyage doux
+    (dossiers de batch > 3 h + ZIP orphelins > 2 h). 2) si l'espace libre
+    reste sous le plancher, purge AGRESSIVE : tous les dossiers de batch
+    SAUF celui en cours (keep_batch_id) et ceux modifiés il y a < 10 min
+    (possiblement en cours), + TOUS les ZIP orphelins. Ne touche JAMAIS
+    aux bases de données (users / OCR cache). Retourne l'espace libre."""
+    _cleanup_stale_batches()
+    _sweep_orphan_zips()
+    free = _disk_free_bytes()
+    if free is not None and free >= min_free:
+        return free
+    recent = time.time() - 600   # 10 min → potentiellement en cours
+    try:
+        for d in BATCH_DIR.iterdir():
+            try:
+                if not d.is_dir():
+                    continue
+                if keep_batch_id and d.name == keep_batch_id:
+                    continue
+                if d.stat().st_mtime >= recent:
+                    continue
+                shutil.rmtree(d, ignore_errors=True)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    _sweep_orphan_zips(max_age_s=0)   # purge tous les ZIP orphelins
+    return _disk_free_bytes()
+
+
 # ── Variation Mode helpers (FFmpeg-only — no Vision, no captions) ───
 # Self-contained block: nothing here calls, imports from, or mutates
 # any caption/Vision/typography code, and nothing in those pipelines
@@ -4286,7 +4351,7 @@ def batch_stage():
         batch_id = (request.form.get("batch_id") or "").strip()
         is_new   = not batch_id or ".." in batch_id or "/" in batch_id
         if is_new:
-            _cleanup_stale_batches()
+            _free_disk_space()             # purge stale batches + ZIP orphelins
             batch_id = uuid.uuid4().hex
 
         bdir = BATCH_DIR / batch_id
@@ -4294,9 +4359,41 @@ def batch_stage():
         (bdir / "B").mkdir(parents=True, exist_ok=True)
         (bdir / "out").mkdir(parents=True, exist_ok=True)
 
+        # Garde-fou : si le disque est déjà sous le plancher, tenter une
+        # libération (en conservant le lot courant) ; si ça ne suffit pas,
+        # échouer AVANT d'écrire pour ne pas laisser de fichier partiel.
+        free = _disk_free_bytes()
+        if free is not None and free < _DISK_MIN_FREE_BYTES:
+            free = _free_disk_space(keep_batch_id=batch_id)
+        if free is not None and free < _DISK_MIN_FREE_BYTES:
+            return jsonify({"error": (
+                "Espace disque serveur insuffisant pour préparer ce lot. "
+                "Les fichiers temporaires ont été purgés mais l'espace reste "
+                "trop faible : réduisez la taille du lot (moins de vidéos A×B) "
+                "ou réessayez dans quelques minutes."
+            )}), 507
+
         sub  = "A" if kind == "a" else "B"
         dest = bdir / sub / f"{index:02d}.mp4"
-        request.files["file"].save(str(dest))
+        try:
+            request.files["file"].save(str(dest))
+        except OSError as e:
+            # Plus d'espace pendant l'écriture : retirer le fichier partiel,
+            # libérer, et renvoyer un message clair (pas de « Errno 28 » brut).
+            import errno as _errno
+            try:
+                if dest.exists():
+                    os.remove(str(dest))
+            except Exception:
+                pass
+            if getattr(e, "errno", None) == _errno.ENOSPC:
+                _free_disk_space(keep_batch_id=batch_id)
+                return jsonify({"error": (
+                    "Espace disque serveur saturé pendant l'envoi. Les fichiers "
+                    "temporaires ont été nettoyés. Réduisez la taille du lot ou "
+                    "réessayez dans un instant."
+                )}), 507
+            raise
 
         return jsonify({"batch_id": batch_id, "kind": kind, "index": index})
 
