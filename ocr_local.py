@@ -274,33 +274,25 @@ def _clean_caption_text(text):
     return "\n".join(out_lines).strip()
 
 
-def _keep_segment(text, conf, persist, cy_std):
-    """Décision FINALE de conservation — fondée UNIQUEMENT sur les SIGNAUX OCR,
-    jamais sur le texte lui-même :
-      • présence d'alphanumérique (sinon pur symbole → rejet immédiat) ;
-      • confiance OCR (Tesseract) ;
-      • répétition temporelle (persist = nb de frames où le texte réapparaît) ;
-      • cohérence de la zone d'affichage (faible variance verticale cy_std).
-    Un fragment COURT (1 caractère inclus : « I », « A », « À », « J », « LES »,
-    « RN », « Th »…) est CONSERVÉ dès qu'il est corroboré (répété sur ≥2 frames
-    OU confiance élevée) et affiché dans une zone stable ; les MÊMES fragments,
-    vus une seule fois, peu fiables et dans une zone instable, sont rejetés.
-    La longueur ne sert qu'à calibrer l'EXIGENCE de corroboration (un fragment
-    court est plus bruité qu'une phrase), pas à filtrer un texte précis."""
-    if not _has_usable_text(text):
-        return False
-    alnum = sum(c.isalnum() for c in text)
-    n_tok = len([x for x in text.split() if x])
-    zone_ok = (cy_std is None) or (cy_std <= 0.06)
-    is_short = (n_tok <= 1) or (alnum <= 4)
-    if is_short:
-        # Fragment court (« No », « my », « 5 », « I », « RN », « A »… — traités
-        # à l'identique, sans regarder QUEL texte) : conservé s'il est corroboré
-        # (répété sur ≥2 frames OU confiance haute) ET affiché dans une zone
-        # stable ; rejeté s'il est vu une seule fois, peu fiable, zone instable.
-        return ((persist >= 2) or (conf >= 72)) and zone_ok
-    # Phrase : corroborée par la répétition OU une confiance correcte.
-    return (persist >= 2) or (conf >= 55)
+def _trim_edge_noise(text):
+    """Rognage SÛR du bruit résiduel en bordure : on retire un token d'UN SEUL
+    caractère alphanumérique en tête/queue (ex. « v Be… », « Q I'm… », « y and… »)
+    — sauf les vrais mots d'une lettre « I », « a », « A ». Aucun mot de ≥2
+    caractères n'est jamais touché. Appliqué au texte final d'une caption."""
+    def _one(tok):
+        a = re.sub(r"[^\w]", "", tok)
+        return len(a) == 1 and a not in ("I", "a", "A")
+    lines = [l for l in (text or "").split("\n")]
+    if lines:
+        t = lines[0].split()
+        while len(t) > 1 and _one(t[0]):
+            t = t[1:]
+        lines[0] = " ".join(t)
+        t = lines[-1].split()
+        while len(t) > 1 and _one(t[-1]):
+            t = t[:-1]
+        lines[-1] = " ".join(t)
+    return "\n".join(l for l in lines if l.strip()).strip()
 
 
 def analyze_video_local(video_path, hybrid_threshold=55.0):
@@ -339,130 +331,170 @@ def analyze_video_local(video_path, hybrid_threshold=55.0):
     w = next((f[2] for f in per_frame if f[2]), 720)
     h = next((f[3] for f in per_frame if f[3]), 1280)
 
-    # ── fusion temporelle : suivi des textes entre frames ──
-    # tracks : {"key_lines":[...], "geom_samples":[...], "first_t","last_t","confs"}
-    tracks = []
-    for (t, lines, fw, fh) in per_frame:
-        # multi-ligne : regrouper les lignes verticalement proches en blocs
+    import numpy as np
+    frame_dt = (duration / max(1, len(per_frame)))
+
+    # ── ÉTAPE 1 — blocs multiline par frame (mots→lignes→blocs), géométrie % ──
+    frames_blocks = []   # [(t, [block,...])]
+    for (t, lines, fw, fh0) in per_frame:
+        fw = fw or w; fh0 = fh0 or h
+        blks = []
         if lines:
             lines_sorted = sorted(lines, key=lambda l: l["y0"])
-            blocks = [[lines_sorted[0]]]
+            groups = [[lines_sorted[0]]]
             for ln in lines_sorted[1:]:
-                gap = ln["y0"] - blocks[-1][-1]["y1"]
-                lh = blocks[-1][-1]["fh"]
+                gap = ln["y0"] - groups[-1][-1]["y1"]
+                lh = groups[-1][-1]["fh"]
                 if gap < lh * 0.9:
-                    blocks[-1].append(ln)
+                    groups[-1].append(ln)
                 else:
-                    blocks.append([ln])
-            frame_blocks = [_merge_multiline(b) for b in blocks]
-        else:
-            frame_blocks = []
-
-        matched_keys = set()
-        for blk in frame_blocks:
-            best, best_s = None, 0.0
-            for tr in tracks:
-                s = _similar(blk["text"], tr["text"])
-                # même texte ET même zone verticale
-                if s > best_s and abs(blk["y0"] - tr["y0"]) < h * 0.12:
-                    best, best_s = tr, s
-            if best is not None and best_s >= 0.72:
-                best["last_t"] = t
-                best["confs"].append(blk["conf"])
-                best["geom"].append((blk, fw, fh))
-                if blk["conf"] > best["best_conf"]:
-                    best["text"] = blk["text"]; best["best_conf"] = blk["conf"]; best["y0"] = blk["y0"]
-                matched_keys.add(id(best))
-            else:
-                tracks.append({
-                    "text": blk["text"], "y0": blk["y0"], "best_conf": blk["conf"],
-                    "first_t": t, "last_t": t, "confs": [blk["conf"]],
-                    "geom": [(blk, fw, fh)],
+                    groups.append([ln])
+            for grp in groups:
+                mb = _merge_multiline(grp)
+                g = _block_geometry(mb, fw, fh0)
+                blks.append({
+                    "raw": mb["text"], "clean": _clean_caption_text(mb["text"]),
+                    "conf": float(mb["conf"]), "t": t,
+                    "cy": g["cy_pct"], "cx": g["cx_pct"], "wp": g["width_pct"],
+                    "fp": g["fontsize_pct"], "fhp": (mb["fh"] / fh0), "align": g["align"],
                 })
+        frames_blocks.append((t, blks))
 
-    # ── construction des segments finaux ──
-    frame_dt = (duration / max(1, len(per_frame)))
-    out = []
-    all_conf = []
-    for tr in tracks:
-        # géométrie médiane sur tous les échantillons du track
-        import numpy as np
-        cxs, cys, wps, fps_, aligns = [], [], [], [], []
-        for (blk, fw, fh) in tr["geom"]:
-            g = _block_geometry(blk, fw or w, fh or h)
-            cxs.append(g["cx_pct"]); cys.append(g["cy_pct"])
-            wps.append(g["width_pct"]); fps_.append(g["fontsize_pct"]); aligns.append(g["align"])
-        align = max(set(aligns), key=aligns.count)
-        conf = float(np.mean(tr["confs"])) if tr["confs"] else 0.0
-        cy_std = float(np.std(cys)) if len(cys) > 1 else 0.0
+    all_blocks = [b for (_, bl) in frames_blocks for b in bl]
 
-        # ── FILTRAGE ANTI-PARASITE multi-signaux (sans pénaliser les captions
-        # courtes) : texte nettoyé, puis décision via _keep_segment qui combine
-        # lexical + confiance OCR + répétition temporelle + stabilité de zone. ──
-        cleaned = _clean_caption_text(tr["text"])
-        persist = len(tr["confs"])
-        if not _keep_segment(cleaned, conf, persist, cy_std):
+    def _core(txt):
+        return set(x for x in (re.sub(r"[^a-z]", "", y) for y in _norm(txt).split()) if len(x) >= 3)
+
+    def _meta(out):
+        confs = [seg["_conf"] for seg in out] if out else []
+        confidence = round(sum(confs) / len(confs), 1) if confs else 0.0
+        return {"duration": round(duration, 2), "frames": len(per_frame),
+                "confidence": confidence,
+                "needs_vision": (confidence < hybrid_threshold) or (len(out) == 0)}
+
+    # blocs candidats = ceux qui portent du texte exploitable
+    cand = [b for b in all_blocks if b["conf"] >= 30 and _has_usable_text(b["clean"])]
+    if not cand:
+        return [], _meta([])
+
+    # ── ÉTAPE 2 — PISTE DOMINANTE : bande verticale qui concentre les vraies
+    # captions (couverture temporelle × confiance la plus forte). Les vraies
+    # captions restent au même endroit sur toute la vidéo ; le bruit (bords haut/
+    # bas, reflets) est dispersé et peu couvrant. ──
+    HW = 0.09
+    best_center, best_score = None, -1.0
+    for c in sorted(set(round(b["cy"], 3) for b in cand)):
+        inb = [b for b in cand if abs(b["cy"] - c) <= HW]
+        frames_cov = len(set(round(b["t"], 4) for b in inb))
+        mean_conf = sum(b["conf"] for b in inb) / len(inb)
+        score = frames_cov * mean_conf
+        if score > best_score:
+            best_score, best_center = score, c
+    band = [b for b in cand if abs(b["cy"] - best_center) <= HW]
+    dom_cy = float(np.median([b["cy"] for b in band]))
+    dom_cx = float(np.median([b["cx"] for b in band]))
+    dom_wp = float(np.median([b["wp"] for b in band]))
+    dom_fp = float(np.median([b["fp"] for b in band]))
+    dom_fh = float(np.median([b["fhp"] for b in band]))
+    _al = [b["align"] for b in band]
+    dom_align = max(set(_al), key=_al.count)
+
+    def _in_track(b):
+        # dans la zone dominante ET taille de police cohérente (rejette les
+        # détections ÉNORMES/minuscules qui produisent des textes dispersés).
+        if abs(b["cy"] - dom_cy) > max(0.10, 4 * dom_fh):
+            return False
+        if not (0.45 * dom_fh <= b["fhp"] <= 2.2 * dom_fh):
+            return False
+        return True
+
+    def _same_caption(txt, ref):
+        if _similar(_norm(txt), _norm(ref)) >= 0.45:
+            return True
+        a, b = _core(txt), _core(ref)
+        if a and b:
+            u = len(a | b)
+            return u and len(a & b) / u >= 0.5    # recouvrement fort (pas un simple mot commun)
+        return False
+
+    # ── ÉTAPE 3 — CONSOLIDATION TEMPORELLE : une seule caption active à la fois.
+    # On parcourt les frames dans l'ordre ; tant que le texte reste « la même
+    # caption », on l'étend et on retient la MEILLEURE lecture ; dès qu'il change,
+    # on ferme la précédente et on en ouvre une nouvelle. Jamais deux variantes
+    # simultanées. ──
+    caps = []
+    for (t, bl) in frames_blocks:
+        cands = [b for b in bl if _in_track(b) and _has_usable_text(b["clean"])]
+        if not cands:
             continue
+        b = max(cands, key=lambda x: x["conf"])
+        txt = b["clean"]
+        if caps and _same_caption(txt, caps[-1]["best_text"]):
+            cur = caps[-1]
+            cur["end"] = t
+            cur["reads"] += 1
+            sc = b["conf"] * len(txt)
+            if sc > cur["best_score"]:
+                cur["best_score"] = sc; cur["best_text"] = txt; cur["best_conf"] = b["conf"]
+        else:
+            caps.append({"start": t, "end": t, "reads": 1,
+                         "best_text": txt, "best_score": b["conf"] * len(txt),
+                         "best_conf": b["conf"]})
 
-        all_conf.append(conf)
-        start = max(0.0, tr["first_t"] - frame_dt * 0.5)
-        end = min(duration, tr["last_t"] + frame_dt * 0.5)
+    # ── Fusion des captions ADJACENTES sur-segmentées : Tesseract lit parfois
+    # une même caption très différemment d'une frame à l'autre (texte stylisé).
+    # On refusionne deux captions voisines qui partagent un mot « fort » (≥5
+    # lettres, ex. « check », « profil ») OU une similarité de séquence, tout en
+    # ne fusionnant JAMAIS deux vraies captions distinctes (mots courts communs
+    # comme « bby », « like » ignorés). ──
+    def _strong(txt):
+        return set(x for x in (re.sub(r"[^a-z]", "", y) for y in _norm(txt).split()) if len(x) >= 5)
+
+    def _mergeable(a, b):
+        if _similar(_norm(a["best_text"]), _norm(b["best_text"])) >= 0.5:
+            return True
+        return bool(_strong(a["best_text"]) & _strong(b["best_text"]))
+
+    merged = []
+    for c in caps:
+        if merged and _mergeable(merged[-1], c):
+            m = merged[-1]
+            m["end"] = c["end"]; m["reads"] += c["reads"]
+            if c["best_score"] > m["best_score"]:
+                m["best_score"] = c["best_score"]; m["best_text"] = c["best_text"]; m["best_conf"] = c["best_conf"]
+        else:
+            merged.append(c)
+    caps = merged
+
+    # une caption vue sur UNE seule frame reste presque toujours un résidu de
+    # piste (transition/garble) → écartée (décision par les signaux).
+    caps = [c for c in caps if c["reads"] >= 2]
+    if os.environ.get("OCR_TRACK_DEBUG"):
+        import sys as _s
+        for c in caps:
+            print(f"[TRACK] reads={c['reads']} conf={c['best_conf']:.0f} «{c['best_text'][:50]}»", file=_s.stderr)
+
+    # ── ÉTAPE 4 — géométrie COHÉRENTE (médianes de la piste dominante) pour
+    # TOUTES les captions : même taille, même alignement, même position. ──
+    out = []
+    for c in caps:
+        start = max(0.0, c["start"] - frame_dt * 0.5)
+        end = min(duration, c["end"] + frame_dt * 0.5)
         if end <= start:
             end = start + max(0.6, frame_dt)
         out.append({
-            "text": cleaned,
-            "start_time": round(start, 2),
-            "end_time": round(end, 2),
-            "cx_pct": round(float(np.median(cxs)), 4),
-            "cy_pct": round(float(np.median(cys)), 4),
-            "width_pct": round(float(np.median(wps)), 4),
-            "fontsize_pct": round(float(np.median(fps_)), 4),
-            "align": align,
-            "bold": True,
-            "color": "white",
-            "_conf": round(conf, 1),
+            "text": _trim_edge_noise(c["best_text"]),
+            "start_time": round(start, 2), "end_time": round(end, 2),
+            "cx_pct": round(dom_cx, 4), "cy_pct": round(dom_cy, 4),
+            "width_pct": round(dom_wp, 4), "fontsize_pct": round(dom_fp, 4),
+            "align": dom_align, "bold": True, "color": "white",
+            "_conf": round(c["best_conf"], 1),
         })
 
-    # ── DÉDUPLICATION par MOTS-CLÉS : les variantes bruitées d'une même caption
-    # (« ty fa 5 types of men: », « al at a ia oa 5 types of men: if »…) partagent
-    # le même noyau de vrais mots ({types, men}) → on les fusionne en UNE seule
-    # caption (la plus fiable). Pour les captions très courtes (noyau vide, ex.
-    # « No »), on retombe sur l'égalité de texte + même zone verticale.
-    def _core(txt):
-        return set(w for w in (re.sub(r"[^a-z]", "", x) for x in _norm(txt).split()) if len(w) >= 3)
-    out.sort(key=lambda l: (-l["_conf"], l["start_time"]))   # les plus fiables d'abord
-    deduped = []
-    for seg in out:
-        ca = _core(seg["text"])
-        hit = None
-        for m in deduped:
-            cm = _core(m["text"])
-            if ca and cm:
-                union = len(ca | cm)
-                # fusion si fort recouvrement OU si un noyau est inclus dans
-                # l'autre (vraie caption ⊆ variante bruitée « + mots junk »).
-                if (ca <= cm or cm <= ca) or (union and len(ca & cm) / union >= 0.6):
-                    hit = m; break
-            elif _norm(seg["text"]) == _norm(m["text"]) and abs(seg["cy_pct"] - m["cy_pct"]) < 0.12:
-                hit = m; break
-        if hit is not None:
-            hit["start_time"] = min(hit["start_time"], seg["start_time"])
-            hit["end_time"] = max(hit["end_time"], seg["end_time"])
-            if seg["_conf"] > hit["_conf"]:
-                hit["text"] = seg["text"]; hit["_conf"] = seg["_conf"]
-                hit["cx_pct"] = seg["cx_pct"]; hit["cy_pct"] = seg["cy_pct"]
-                hit["width_pct"] = seg["width_pct"]; hit["fontsize_pct"] = seg["fontsize_pct"]
-                hit["align"] = seg["align"]
-        else:
-            deduped.append(seg)
-    out = deduped
+    # non-chevauchement strict : chaque caption se ferme avant la suivante.
+    out.sort(key=lambda l: l["start_time"])
+    for i in range(len(out) - 1):
+        if out[i]["end_time"] > out[i + 1]["start_time"]:
+            out[i]["end_time"] = round(out[i + 1]["start_time"], 2)
 
-    out.sort(key=lambda l: (l["start_time"], l["cy_pct"]))
-    confidence = round(sum(all_conf) / len(all_conf), 1) if all_conf else 0.0
-    meta = {
-        "duration": round(duration, 2),
-        "frames": len(per_frame),
-        "confidence": confidence,
-        "needs_vision": (confidence < hybrid_threshold) or (len(out) == 0),
-    }
-    return out, meta
+    return out, _meta(out)

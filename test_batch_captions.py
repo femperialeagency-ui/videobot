@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """
-test_batch_captions.py — Non-régression captions Batch.
+test_batch_captions.py — Non-régression captions Batch (reconstruction OCR par
+PISTE DOMINANTE).
 
 Vérifie :
-  A) le filtre anti-charabia de l'OCR local (fragments parasites rejetés,
-     vraies captions conservées) ;
-  B) analyze_video_local sur une vraie vidéo B → sortie propre (pas de
-     « LES », « RN », « € ™ »… ; contient les vraies captions) ;
-  C) l'ISOLATION Batch : /batch_render n'utilise QUE le lines_json fourni →
-     C(A,B_j) ne contient que les captions de B_j, jamais celles d'un autre B,
-     et deux rendus successifs ne se contaminent pas.
+  A) helpers de texte (pur symbole rejeté ; tokens alphabétiques préservés,
+     aucun jugement par le contenu) ;
+  B) PIPELINE bout-en-bout sur une vidéo SYNTHÉTIQUE (reproductible) :
+       - sélection de la piste dominante (bruit de bords exclu),
+       - exactement 3 captions séquentielles,
+       - captions courtes conservées quand elles sont DANS la piste (POV, No),
+       - géométrie cohérente (même position/taille),
+       - aucune superposition (une seule caption active à la fois) ;
+  C) VRAIES vidéos vid1/vid2/vid3 (si présentes) : exactement 3 captions
+     chacune, géométrie cohérente, non-chevauchement ;
+  D) ISOLATION Batch en rendu réel (/batch_render n'utilise que son lines_json).
 
 Usage : DATA_DIR=<persistant> python3 test_batch_captions.py
 """
@@ -22,123 +27,100 @@ def check(name, cond, extra=""):
     if not cond:
         FAILS.append(name)
 
-# ── A) Filtre unitaire ────────────────────────────────────────────────
 import ocr_local
 clean = ocr_local._clean_caption_text
-keep  = ocr_local._keep_segment
-textlike = ocr_local._is_text_like
+usable = ocr_local._has_usable_text
 
-# A1. SEULES les chaînes 100% symboles (aucun alphanumérique) sont rejetées
-#     immédiatement — jamais un fragment alphabétique par son contenu.
-PURE_SYMBOLS = ["€. ™", "| |", "( )", "///", "»«", "~ ~", "€ ™", "™", "—"]
-for g in PURE_SYMBOLS:
-    check(f"pur symbole rejeté: {g!r}", not textlike(clean(g)))
+# ── A) Helpers : contenu ne sert JAMAIS de blacklist ──────────────────
+for g in ["€. ™", "| |", "( )", "///", "»«", "™", "—"]:
+    check(f"pur symbole rejeté: {g!r}", not usable(clean(g)))
+for g in ["I", "A", "À", "J", "LES", "RN", "Th", "No", "5", "POV"]:
+    check(f"token alphanumérique préservé: {g!r}", usable(clean(g)))
+check("nettoyage bord garde le nombre", "5 types of men:" in clean("| | ' 5 types of men:"))
+check("nettoyage garde RN (pas de jugement contenu)", clean("| RN |") == "RN")
 
-# A2. Le MÊME fragment alphabétique est CONSERVÉ avec de bons signaux et
-#     REJETÉ avec de mauvais signaux (décision par le comportement OCR, pas
-#     par le texte). Couvre explicitement I, A, À, J, LES, RN, Th.
-SIGNAL_FRAGMENTS = ["I", "A", "À", "J", "LES", "RN", "Th"]
-for g in SIGNAL_FRAGMENTS:
-    check(f"{g!r} gardé (bons signaux)",
-          keep(clean(g), conf=85, persist=3, cy_std=0.01))
-    check(f"{g!r} rejeté (1 frame, conf faible, zone instable)",
-          not keep(clean(g), conf=38, persist=1, cy_std=0.20))
+# ── B) Pipeline sur vidéo SYNTHÉTIQUE (piste dominante) ────────────────
+FONT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts", "Montserrat-VariableFont_wght.ttf")
+WORK = tempfile.mkdtemp()
+SYN = os.path.join(WORK, "syn.mp4")
+draw = (
+  f"drawtext=fontfile={FONT}:text='POV':fontcolor=white:fontsize=80:x=(w-tw)/2:y=h*0.63:enable='between(t,0,2)',"
+  f"drawtext=fontfile={FONT}:text='and just check':fontcolor=white:fontsize=80:x=(w-tw)/2:y=h*0.63:enable='between(t,2.3,4.5)',"
+  f"drawtext=fontfile={FONT}:text='No':fontcolor=white:fontsize=80:x=(w-tw)/2:y=h*0.63:enable='between(t,4.8,7)',"
+  f"drawtext=fontfile={FONT}:text='LES':fontcolor=white:fontsize=44:x=40:y=h*0.08,"          # bruit HAUT
+  f"drawtext=fontfile={FONT}:text='x':fontcolor=white:fontsize=44:x=w-70:y=h*0.95"           # bruit BAS
+)
+subprocess.run(["ffmpeg","-y","-f","lavfi","-i","color=c=black:s=720x1280:d=7:r=24",
+                "-vf",draw,"-c:v","libx264","-pix_fmt","yuv420p",SYN,"-loglevel","error"], check=True)
+lines, meta = ocr_local.analyze_video_local(SYN)
+texts = [l["text"].lower() for l in lines]
+check("synthétique: exactement 3 captions", len(lines) == 3, f"({len(lines)})")
+check("synthétique: caption courte 'POV' conservée (dans la piste)", any("pov" in t for t in texts))
+check("synthétique: 'and just check' conservée", any("check" in t for t in texts))
+check("synthétique: caption courte 'No' conservée", any(t.strip() == "no" for t in texts))
+check("synthétique: bruit de bords 'LES'/'x' exclu",
+      all(t.strip() not in ("les", "x") for t in texts))
+check("synthétique: géométrie cohérente (1 seule position/taille)",
+      len(set(l["cy_pct"] for l in lines)) == 1 and len(set(l["fontsize_pct"] for l in lines)) == 1)
+check("synthétique: aucune superposition (séquentiel)",
+      all(lines[i]["end_time"] <= lines[i+1]["start_time"] + 0.01 for i in range(len(lines)-1)))
+import shutil; shutil.rmtree(WORK, ignore_errors=True)
 
-# Autres parasites transitoires également rejetés par le comportement OCR
-for g in ["ee", "oy", "i ff m", "'a7", "y aN"]:
-    check(f"parasite transitoire rejeté: {g!r}",
-          not keep(clean(g), conf=38, persist=1, cy_std=0.20))
+# ── C) VRAIES vidéos (si fournies) ────────────────────────────────────
+REAL = {
+  "vid1": ["tired", "my", "profil"],
+  "vid2": ["memory", "look", "learner"],
+  "vid3": ["teach", "looks", "profil"],
+}
+updir = "/sessions/eager-youthful-thompson/mnt/uploads"
+if os.environ.get("SKIP_REAL"):
+    REAL = {}
+    print("… (partie C vidéos réelles ignorée : SKIP_REAL=1)")
+for name, kws in REAL.items():
+    path = os.path.join(updir, name + ".mov")
+    if not os.path.exists(path):
+        print(f"… {name}.mov absent — ignoré")
+        continue
+    lines, meta = ocr_local.analyze_video_local(path)
+    joined = " ".join(l["text"].lower() for l in lines)
+    check(f"{name}: exactement 3 captions", len(lines) == 3, f"({len(lines)})")
+    check(f"{name}: géométrie cohérente", len(set(l["cy_pct"] for l in lines)) == 1 and len(set(l["fontsize_pct"] for l in lines)) == 1)
+    check(f"{name}: non-chevauchement", all(lines[i]["end_time"] <= lines[i+1]["start_time"] + 0.01 for i in range(len(lines)-1)))
+    check(f"{name}: contient les vraies captions", all(k in joined for k in kws), joined[:80])
 
-# A3. Vraies captions COURTES conservées quand corroborées (répétition OU
-#     confiance haute) et zone stable — ne JAMAIS rejeter pour cause de longueur.
-SHORT_REAL = ["POV", "No", "Yes", "Why?", "Emma", "5", "then", "one", "money"]
-for s in SHORT_REAL:
-    # cas répété sur plusieurs frames, zone stable
-    check(f"courte gardée (répétée): {s!r}", keep(clean(s), conf=55, persist=3, cy_std=0.01))
-    # cas 1 frame mais confiance élevée (texte net)
-    check(f"courte gardée (conf haute): {s!r}", keep(clean(s), conf=85, persist=1, cy_std=0.01))
-
-# A4. Caption mot-par-mot : chaque mot affiché ~2-3 frames → conservé
-for w in ["Take", "my", "hand"]:
-    check(f"mot-par-mot gardé: {w!r}", keep(clean(w), conf=60, persist=2, cy_std=0.02))
-
-# A5. Phrases conservées : une vraie caption est nette (confiance correcte) OU
-#     répétée sur plusieurs frames.
-for p in ["and just check my profile", "You're tired to be an adult?", "5 types of men:"]:
-    check(f"phrase gardée (nette): {p!r}", keep(clean(p), conf=65, persist=1, cy_std=0.03))
-    check(f"phrase gardée (répétée): {p!r}", keep(clean(p), conf=40, persist=2, cy_std=0.03))
-
-# A6. Nettoyage du bruit de bord (garde le nombre de tête)
-check("nettoyage bord", "5 types of men:" in clean("| | ' 5 types of men:"))
-
-# ── B) OCR réel sur une vidéo B (si disponible) ───────────────────────
-BVID = "/sessions/eager-youthful-thompson/mnt/uploads/video source (B).mp4"
-if os.path.exists(BVID):
-    lines, meta = ocr_local.analyze_video_local(BVID)
-    texts = " || ".join(l["text"] for l in lines)
-    # Politique : on ne juge pas par le texte. On vérifie donc (a) que le
-    # charabia massif a disparu (plus de 60 fragments → un nombre borné), (b)
-    # qu'aucun segment n'est un pur symbole, (c) que les vraies captions sont
-    # présentes. La présence éventuelle d'un fragment court stable (« RN »…)
-    # est CONFORME (décision par signaux, pas par contenu).
-    check("OCR B: charabia massif éliminé (<=15, était 60)", len(lines) <= 15, f"({len(lines)})")
-    check("OCR B: aucun segment pur-symbole", all(ocr_local._has_usable_text(l["text"]) for l in lines))
-    check("OCR B: contient les vraies captions", "types of men" in texts.lower() and "young guy" in texts.lower())
-    print("   segments B:", " | ".join(repr(l["text"]) for l in lines))
-else:
-    print("… (vidéo B d'exemple absente — partie B ignorée)")
-
-# ── C) Isolation /batch_render (rendu réel) ───────────────────────────
+# ── D) Isolation Batch (rendu réel) ───────────────────────────────────
 os.environ.setdefault("DATA_DIR", tempfile.mkdtemp())
 import app as A
 BATCH_ID = "testcap_" + os.urandom(4).hex()
 bdir = A.BATCH_DIR / BATCH_ID
 for sub in ("A", "B", "out"):
     (bdir / sub).mkdir(parents=True, exist_ok=True)
-
 def mkvid(path, seconds=2):
     subprocess.run(["ffmpeg","-y","-f","lavfi","-i",f"color=c=navy:s=576x1024:d={seconds}:r=24",
                     "-f","lavfi","-i",f"sine=frequency=330:duration={seconds}",
                     "-c:v","libx264","-pix_fmt","yuv420p","-c:a","aac","-shortest",str(path),"-loglevel","error"], check=True)
 mkvid(bdir/"A"/"00.mp4"); mkvid(bdir/"B"/"00.mp4"); mkvid(bdir/"B"/"01.mp4")
-
 client = A.app.test_client()
-with client.session_transaction() as s:
-    s["user_id"] = 1
-
+with client.session_transaction() as s: s["user_id"] = 1
 def caption(text):
-    return [{"text": text, "start_time": 0.0, "end_time": 2.0,
-             "cx_pct": 0.5, "cy_pct": 0.5, "width_pct": 0.8, "fontsize_pct": 0.08,
-             "align": "center", "bold": True, "color": "white"}]
-
+    return [{"text": text, "start_time": 0.0, "end_time": 2.0, "cx_pct": 0.5, "cy_pct": 0.5,
+             "width_pct": 0.8, "fontsize_pct": 0.08, "align": "center", "bold": True, "color": "white"}]
 def render(a, b, text):
-    r = client.post("/batch_render", data={
-        "batch_id": BATCH_ID, "a_index": str(a), "b_index": str(b),
-        "num_a": "1", "num_b": "2", "ocr_mode": "local",
-        "lines_json": json.dumps(caption(text))})
-    return r
-
+    return client.post("/batch_render", data={"batch_id": BATCH_ID, "a_index": str(a), "b_index": str(b),
+        "num_a": "1", "num_b": "2", "ocr_mode": "local", "lines_json": json.dumps(caption(text))})
 CAP_B01 = "ZEBRAONE"; CAP_B02 = "MANGOTWO"
-r1 = render(0, 0, CAP_B01)
-r2 = render(0, 1, CAP_B02)
-check("batch_render B01 ok", r1.status_code == 200, str(r1.status_code))
-check("batch_render B02 ok", r2.status_code == 200, str(r2.status_code))
-
+check("batch_render B01 ok", render(0, 0, CAP_B01).status_code == 200)
+check("batch_render B02 ok", render(0, 1, CAP_B02).status_code == 200)
 def read_caption(mp4):
-    lines, _ = ocr_local.analyze_video_local(str(mp4))
-    return " ".join(l["text"] for l in lines).upper()
-
-out1 = bdir/"out"/"A01_B01_output.mp4"; out2 = bdir/"out"/"A01_B02_output.mp4"
-if out1.exists() and out2.exists():
-    t1 = read_caption(out1); t2 = read_caption(out2)
-    # chaque sortie contient SA caption et PAS celle de l'autre B (isolation)
-    check("A01_B01 contient CAP_B01", CAP_B01 in t1.replace(" ", ""), t1)
-    check("A01_B01 NE contient PAS CAP_B02", CAP_B02 not in t1.replace(" ", ""))
-    check("A01_B02 contient CAP_B02", CAP_B02 in t2.replace(" ", ""), t2)
-    check("A01_B02 NE contient PAS CAP_B01", CAP_B01 not in t2.replace(" ", ""))
+    ls, _ = ocr_local.analyze_video_local(str(mp4)); return " ".join(l["text"] for l in ls).upper().replace(" ", "")
+o1 = bdir/"out"/"A01_B01_output.mp4"; o2 = bdir/"out"/"A01_B02_output.mp4"
+if o1.exists() and o2.exists():
+    t1 = read_caption(o1); t2 = read_caption(o2)
+    check("A01_B01 = sa caption seule", CAP_B01 in t1 and CAP_B02 not in t1)
+    check("A01_B02 = sa caption seule", CAP_B02 in t2 and CAP_B01 not in t2)
 else:
-    check("sorties batch générées", False, "fichiers de sortie manquants")
+    check("sorties batch générées", False)
+shutil.rmtree(bdir, ignore_errors=True)
 
-import shutil; shutil.rmtree(bdir, ignore_errors=True)
 print("\n" + ("✅ TOUS LES TESTS PASSENT" if not FAILS else f"❌ ÉCHECS: {FAILS}"))
 sys.exit(1 if FAILS else 0)
