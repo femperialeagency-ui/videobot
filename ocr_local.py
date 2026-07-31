@@ -277,33 +277,54 @@ def _clean_caption_text(text):
     return "\n".join(out_lines).strip()
 
 
-def _is_caption_like(text):
-    """Filtre anti-charabia : True seulement si le texte ressemble à une vraie
-    caption. Rejette fragments trop courts, soupes de symboles, tokens isolés
-    (« LES », « RN », « € ™ », « À »…)."""
+def _is_text_like(text):
+    """Filtre LEXICAL (permissif) : True si le texte contient du vrai langage
+    (un mot, un nombre) et n'est pas une soupe de symboles. NE rejette PAS les
+    captions courtes (POV, No, Yes, Why?, un prénom, un chiffre, mot-par-mot) —
+    la décision finale se fait dans _keep_segment avec d'autres signaux. Rejette
+    en revanche « ~ r | | », « € ™ », « À », « j », « Th », « RN » (sans voyelle)."""
     t = (text or "").strip()
-    if not t:
+    if not t or sum(c.isalnum() for c in t) < 1:
         return False
-    alnum = [c for c in t if c.isalnum()]
-    if len(alnum) < 3:
-        return False
-    # ratio de caractères « propres » (alphanumérique, espace, ponctuation usuelle)
     clean = sum(1 for c in t if c.isalnum() or c in " .,!?:;'’\"-\n")
-    if clean / max(1, len(t)) < 0.65:
+    if clean / max(1, len(t)) < 0.6:
         return False
     toks = [x for x in re.split(r"\s+", t) if x]
-    # token unique très court non numéroté = quasi toujours un parasite
-    if len(toks) == 1 and len(alnum) <= 3 and not re.match(r"^\d+[.)]", toks[0]):
-        return False
-    # au moins un vrai mot, une puce numérotée, OU une caption numérique
-    # (« 1 2 3 4 5 6 » : au moins 3 tokens purement numériques).
-    if any(_has_word(tok) for tok in toks):
+    if any(_has_word(tok) for tok in toks):            # un vrai mot (voyelle)
         return True
-    if any(re.match(r"^\d+[.)]", tok) for tok in toks):
-        return True
-    if sum(1 for tok in toks if re.match(r"^\d+$", tok)) >= 3:
+    if any(re.match(r"^\d+[.)]?$", tok) for tok in toks):  # un nombre / puce
         return True
     return False
+
+
+def _keep_segment(text, conf, persist, cy_std):
+    """Décision FINALE de conservation d'une caption détectée, SANS pénaliser la
+    longueur. On combine plusieurs signaux (comme demandé) :
+      • lexical  : le texte ressemble à du langage (_is_text_like) ;
+      • confiance OCR (Tesseract) ;
+      • répétition temporelle (persist = nb de frames où le texte réapparaît) ;
+      • cohérence de la zone d'affichage (faible variance verticale cy_std).
+    Une caption COURTE (POV, No, Yes, Why?, prénom, chiffre, mot-par-mot) est
+    conservée dès qu'elle est corroborée (répétée sur ≥2 frames OU confiance
+    élevée) et affichée dans une zone stable. Un fragment parasite (« LES »,
+    « ee », « oy »…), lui, est transitoire et/ou peu fiable → rejeté."""
+    if not _is_text_like(text):
+        return False
+    alnum = sum(c.isalnum() for c in text)
+    n_tok = len([x for x in text.split() if x])
+    is_short = (n_tok <= 1) or (alnum <= 4)
+    if not is_short:
+        # Phrase (plusieurs mots) : corroborée par la répétition temporelle OU
+        # une confiance correcte. Les vraies captions persistent ou sortent
+        # nettes ; le junk multi-token vu sur une seule frame et peu fiable
+        # (« yi ye pe », « aes alee ») est écarté. Les variantes bruitées d'une
+        # vraie caption sont en plus fusionnées par la dédup mots-clés.
+        return (persist >= 2) or (conf >= 55)
+    # Caption COURTE : exiger une corroboration (répétition OU confiance haute)
+    # ET une zone d'affichage stable.
+    corroborated = (persist >= 2) or (conf >= 72)
+    zone_ok = (cy_std is None) or (cy_std <= 0.06)
+    return corroborated and zone_ok
 
 
 def analyze_video_local(video_path, hybrid_threshold=55.0):
@@ -397,17 +418,14 @@ def analyze_video_local(video_path, hybrid_threshold=55.0):
             wps.append(g["width_pct"]); fps_.append(g["fontsize_pct"]); aligns.append(g["align"])
         align = max(set(aligns), key=aligns.count)
         conf = float(np.mean(tr["confs"])) if tr["confs"] else 0.0
+        cy_std = float(np.std(cys)) if len(cys) > 1 else 0.0
 
-        # ── FILTRAGE ANTI-PARASITE (0 fragment de charabia incrusté) ──
-        # 1) nettoyage du texte (retire le bruit de bord),
-        # 2) rejet si ça ne ressemble pas à une vraie caption,
-        # 3) gating de persistance : un fragment vu sur UNE seule frame et peu
-        #    fiable est presque toujours du bruit (reflet, visage, main) → rejeté.
+        # ── FILTRAGE ANTI-PARASITE multi-signaux (sans pénaliser les captions
+        # courtes) : texte nettoyé, puis décision via _keep_segment qui combine
+        # lexical + confiance OCR + répétition temporelle + stabilité de zone. ──
         cleaned = _clean_caption_text(tr["text"])
-        if not _is_caption_like(cleaned):
-            continue
         persist = len(tr["confs"])
-        if persist < 2 and conf < 70:
+        if not _keep_segment(cleaned, conf, persist, cy_std):
             continue
 
         all_conf.append(conf)
@@ -429,18 +447,28 @@ def analyze_video_local(video_path, hybrid_threshold=55.0):
             "_conf": round(conf, 1),
         })
 
-    # ── DÉDUPLICATION : fusionne les segments quasi-identiques (même texte +
-    # même zone verticale) qui se chevauchent, pour qu'une caption n'apparaisse
-    # qu'UNE fois (plus de superpositions dues à des détections OCR dupliquées).
-    out.sort(key=lambda l: (l["cy_pct"], l["start_time"]))
+    # ── DÉDUPLICATION par MOTS-CLÉS : les variantes bruitées d'une même caption
+    # (« ty fa 5 types of men: », « al at a ia oa 5 types of men: if »…) partagent
+    # le même noyau de vrais mots ({types, men}) → on les fusionne en UNE seule
+    # caption (la plus fiable). Pour les captions très courtes (noyau vide, ex.
+    # « No »), on retombe sur l'égalité de texte + même zone verticale.
+    def _core(txt):
+        return set(w for w in (re.sub(r"[^a-z]", "", x) for x in _norm(txt).split()) if len(w) >= 3)
+    out.sort(key=lambda l: (-l["_conf"], l["start_time"]))   # les plus fiables d'abord
     deduped = []
     for seg in out:
+        ca = _core(seg["text"])
         hit = None
         for m in deduped:
-            if (_similar(_norm(seg["text"]), _norm(m["text"])) >= 0.7
-                    and abs(seg["cy_pct"] - m["cy_pct"]) < 0.12):
-                hit = m
-                break
+            cm = _core(m["text"])
+            if ca and cm:
+                union = len(ca | cm)
+                # fusion si fort recouvrement OU si un noyau est inclus dans
+                # l'autre (vraie caption ⊆ variante bruitée « + mots junk »).
+                if (ca <= cm or cm <= ca) or (union and len(ca & cm) / union >= 0.6):
+                    hit = m; break
+            elif _norm(seg["text"]) == _norm(m["text"]) and abs(seg["cy_pct"] - m["cy_pct"]) < 0.12:
+                hit = m; break
         if hit is not None:
             hit["start_time"] = min(hit["start_time"], seg["start_time"])
             hit["end_time"] = max(hit["end_time"], seg["end_time"])

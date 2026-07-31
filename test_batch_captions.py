@@ -24,16 +24,43 @@ def check(name, cond, extra=""):
 
 # ── A) Filtre unitaire ────────────────────────────────────────────────
 import ocr_local
-GARBAGE = ["i ff m", "RN", "~ r | |", "oy?", "€. ™", "À", "| |", "A", "ee",
-           "'a7", "LES", "j", "Th", "y aN", "( 5 )"]
-REAL = ["5 types of men:", "1. Young guy", "2. Shy one", "3. Older man",
-        "You're tired to be an adult?", "and just check my profile", "1 2 3 4 5 6"]
-for g in GARBAGE:
-    check(f"charabia rejeté: {g!r}", not ocr_local._is_caption_like(ocr_local._clean_caption_text(g)))
-for r in REAL:
-    check(f"vraie caption gardée: {r!r}", ocr_local._is_caption_like(ocr_local._clean_caption_text(r)))
-# nettoyage du bruit de bord
-check("nettoyage bord", "5 types of men:" in ocr_local._clean_caption_text("| | ' 5 types of men:"))
+clean = ocr_local._clean_caption_text
+keep  = ocr_local._keep_segment
+textlike = ocr_local._is_text_like
+
+# A1. Rejet LEXICAL des soupes de symboles / tokens sans langage
+LEX_JUNK = ["~ r | |", "€. ™", "À", "j", "Th", "RN", "| |", "( )", "///", "»«"]
+for g in LEX_JUNK:
+    check(f"lexical rejette: {g!r}", not textlike(clean(g)))
+
+# A2. Parasites TRANSITOIRES peu fiables rejetés par la décision finale
+#     (1 seule frame, faible confiance, zone instable)
+PARASITES = ["LES", "ee", "oy", "i ff m", "'a7", "y aN"]
+for g in PARASITES:
+    check(f"parasite transitoire rejeté: {g!r}",
+          not keep(clean(g), conf=38, persist=1, cy_std=0.20))
+
+# A3. Vraies captions COURTES conservées quand corroborées (répétition OU
+#     confiance haute) et zone stable — ne JAMAIS rejeter pour cause de longueur.
+SHORT_REAL = ["POV", "No", "Yes", "Why?", "Emma", "5", "then", "one", "money"]
+for s in SHORT_REAL:
+    # cas répété sur plusieurs frames, zone stable
+    check(f"courte gardée (répétée): {s!r}", keep(clean(s), conf=55, persist=3, cy_std=0.01))
+    # cas 1 frame mais confiance élevée (texte net)
+    check(f"courte gardée (conf haute): {s!r}", keep(clean(s), conf=85, persist=1, cy_std=0.01))
+
+# A4. Caption mot-par-mot : chaque mot affiché ~2-3 frames → conservé
+for w in ["Take", "my", "hand"]:
+    check(f"mot-par-mot gardé: {w!r}", keep(clean(w), conf=60, persist=2, cy_std=0.02))
+
+# A5. Phrases conservées : une vraie caption est nette (confiance correcte) OU
+#     répétée sur plusieurs frames.
+for p in ["and just check my profile", "You're tired to be an adult?", "5 types of men:"]:
+    check(f"phrase gardée (nette): {p!r}", keep(clean(p), conf=65, persist=1, cy_std=0.03))
+    check(f"phrase gardée (répétée): {p!r}", keep(clean(p), conf=40, persist=2, cy_std=0.03))
+
+# A6. Nettoyage du bruit de bord (garde le nombre de tête)
+check("nettoyage bord", "5 types of men:" in clean("| | ' 5 types of men:"))
 
 # ── B) OCR réel sur une vidéo B (si disponible) ───────────────────────
 BVID = "/sessions/eager-youthful-thompson/mnt/uploads/video source (B).mp4"
@@ -43,7 +70,8 @@ if os.path.exists(BVID):
     check("OCR B: peu de segments (<=8)", len(lines) <= 8, f"({len(lines)})")
     check("OCR B: pas de parasite 'LES'/'RN'", " LES " not in f" {texts} " and " RN " not in f" {texts} ")
     check("OCR B: contient les vraies captions", "types of men" in texts.lower() and "young guy" in texts.lower())
-    check("OCR B: toutes caption-like", all(ocr_local._is_caption_like(l["text"]) for l in lines))
+    check("OCR B: toutes lexicalement valides", all(ocr_local._is_text_like(l["text"]) for l in lines))
+    print("   segments B:", " | ".join(repr(l["text"]) for l in lines))
 else:
     print("… (vidéo B d'exemple absente — partie B ignorée)")
 
