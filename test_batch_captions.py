@@ -28,15 +28,24 @@ clean = ocr_local._clean_caption_text
 keep  = ocr_local._keep_segment
 textlike = ocr_local._is_text_like
 
-# A1. Rejet LEXICAL des soupes de symboles / tokens sans langage
-LEX_JUNK = ["~ r | |", "€. ™", "À", "j", "Th", "RN", "| |", "( )", "///", "»«"]
-for g in LEX_JUNK:
-    check(f"lexical rejette: {g!r}", not textlike(clean(g)))
+# A1. SEULES les chaînes 100% symboles (aucun alphanumérique) sont rejetées
+#     immédiatement — jamais un fragment alphabétique par son contenu.
+PURE_SYMBOLS = ["€. ™", "| |", "( )", "///", "»«", "~ ~", "€ ™", "™", "—"]
+for g in PURE_SYMBOLS:
+    check(f"pur symbole rejeté: {g!r}", not textlike(clean(g)))
 
-# A2. Parasites TRANSITOIRES peu fiables rejetés par la décision finale
-#     (1 seule frame, faible confiance, zone instable)
-PARASITES = ["LES", "ee", "oy", "i ff m", "'a7", "y aN"]
-for g in PARASITES:
+# A2. Le MÊME fragment alphabétique est CONSERVÉ avec de bons signaux et
+#     REJETÉ avec de mauvais signaux (décision par le comportement OCR, pas
+#     par le texte). Couvre explicitement I, A, À, J, LES, RN, Th.
+SIGNAL_FRAGMENTS = ["I", "A", "À", "J", "LES", "RN", "Th"]
+for g in SIGNAL_FRAGMENTS:
+    check(f"{g!r} gardé (bons signaux)",
+          keep(clean(g), conf=85, persist=3, cy_std=0.01))
+    check(f"{g!r} rejeté (1 frame, conf faible, zone instable)",
+          not keep(clean(g), conf=38, persist=1, cy_std=0.20))
+
+# Autres parasites transitoires également rejetés par le comportement OCR
+for g in ["ee", "oy", "i ff m", "'a7", "y aN"]:
     check(f"parasite transitoire rejeté: {g!r}",
           not keep(clean(g), conf=38, persist=1, cy_std=0.20))
 
@@ -67,10 +76,14 @@ BVID = "/sessions/eager-youthful-thompson/mnt/uploads/video source (B).mp4"
 if os.path.exists(BVID):
     lines, meta = ocr_local.analyze_video_local(BVID)
     texts = " || ".join(l["text"] for l in lines)
-    check("OCR B: peu de segments (<=8)", len(lines) <= 8, f"({len(lines)})")
-    check("OCR B: pas de parasite 'LES'/'RN'", " LES " not in f" {texts} " and " RN " not in f" {texts} ")
+    # Politique : on ne juge pas par le texte. On vérifie donc (a) que le
+    # charabia massif a disparu (plus de 60 fragments → un nombre borné), (b)
+    # qu'aucun segment n'est un pur symbole, (c) que les vraies captions sont
+    # présentes. La présence éventuelle d'un fragment court stable (« RN »…)
+    # est CONFORME (décision par signaux, pas par contenu).
+    check("OCR B: charabia massif éliminé (<=15, était 60)", len(lines) <= 15, f"({len(lines)})")
+    check("OCR B: aucun segment pur-symbole", all(ocr_local._has_usable_text(l["text"]) for l in lines))
     check("OCR B: contient les vraies captions", "types of men" in texts.lower() and "young guy" in texts.lower())
-    check("OCR B: toutes lexicalement valides", all(ocr_local._is_text_like(l["text"]) for l in lines))
     print("   segments B:", " | ".join(repr(l["text"]) for l in lines))
 else:
     print("… (vidéo B d'exemple absente — partie B ignorée)")

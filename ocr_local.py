@@ -246,85 +246,61 @@ def _block_geometry(blk, w, h):
     }
 
 
-_VOWELS = set("aeiouyàâäéèêëïîôöùûüÿAEIOUYÀÂÄÉÈÊËÏÎÔÖÙÛÜŸ")
+def _has_usable_text(text):
+    """True dès qu'il reste AU MOINS un caractère alphanumérique (lettre ou
+    chiffre, Unicode → « À », « É »… inclus). C'est le SEUL critère de contenu :
+    on ne juge JAMAIS un fragment sur QUELS caractères il contient. Seules les
+    chaînes 100% symboles (« ~ | € ™ », « /// », « »« ») — sans aucun
+    alphanumérique exploitable — sont rejetées ici. Tout le reste (y compris
+    « I », « A », « À », « J », « LES », « RN », « Th ») passe par la décision
+    fondée sur les SIGNAUX OCR (_keep_segment). Aucune blacklist de mots/lettres."""
+    return bool(re.search(r"[^\W_]", text or ""))   # \w Unicode, hors underscore
 
 
-def _has_word(tok):
-    """True si le token ressemble à un vrai mot (≥2 lettres avec au moins une
-    voyelle). Rejette les suites de consonnes / symboles produites par le bruit
-    Tesseract (« ff », « RN », « | | », « ~ »…)."""
-    letters = [c for c in tok if c.isalpha()]
-    return len(letters) >= 2 and any(c in _VOWELS for c in tok)
+# Alias historique (le texte n'est jugé que sur « contient de l'alphanumérique »).
+_is_text_like = _has_usable_text
 
 
 def _clean_caption_text(text):
-    """Nettoie une caption détectée : sur chaque ligne, on ne garde que la
-    portion allant du premier au dernier token « utile » (vrai mot OU puce
-    numérotée « 1. »), et on retire les tokens intermédiaires purement
-    symboliques (| ~ ' " …). Supprime le bruit de bord typique de l'OCR local
-    (« | | ty fa ' 5 types of men: » → « 5 types of men: »)."""
+    """Nettoie le bruit de BORD sans jamais juger le contenu alphabétique : on
+    retire uniquement les tokens 100% symboles (| ~ ' " € ™ …). Tout token
+    contenant une lettre ou un chiffre est conservé — « RN », « Th », « J »,
+    « À » restent (leur sort est décidé par les signaux OCR, pas par leur texte)."""
     out_lines = []
     for line in (text or "").split("\n"):
-        toks = line.split()
-        useful = [i for i, t in enumerate(toks)
-                  if _has_word(t) or re.match(r"^\d", t)]  # mot OU nombre (« 5 types »)
-        if not useful:
-            continue
-        sub = toks[useful[0]:useful[-1] + 1]
-        sub = [t for t in sub if re.search(r"[A-Za-z0-9]", t)]
-        if sub:
-            out_lines.append(" ".join(sub))
+        toks = [t for t in line.split() if re.search(r"[^\W_]", t)]  # garde tout token alphanumérique
+        if toks:
+            out_lines.append(" ".join(toks))
     return "\n".join(out_lines).strip()
 
 
-def _is_text_like(text):
-    """Filtre LEXICAL (permissif) : True si le texte contient du vrai langage
-    (un mot, un nombre) et n'est pas une soupe de symboles. NE rejette PAS les
-    captions courtes (POV, No, Yes, Why?, un prénom, un chiffre, mot-par-mot) —
-    la décision finale se fait dans _keep_segment avec d'autres signaux. Rejette
-    en revanche « ~ r | | », « € ™ », « À », « j », « Th », « RN » (sans voyelle)."""
-    t = (text or "").strip()
-    if not t or sum(c.isalnum() for c in t) < 1:
-        return False
-    clean = sum(1 for c in t if c.isalnum() or c in " .,!?:;'’\"-\n")
-    if clean / max(1, len(t)) < 0.6:
-        return False
-    toks = [x for x in re.split(r"\s+", t) if x]
-    if any(_has_word(tok) for tok in toks):            # un vrai mot (voyelle)
-        return True
-    if any(re.match(r"^\d+[.)]?$", tok) for tok in toks):  # un nombre / puce
-        return True
-    return False
-
-
 def _keep_segment(text, conf, persist, cy_std):
-    """Décision FINALE de conservation d'une caption détectée, SANS pénaliser la
-    longueur. On combine plusieurs signaux (comme demandé) :
-      • lexical  : le texte ressemble à du langage (_is_text_like) ;
+    """Décision FINALE de conservation — fondée UNIQUEMENT sur les SIGNAUX OCR,
+    jamais sur le texte lui-même :
+      • présence d'alphanumérique (sinon pur symbole → rejet immédiat) ;
       • confiance OCR (Tesseract) ;
       • répétition temporelle (persist = nb de frames où le texte réapparaît) ;
       • cohérence de la zone d'affichage (faible variance verticale cy_std).
-    Une caption COURTE (POV, No, Yes, Why?, prénom, chiffre, mot-par-mot) est
-    conservée dès qu'elle est corroborée (répétée sur ≥2 frames OU confiance
-    élevée) et affichée dans une zone stable. Un fragment parasite (« LES »,
-    « ee », « oy »…), lui, est transitoire et/ou peu fiable → rejeté."""
-    if not _is_text_like(text):
+    Un fragment COURT (1 caractère inclus : « I », « A », « À », « J », « LES »,
+    « RN », « Th »…) est CONSERVÉ dès qu'il est corroboré (répété sur ≥2 frames
+    OU confiance élevée) et affiché dans une zone stable ; les MÊMES fragments,
+    vus une seule fois, peu fiables et dans une zone instable, sont rejetés.
+    La longueur ne sert qu'à calibrer l'EXIGENCE de corroboration (un fragment
+    court est plus bruité qu'une phrase), pas à filtrer un texte précis."""
+    if not _has_usable_text(text):
         return False
     alnum = sum(c.isalnum() for c in text)
     n_tok = len([x for x in text.split() if x])
-    is_short = (n_tok <= 1) or (alnum <= 4)
-    if not is_short:
-        # Phrase (plusieurs mots) : corroborée par la répétition temporelle OU
-        # une confiance correcte. Les vraies captions persistent ou sortent
-        # nettes ; le junk multi-token vu sur une seule frame et peu fiable
-        # (« yi ye pe », « aes alee ») est écarté. Les variantes bruitées d'une
-        # vraie caption sont en plus fusionnées par la dédup mots-clés.
-        return (persist >= 2) or (conf >= 55)
-    # Caption COURTE : exiger une corroboration (répétition OU confiance haute)
-    # ET une zone d'affichage stable.
-    corroborated = (persist >= 2) or (conf >= 72)
     zone_ok = (cy_std is None) or (cy_std <= 0.06)
-    return corroborated and zone_ok
+    is_short = (n_tok <= 1) or (alnum <= 4)
+    if is_short:
+        # Fragment court (« No », « my », « 5 », « I », « RN », « A »… — traités
+        # à l'identique, sans regarder QUEL texte) : conservé s'il est corroboré
+        # (répété sur ≥2 frames OU confiance haute) ET affiché dans une zone
+        # stable ; rejeté s'il est vu une seule fois, peu fiable, zone instable.
+        return ((persist >= 2) or (conf >= 72)) and zone_ok
+    # Phrase : corroborée par la répétition OU une confiance correcte.
+    return (persist >= 2) or (conf >= 55)
 
 
 def analyze_video_local(video_path, hybrid_threshold=55.0):
