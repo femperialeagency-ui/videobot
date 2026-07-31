@@ -246,6 +246,66 @@ def _block_geometry(blk, w, h):
     }
 
 
+_VOWELS = set("aeiouyàâäéèêëïîôöùûüÿAEIOUYÀÂÄÉÈÊËÏÎÔÖÙÛÜŸ")
+
+
+def _has_word(tok):
+    """True si le token ressemble à un vrai mot (≥2 lettres avec au moins une
+    voyelle). Rejette les suites de consonnes / symboles produites par le bruit
+    Tesseract (« ff », « RN », « | | », « ~ »…)."""
+    letters = [c for c in tok if c.isalpha()]
+    return len(letters) >= 2 and any(c in _VOWELS for c in tok)
+
+
+def _clean_caption_text(text):
+    """Nettoie une caption détectée : sur chaque ligne, on ne garde que la
+    portion allant du premier au dernier token « utile » (vrai mot OU puce
+    numérotée « 1. »), et on retire les tokens intermédiaires purement
+    symboliques (| ~ ' " …). Supprime le bruit de bord typique de l'OCR local
+    (« | | ty fa ' 5 types of men: » → « 5 types of men: »)."""
+    out_lines = []
+    for line in (text or "").split("\n"):
+        toks = line.split()
+        useful = [i for i, t in enumerate(toks)
+                  if _has_word(t) or re.match(r"^\d", t)]  # mot OU nombre (« 5 types »)
+        if not useful:
+            continue
+        sub = toks[useful[0]:useful[-1] + 1]
+        sub = [t for t in sub if re.search(r"[A-Za-z0-9]", t)]
+        if sub:
+            out_lines.append(" ".join(sub))
+    return "\n".join(out_lines).strip()
+
+
+def _is_caption_like(text):
+    """Filtre anti-charabia : True seulement si le texte ressemble à une vraie
+    caption. Rejette fragments trop courts, soupes de symboles, tokens isolés
+    (« LES », « RN », « € ™ », « À »…)."""
+    t = (text or "").strip()
+    if not t:
+        return False
+    alnum = [c for c in t if c.isalnum()]
+    if len(alnum) < 3:
+        return False
+    # ratio de caractères « propres » (alphanumérique, espace, ponctuation usuelle)
+    clean = sum(1 for c in t if c.isalnum() or c in " .,!?:;'’\"-\n")
+    if clean / max(1, len(t)) < 0.65:
+        return False
+    toks = [x for x in re.split(r"\s+", t) if x]
+    # token unique très court non numéroté = quasi toujours un parasite
+    if len(toks) == 1 and len(alnum) <= 3 and not re.match(r"^\d+[.)]", toks[0]):
+        return False
+    # au moins un vrai mot, une puce numérotée, OU une caption numérique
+    # (« 1 2 3 4 5 6 » : au moins 3 tokens purement numériques).
+    if any(_has_word(tok) for tok in toks):
+        return True
+    if any(re.match(r"^\d+[.)]", tok) for tok in toks):
+        return True
+    if sum(1 for tok in toks if re.match(r"^\d+$", tok)) >= 3:
+        return True
+    return False
+
+
 def analyze_video_local(video_path, hybrid_threshold=55.0):
     """
     OCR local complet. Retourne (lines, meta) :
@@ -337,13 +397,26 @@ def analyze_video_local(video_path, hybrid_threshold=55.0):
             wps.append(g["width_pct"]); fps_.append(g["fontsize_pct"]); aligns.append(g["align"])
         align = max(set(aligns), key=aligns.count)
         conf = float(np.mean(tr["confs"])) if tr["confs"] else 0.0
+
+        # ── FILTRAGE ANTI-PARASITE (0 fragment de charabia incrusté) ──
+        # 1) nettoyage du texte (retire le bruit de bord),
+        # 2) rejet si ça ne ressemble pas à une vraie caption,
+        # 3) gating de persistance : un fragment vu sur UNE seule frame et peu
+        #    fiable est presque toujours du bruit (reflet, visage, main) → rejeté.
+        cleaned = _clean_caption_text(tr["text"])
+        if not _is_caption_like(cleaned):
+            continue
+        persist = len(tr["confs"])
+        if persist < 2 and conf < 70:
+            continue
+
         all_conf.append(conf)
         start = max(0.0, tr["first_t"] - frame_dt * 0.5)
         end = min(duration, tr["last_t"] + frame_dt * 0.5)
         if end <= start:
             end = start + max(0.6, frame_dt)
         out.append({
-            "text": tr["text"],
+            "text": cleaned,
             "start_time": round(start, 2),
             "end_time": round(end, 2),
             "cx_pct": round(float(np.median(cxs)), 4),
@@ -355,6 +428,30 @@ def analyze_video_local(video_path, hybrid_threshold=55.0):
             "color": "white",
             "_conf": round(conf, 1),
         })
+
+    # ── DÉDUPLICATION : fusionne les segments quasi-identiques (même texte +
+    # même zone verticale) qui se chevauchent, pour qu'une caption n'apparaisse
+    # qu'UNE fois (plus de superpositions dues à des détections OCR dupliquées).
+    out.sort(key=lambda l: (l["cy_pct"], l["start_time"]))
+    deduped = []
+    for seg in out:
+        hit = None
+        for m in deduped:
+            if (_similar(_norm(seg["text"]), _norm(m["text"])) >= 0.7
+                    and abs(seg["cy_pct"] - m["cy_pct"]) < 0.12):
+                hit = m
+                break
+        if hit is not None:
+            hit["start_time"] = min(hit["start_time"], seg["start_time"])
+            hit["end_time"] = max(hit["end_time"], seg["end_time"])
+            if seg["_conf"] > hit["_conf"]:
+                hit["text"] = seg["text"]; hit["_conf"] = seg["_conf"]
+                hit["cx_pct"] = seg["cx_pct"]; hit["cy_pct"] = seg["cy_pct"]
+                hit["width_pct"] = seg["width_pct"]; hit["fontsize_pct"] = seg["fontsize_pct"]
+                hit["align"] = seg["align"]
+        else:
+            deduped.append(seg)
+    out = deduped
 
     out.sort(key=lambda l: (l["start_time"], l["cy_pct"]))
     confidence = round(sum(all_conf) / len(all_conf), 1) if all_conf else 0.0
