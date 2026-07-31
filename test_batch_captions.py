@@ -31,6 +31,21 @@ import ocr_local
 clean = ocr_local._clean_caption_text
 usable = ocr_local._has_usable_text
 
+def _adjacent_dupes(lines):
+    """Renvoie les paires de captions CONSÉCUTIVES quasi-identiques (même
+    caption sur-segmentée = parasite). Deux captions sont « dupliquées » si
+    forte similarité de séquence OU partage d'un mot « fort » (≥5 lettres).
+    L'invariant de sortie : AUCUNE paire de ce type ne doit subsister."""
+    import re as _re
+    def strong(t):
+        return set(x for x in (_re.sub(r"[^a-z]", "", y) for y in ocr_local._norm(t).split()) if len(x) >= 5)
+    bad = []
+    for i in range(len(lines) - 1):
+        a, b = lines[i]["text"], lines[i + 1]["text"]
+        if ocr_local._similar(ocr_local._norm(a), ocr_local._norm(b)) >= 0.5 or (strong(a) & strong(b)):
+            bad.append((a.replace("\n", " "), b.replace("\n", " ")))
+    return bad
+
 # ── A) Helpers : contenu ne sert JAMAIS de blacklist ──────────────────
 for g in ["€. ™", "| |", "( )", "///", "»«", "™", "—"]:
     check(f"pur symbole rejeté: {g!r}", not usable(clean(g)))
@@ -64,6 +79,7 @@ check("synthétique: géométrie cohérente (1 seule position/taille)",
       len(set(l["cy_pct"] for l in lines)) == 1 and len(set(l["fontsize_pct"] for l in lines)) == 1)
 check("synthétique: aucune superposition (séquentiel)",
       all(lines[i]["end_time"] <= lines[i+1]["start_time"] + 0.01 for i in range(len(lines)-1)))
+check("synthétique: aucune caption dupliquée adjacente", not _adjacent_dupes(lines))
 import shutil; shutil.rmtree(WORK, ignore_errors=True)
 
 # ── C) VRAIES vidéos (si fournies) ────────────────────────────────────
@@ -86,7 +102,24 @@ for name, kws in REAL.items():
     check(f"{name}: exactement 3 captions", len(lines) == 3, f"({len(lines)})")
     check(f"{name}: géométrie cohérente", len(set(l["cy_pct"] for l in lines)) == 1 and len(set(l["fontsize_pct"] for l in lines)) == 1)
     check(f"{name}: non-chevauchement", all(lines[i]["end_time"] <= lines[i+1]["start_time"] + 0.01 for i in range(len(lines)-1)))
+    check(f"{name}: aucune caption dupliquée adjacente", not _adjacent_dupes(lines), str(_adjacent_dupes(lines))[:100])
     check(f"{name}: contient les vraies captions", all(k in joined for k in kws), joined[:80])
+
+# ── C2) RÉGRESSION compression : une vidéo B ré-encodée en 720p (basse qualité,
+# comme un upload dégradé) ne doit PAS sur-segmenter une caption en deux à cause
+# d'une frame-transition parasite. vid2 = cas connu (« I have some memory
+# problems » scindé en deux avant le correctif). ──
+_v2 = os.path.join(updir, "vid2.mov")
+if not os.environ.get("SKIP_REAL") and os.path.exists(_v2):
+    _tmp = tempfile.mkdtemp(); _v2c = os.path.join(_tmp, "vid2_720.mp4")
+    subprocess.run(["ffmpeg", "-y", "-i", _v2, "-vf", "scale=720:-2", "-c:v", "libx264",
+                    "-crf", "30", "-preset", "veryfast", "-c:a", "aac", "-b:a", "96k",
+                    _v2c, "-loglevel", "error"], check=True)
+    lc, _ = ocr_local.analyze_video_local(_v2c)
+    check("vid2 720p (compressé): exactement 3 captions", len(lc) == 3, f"({len(lc)})")
+    check("vid2 720p (compressé): aucune caption dupliquée adjacente", not _adjacent_dupes(lc),
+          str(_adjacent_dupes(lc))[:100])
+    import shutil as _sh; _sh.rmtree(_tmp, ignore_errors=True)
 
 # ── D) Isolation Batch (rendu réel) ───────────────────────────────────
 os.environ.setdefault("DATA_DIR", tempfile.mkdtemp())

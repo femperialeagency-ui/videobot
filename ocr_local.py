@@ -463,20 +463,27 @@ def analyze_video_local(video_path, hybrid_threshold=55.0):
             return True
         return bool(_strong(a["best_text"]) & _strong(b["best_text"]))
 
-    merged = []
-    for c in caps:
-        if merged and _mergeable(merged[-1], c):
-            m = merged[-1]
-            m["end"] = c["end"]; m["reads"] += c["reads"]; m["readlist"] += c["readlist"]
-            if c["best_score"] > m["best_score"]:
-                m["best_score"] = c["best_score"]; m["best_text"] = c["best_text"]; m["best_conf"] = c["best_conf"]
-        else:
-            merged.append(c)
-    caps = merged
+    def _merge_adjacent(cap_list):
+        merged = []
+        for c in cap_list:
+            if merged and _mergeable(merged[-1], c):
+                m = merged[-1]
+                m["end"] = c["end"]; m["reads"] += c["reads"]; m["readlist"] += c["readlist"]
+                if c["best_score"] > m["best_score"]:
+                    m["best_score"] = c["best_score"]; m["best_text"] = c["best_text"]; m["best_conf"] = c["best_conf"]
+            else:
+                merged.append(c)
+        return merged
+
+    caps = _merge_adjacent(caps)
 
     # une caption vue sur UNE seule frame reste presque toujours un résidu de
-    # piste (transition/garble) → écartée (décision par les signaux).
+    # piste (transition/garble) → écartée (décision par les signaux). On retire
+    # ces transients PUIS on refusionne : deux moitiés d'une MÊME caption
+    # séparées par une frame-transition parasite (souvent sur vidéo compressée /
+    # basse qualité) redeviennent alors adjacentes et fusionnent en une seule.
     caps = [c for c in caps if c["reads"] >= 2]
+    caps = _merge_adjacent(caps)
     if os.environ.get("OCR_TRACK_DEBUG"):
         import sys as _s
         for c in caps:
