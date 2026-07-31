@@ -3652,8 +3652,12 @@ def analyze():
         _use_auto  = (ocr_mode == "auto")    # HYBRIDE : local d'abord, Vision seulement si confiance faible
         _is_opus   = (ocr_mode == "opus")
         _model     = OCR_MODEL_OPUS if _is_opus else OCR_MODEL_SONNET
-        _cache_ver = ("v2-local" if _use_local else "v2-auto" if _use_auto
-                      else "v2-opus" if _is_opus else "v2-sonnet")
+        # v3 : bump OBLIGATOIRE — invalide les détections mises en cache par
+        # l'ANCIEN moteur (filtrage fragment-par-fragment : « LES », fragments,
+        # textes superposés). Sans ce bump, le nouveau moteur « piste dominante »
+        # + Auto/Vision resservirait le cache périmé sur les mêmes vidéos B.
+        _cache_ver = ("v3-local" if _use_local else "v3-auto" if _use_auto
+                      else "v3-opus" if _is_opus else "v3-sonnet")
         _fallback_scale = "scale=1080:-2"
         # "Réanalyser sans cache" : saute le lookup et force une analyse
         # fraîche (le résultat est tout de même re-stocké pour les fois suivantes).
@@ -4337,8 +4341,12 @@ def batch_detect():
         _use_auto  = (ocr_mode == "auto")    # HYBRIDE : local d'abord, Vision si confiance faible
         _is_opus   = (ocr_mode == "opus")
         _model     = OCR_MODEL_OPUS if _is_opus else OCR_MODEL_SONNET
-        _cache_ver = ("v2-local" if _use_local else "v2-auto" if _use_auto
-                      else "v2-opus" if _is_opus else "v2-sonnet")
+        # v3 : bump OBLIGATOIRE — invalide les détections mises en cache par
+        # l'ANCIEN moteur (filtrage fragment-par-fragment : « LES », fragments,
+        # textes superposés). Sans ce bump, le nouveau moteur « piste dominante »
+        # + Auto/Vision resservirait le cache périmé sur les mêmes vidéos B.
+        _cache_ver = ("v3-local" if _use_local else "v3-auto" if _use_auto
+                      else "v3-opus" if _is_opus else "v3-sonnet")
         _fallback_scale = "scale=1080:-2"
         _ignore_cache = (request.form.get("ignore_cache", "0") or "0").strip().lower() in ("1", "true", "on", "yes")
         import sys as _sys_ocr
