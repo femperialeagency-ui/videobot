@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 """
-test_auto_ocr.py — Mode AUTO : fallback Vision CIBLÉ sur les captions incertaines.
+test_auto_ocr.py — Mode AUTO : fallback Vision CIBLÉ + SÉCURITÉ fail-safe.
 
 Prouve :
-  • aucun appel Vision quand le local est fiable (aucune caption incertaine) ;
-  • Vision UNIQUEMENT pour les captions incertaines (les fiables ne sont pas
-    envoyées et ne sont pas modifiées) ;
-  • un SEUL appel Vision par vidéo B (pas un par caption, ni par vidéo A) ;
-  • aucun fallback en mode Local (jamais d'appel Vision) ;
-  • Vision direct en mode Vision ;
+  • aucun appel Vision quand le local est fiable ;
+  • Vision UNIQUEMENT pour les captions incertaines, 1 appel/vidéo B ;
   • timings/position/géométrie inchangés (Vision ne fait que retranscrire) ;
-  • le recadrage réel d'une caption contient bien du texte ;
-  • (si ANTHROPIC_API_KEY présent) les 9 textes attendus sur vid1/vid2/vid3.
+  • SÉCURITÉ : si Vision ne peut pas corriger l'incertain (clé absente,
+    erreur/timeout, réponse vide/invalide, décompte incohérent) → ok=False,
+    l'API renvoie une ERREUR, aucun rendu, AUCUN cache ;
+  • Auto + Vision réussi → fonctionnement normal, résultat mis en cache ;
+  • Local sans clé → fonctionnement local normal (aucune erreur) ;
+  • Vision direct en mode Vision ;
+  • (si REAL_VISION_KEY) les 9 textes attendus sur vid1/vid2/vid3.
 
 Usage : DATA_DIR=<persistant> python3 test_auto_ocr.py
 """
-import os, sys, json, tempfile, types, warnings
+import os, sys, json, tempfile, types, warnings, subprocess
 warnings.filterwarnings("ignore")
 os.environ.setdefault("DATA_DIR", tempfile.mkdtemp())
 
@@ -26,10 +27,9 @@ def check(name, cond, extra=""):
 
 import app as A
 
-# ── Faux client Anthropic : compte les appels, renvoie un JSON contrôlé ──
 CALLS = {"n": 0, "images": 0}
-def install_fake_anthropic(mapping):
-    """mapping: {image_index: text}. Enregistre un module 'anthropic' factice."""
+def fake_anthropic(*, mapping=None, raw=None, raise_exc=False):
+    """Installe un module 'anthropic' factice au comportement contrôlé."""
     CALLS["n"] = 0; CALLS["images"] = 0
     class _Msg:
         def __init__(self, txt): self.content = [types.SimpleNamespace(text=txt)]
@@ -37,8 +37,9 @@ def install_fake_anthropic(mapping):
         def create(self, model, max_tokens, messages):
             CALLS["n"] += 1
             CALLS["images"] += sum(1 for c in messages[0]["content"] if c.get("type") == "image")
-            data = [{"i": i, "text": t} for i, t in mapping.items()]
-            return _Msg(json.dumps(data))
+            if raise_exc: raise RuntimeError("timeout Vision simulé")
+            if raw is not None: return _Msg(raw)
+            return _Msg(json.dumps([{"i": i, "text": t} for i, t in mapping.items()]))
     class Anthropic:
         def __init__(self, api_key=None): self.messages = _Messages()
     sys.modules["anthropic"] = types.SimpleNamespace(Anthropic=Anthropic)
@@ -50,134 +51,160 @@ def line(text, uncertain, cy=0.66, st=0.0, en=2.0):
 
 VID = "/sessions/eager-youthful-thompson/mnt/uploads/vid1.mov"
 HAVE_VID = os.path.exists(VID)
+VP = VID if HAVE_VID else "x.mp4"
 
-# ── 1) _auto_refine_uncertain : sans clé → aucun appel, lignes inchangées ──
+# ── A) _auto_refine_uncertain : succès & tous les échecs ──────────────
 os.environ.pop("ANTHROPIC_API_KEY", None)
-lines = [line("bon", False), line("douteux", True)]
-out, n = A._auto_refine_uncertain(VID if HAVE_VID else "x.mp4", lines)
-check("sans clé API : 0 appel Vision", n == 0)
-check("sans clé API : lignes inchangées", out == lines)
 
-# ── 2) avec clé + 1 seule caption incertaine → 1 appel, SEULE l'incertaine change ──
+# aucune caption incertaine → succès, rien à faire
+out, ok, why = A._auto_refine_uncertain(VP, [line("a", False), line("b", False)])
+check("aucun incertain → ok, inchangé", ok and why is None and [l["text"] for l in out] == ["a", "b"])
+
+# incertain + clé absente → ÉCHEC no_key (jamais continuer en silence)
+out, ok, why = A._auto_refine_uncertain(VP, [line("a", False), line("douteux", True)])
+check("incertain + pas de clé → ok=False (no_key)", (ok is False) and why == "no_key")
+check("incertain + pas de clé → texte local NON modifié", out[1]["text"] == "douteux")
+
 if HAVE_VID:
     os.environ["ANTHROPIC_API_KEY"] = "test-key"
-    install_fake_anthropic({0: "TEXTE VISION CORRIGE"})
-    lines = [line("caption fiable", False, cy=0.66),
-             line("caption douteuse", True, cy=0.66, st=2.0, en=4.0)]
-    out, n = A._auto_refine_uncertain(VID, lines)
-    check("Vision appelé une seule fois", n == 1 and CALLS["n"] == 1)
-    check("1 seule image envoyée (la caption incertaine)", CALLS["images"] == 1)
-    check("caption fiable INCHANGÉE", out[0]["text"] == "caption fiable")
-    check("caption incertaine REMPLACÉE par Vision", out[1]["text"] == "TEXTE VISION CORRIGE")
-    check("timings/géométrie conservés",
+    # succès Vision → seule l'incertaine change, 1 appel, 1 image, timings gardés
+    fake_anthropic(mapping={0: "CORRIGE PAR VISION"})
+    lines = [line("fiable", False), line("douteuse", True, st=2.0, en=4.0)]
+    out, ok, why = A._auto_refine_uncertain(VID, lines)
+    check("succès Vision → ok=True", ok and why is None)
+    check("succès : 1 appel, 1 image (uniquement l'incertaine)", CALLS["n"] == 1 and CALLS["images"] == 1)
+    check("succès : fiable inchangée, incertaine corrigée",
+          out[0]["text"] == "fiable" and out[1]["text"] == "CORRIGE PAR VISION")
+    check("succès : timings/géométrie conservés",
           out[1]["start_time"] == 2.0 and out[1]["end_time"] == 4.0 and out[1]["cy_pct"] == 0.66)
 
-    # ── 3) aucune caption incertaine → aucun appel ──
-    install_fake_anthropic({0: "NE DEVRAIT PAS APPARAITRE"})
-    lines = [line("a", False), line("b", False)]
-    out, n = A._auto_refine_uncertain(VID, lines)
-    check("local fiable : 0 appel Vision", n == 0 and CALLS["n"] == 0)
-    check("local fiable : textes inchangés", [l["text"] for l in out] == ["a", "b"])
+    # erreur / timeout Vision → ÉCHEC vision_error
+    fake_anthropic(raise_exc=True)
+    out, ok, why = A._auto_refine_uncertain(VID, [line("x", True)])
+    check("timeout/erreur Vision → ok=False (vision_error)", ok is False and why == "vision_error")
 
-    # ── 4) recadrage réel : contient du texte (proxy de ce que Vision verrait) ──
-    #     (la 1re caption de vid1 est vers cy≈0.66 — on recadre sans re-OCR complet)
+    # réponse vide → ÉCHEC vision_empty
+    fake_anthropic(raw="")
+    out, ok, why = A._auto_refine_uncertain(VID, [line("x", True)])
+    check("réponse Vision vide → ok=False", ok is False and why in ("vision_empty", "vision_unusable"))
+
+    # réponse invalide (pas du JSON) → ÉCHEC vision_unusable
+    fake_anthropic(raw="désolé je ne peux pas")
+    out, ok, why = A._auto_refine_uncertain(VID, [line("x", True)])
+    check("réponse Vision invalide → ok=False (vision_unusable)", ok is False and why == "vision_unusable")
+
+    # décompte incohérent (2 envoyées, 1 renvoyée) → ÉCHEC vision_incomplete
+    fake_anthropic(mapping={0: "seulement la première"})
+    out, ok, why = A._auto_refine_uncertain(VID, [line("u1", True), line("u2", True)])
+    check("décompte incohérent → ok=False (vision_incomplete)", ok is False and why == "vision_incomplete")
+    check("échec → aucune ligne modifiée", [l["text"] for l in out] == ["u1", "u2"])
+
+    # ── B) recadrage réel contient du texte ──
     import ocr_local as O
     with tempfile.TemporaryDirectory() as td:
         cp = os.path.join(td, "c.png")
         probe = {"start_time": 1.5, "end_time": 2.5, "cy_pct": 0.66, "fontsize_pct": 0.03}
-        ok = A._crop_caption_frame(VID, probe, cp) and os.path.exists(cp)
-        has_text = False
-        if ok:
-            ls, _w, _h = O._ocr_frame(cp)
-            has_text = any(O._has_usable_text(l["text"]) for l in ls)
-        check("recadrage caption réel contient du texte", ok and has_text)
+        okc = A._crop_caption_frame(VID, probe, cp) and os.path.exists(cp)
+        has_text = okc and any(O._has_usable_text(l["text"]) for l in O._ocr_frame(cp)[0])
+        check("recadrage caption réel contient du texte", bool(has_text))
 else:
-    print("… vid1.mov absent — tests 2-4 ignorés")
+    print("… vid1.mov absent — tests Vision unitaires ignorés")
 
-# ── 5) _strip_ocr_meta : aucune clé interne ne fuit ──
+# ── C) strip meta ──
 s = A._strip_ocr_meta([line("x", True)])
 check("strip meta : aucune clé _ interne", all(not k.startswith("_") for k in s[0]))
 
-# ── 6) Routage /batch_detect (OCR local MOCKÉ pour la vitesse) ──
-#     Local = jamais de Vision ; Auto = fallback Vision ciblé + cache par B.
-import subprocess
+# ── D) Routage /batch_detect (OCR local MOCKÉ pour la vitesse) ─────────
 BID = "autotest_" + os.urandom(3).hex()
 bdir = A.BATCH_DIR / BID
 (bdir / "B").mkdir(parents=True, exist_ok=True)
-subprocess.run(["ffmpeg","-y","-f","lavfi","-i","color=c=black:s=360x640:d=1","-c:v","libx264",
+# couleur ALÉATOIRE → hash de contenu unique par run (pas de collision avec le
+# cache OCR persistant d'une exécution précédente).
+_rndcol = "0x%06x" % (int.from_bytes(os.urandom(3), "big"))
+subprocess.run(["ffmpeg","-y","-f","lavfi","-i",f"color=c={_rndcol}:s=360x640:d=1","-c:v","libx264",
                 "-pix_fmt","yuv420p", str(bdir/"B"/"00.mp4"),"-loglevel","error"], check=True)
 client = A.app.test_client()
 with client.session_transaction() as s2: s2["user_id"] = 1
-
-CANNED = [line("caption fiable", False), line("caption douteuse", True)]
+CANNED = [line("fiable", False), line("douteuse", True)]
 A._analyze_local_engine = lambda p: [dict(x) for x in CANNED]
 A._analyze_local_engine_meta = lambda p: ([dict(x) for x in CANNED], {"needs_vision": True})
-REF = {"n": 0}
-def spy(video, lines, model=A.OCR_MODEL_SONNET):
-    REF["n"] += 1
+
+def cache_rows():
+    with A._users_db() as conn:
+        return conn.execute("SELECT COUNT(*) FROM ocr_cache").fetchone()[0]
+
+# Local sans clé → normal (aucune erreur), aucun Vision
+os.environ.pop("ANTHROPIC_API_KEY", None)
+r = client.post("/batch_detect", data={"batch_id": BID, "b_index": "0", "ocr_mode": "local", "ignore_cache": "1"})
+check("Local sans clé : 200 (fonctionnement local normal)", r.status_code == 200 and "error" not in r.get_json())
+
+# Auto + incertain + clé ABSENTE → erreur 502, aucun cache
+before = cache_rows()
+r = client.post("/batch_detect", data={"batch_id": BID, "b_index": "0", "ocr_mode": "auto", "ignore_cache": "1"})
+d = r.get_json()
+check("Auto + pas de clé : erreur visible", r.status_code == 502 and A._AUTO_VISION_FAIL_MSG in d.get("error", ""))
+check("Auto échec : AUCUN cache écrit", cache_rows() == before)
+
+# Auto + Vision qui échoue (spy ok=False) → erreur 502, aucun cache
+os.environ["ANTHROPIC_API_KEY"] = "test-key"
+A._auto_refine_uncertain = lambda video, lines, model=A.OCR_MODEL_SONNET: (lines, False, "vision_error")
+before = cache_rows()
+r = client.post("/batch_detect", data={"batch_id": BID, "b_index": "0", "ocr_mode": "auto", "ignore_cache": "1"})
+check("Auto + Vision en échec : erreur 502", r.status_code == 502)
+check("Auto en échec : toujours aucun cache", cache_rows() == before)
+# 2e tentative → toujours erreur (pas de faux succès mis en cache)
+r = client.post("/batch_detect", data={"batch_id": BID, "b_index": "0", "ocr_mode": "auto"})
+check("Auto échec : 2e appel encore en erreur (pas de cache de succès)", r.status_code == 502)
+
+# Auto + Vision réussi (spy) → 200 hybride, corrigé, mis en cache
+def spy_ok(video, lines, model=A.OCR_MODEL_SONNET):
     out = [dict(x) for x in lines]
     for l in out:
         if l.get("_uncertain"): l["text"] = "VISION_" + l["text"]
-    return out, 1
-A._auto_refine_uncertain = spy
-os.environ["ANTHROPIC_API_KEY"] = "test-key"
-
-# Local explicite → refine JAMAIS appelé, aucune clé _ dans la réponse
-REF["n"] = 0
-r = client.post("/batch_detect", data={"batch_id": BID, "b_index": "0", "ocr_mode": "local", "ignore_cache": "1"})
-d = r.get_json()
-check("mode Local : /batch_detect ok", r.status_code == 200)
-check("mode Local : AUCUN fallback Vision", REF["n"] == 0)
-check("mode Local : réponse ne fuit aucune clé _", all(not k.startswith("_") for l in d.get("lines", []) for k in l))
-
-# Auto → refine appelé une fois, seule la caption incertaine corrigée
-REF["n"] = 0
+    return out, True, None
+A._auto_refine_uncertain = spy_ok
 r = client.post("/batch_detect", data={"batch_id": BID, "b_index": "0", "ocr_mode": "auto", "ignore_cache": "1"})
 d = r.get_json(); txts = [l["text"] for l in d.get("lines", [])]
-check("mode Auto : /batch_detect ok", r.status_code == 200)
-check("mode Auto : fallback Vision ciblé déclenché (1×)", REF["n"] == 1)
-check("mode Auto : caption fiable inchangée + incertaine corrigée",
-      "caption fiable" in txts and "VISION_caption douteuse" in txts)
-check("mode Auto : réponse ne fuit aucune clé _", all(not k.startswith("_") for l in d.get("lines", []) for k in l))
-
-# Cache : 2e appel Auto même B → servi par cache (un seul OCR/Vision par B)
-REF["n"] = 0
+check("Auto succès : 200", r.status_code == 200 and "error" not in d)
+check("Auto succès : fiable inchangée + incertaine corrigée",
+      "fiable" in txts and "VISION_douteuse" in txts)
+check("Auto succès : aucune clé _ ne fuit", all(not k.startswith("_") for l in d["lines"] for k in l))
+# cache réutilisé (un seul OCR/Vision par B)
 r2 = client.post("/batch_detect", data={"batch_id": BID, "b_index": "0", "ocr_mode": "auto"})
-check("mode Auto : 2e appel même B servi par cache", r2.get_json().get("source") == "cache")
-check("mode Auto : cache → pas de nouvel appel Vision", REF["n"] == 0)
+check("Auto succès : 2e appel même B servi par cache", r2.get_json().get("source") == "cache")
 
-# Vision explicite → Vision DIRECT (pas de local, pas de refine ciblé)
-REF["n"] = 0
+# Vision explicite → Vision direct
 A.analyze_with_claude_vision_timed = lambda p, model=A.OCR_MODEL_SONNET: ([line("VISION DIRECT", False)], 0)
 r3 = client.post("/batch_detect", data={"batch_id": BID, "b_index": "0", "ocr_mode": "sonnet", "ignore_cache": "1"})
 d3 = r3.get_json()
-check("mode Vision : source=vision (direct)", d3.get("source") == "vision")
-check("mode Vision : pas de refine ciblé (Auto)", REF["n"] == 0)
-check("mode Vision : texte Vision utilisé", any("VISION DIRECT" in l["text"] for l in d3.get("lines", [])))
+check("Vision : source=vision (direct)", d3.get("source") == "vision")
+check("Vision : texte Vision utilisé", any("VISION DIRECT" in l["text"] for l in d3.get("lines", [])))
 
 import shutil; shutil.rmtree(bdir, ignore_errors=True)
 
-# ── 7) 9 textes attendus sur les vrais fichiers (seulement si vraie clé Vision) ──
+# ── E) 9 textes attendus (uniquement avec une VRAIE clé Vision) ───────
 REAL_KEY = os.environ.get("REAL_VISION_KEY")
-if REAL_KEY:
+if REAL_KEY and HAVE_VID:
     os.environ["ANTHROPIC_API_KEY"] = REAL_KEY
-    if "anthropic" in sys.modules and not hasattr(sys.modules["anthropic"], "__file__"):
-        del sys.modules["anthropic"]  # retire le faux module
+    if "anthropic" in sys.modules and isinstance(sys.modules["anthropic"], types.SimpleNamespace):
+        del sys.modules["anthropic"]
+    import importlib, ocr_local as O
+    A2 = importlib.reload(A) if False else A
     EXP = {
       "vid1": ["You're tired to be an adult?", "Be my bby then", "and just check my profil"],
       "vid2": ["I have some memory problems", "What does a dihh look like again?", "I'm a visual learner btw"],
       "vid3": ["teach me bby", "What does a dih looks like bby?", "Check my profil if you like me bby"],
     }
-    import ocr_local as O
     for v, exp in EXP.items():
         p = f"/sessions/eager-youthful-thompson/mnt/uploads/{v}.mov"
         loc = O.analyze_video_local(p)
-        ref, _ = A._auto_refine_uncertain(p, loc)
+        ref, ok, why = A._auto_refine_uncertain(p, loc)
+        check(f"{v}: Vision OK", ok is True)
         got = [l["text"] for l in ref]
         for e in exp:
             check(f"{v}: contient «{e}»", any(e.lower() in g.lower() for g in got), " | ".join(got))
 else:
-    print("… (test 9-textes Vision ignoré : définir REAL_VISION_KEY=sk-... pour l'exécuter)")
+    print("… (test 9-textes réels ignoré : définir REAL_VISION_KEY=sk-... pour l'exécuter)")
 
 print("\n" + ("✅ TOUS LES TESTS PASSENT" if not FAILS else f"❌ ÉCHECS: {FAILS}"))
 sys.exit(1 if FAILS else 0)

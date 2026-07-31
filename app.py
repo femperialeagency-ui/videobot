@@ -1927,11 +1927,21 @@ def _auto_refine_uncertain(video_path, lines, model: str = OCR_MODEL_SONNET):
     marquées incertaines (_uncertain), en UN SEUL appel Vision par vidéo B.
     Vision se contente de RETRANSCRIRE le texte visible des zones recadrées ;
     les timings, la position et la géométrie restent ceux de l'OCR local.
-    Retourne (lignes_corrigées, nb_appels_vision). Ne lève jamais."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
+    Retourne (lignes, ok, reason) :
+      • ok=True  → toutes les captions incertaines ont été corrigées (ou il n'y
+        en avait aucune) → on peut continuer et mettre en cache ;
+      • ok=False → SÉCURITÉ : on n'a PAS pu corriger de façon fiable (clé
+        absente, erreur/timeout Vision, réponse vide/inexploitable, décompte
+        incohérent, correction incomplète). L'appelant DOIT alors renvoyer une
+        erreur, ne rien rendre et NE RIEN mettre en cache — jamais continuer
+        silencieusement avec le mauvais texte local. Ne lève jamais."""
     unc_idx = [i for i, l in enumerate(lines) if l.get("_uncertain")]
-    if not api_key or not unc_idx:
-        return lines, 0
+    if not unc_idx:
+        return lines, True, None                     # rien d'incertain → succès
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return lines, False, "no_key"                # incertain mais pas de clé
     import tempfile, shutil, sys as _sys
     tmpdir = tempfile.mkdtemp(prefix="ocrcrop_")
     try:
@@ -1947,7 +1957,7 @@ def _auto_refine_uncertain(video_path, lines, model: str = OCR_MODEL_SONNET):
                                 {"type": "base64", "media_type": "image/png", "data": b64}})
                 kept.append((k, i))
         if not kept:
-            return lines, 0
+            return lines, False, "crop_failed"
         content.append({"type": "text", "text": (
             "Chaque image montre UNE seule caption de vidéo sociale (parfois sur "
             "plusieurs lignes). Retranscris EXACTEMENT le texte visible de chaque "
@@ -1958,24 +1968,37 @@ def _auto_refine_uncertain(video_path, lines, model: str = OCR_MODEL_SONNET):
         client = anthropic.Anthropic(api_key=api_key)
         resp = client.messages.create(model=model, max_tokens=1024,
                                        messages=[{"role": "user", "content": content}])
-        raw = resp.content[0].text.strip()
+        raw = (resp.content[0].text or "").strip()
+        if not raw:
+            return lines, False, "vision_empty"
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
                 raw = raw[4:]
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            return lines, False, "vision_unusable"
         by = {int(d["i"]): (d.get("text") or "").strip()
-              for d in json.loads(raw) if "i" in d}
+              for d in parsed if isinstance(d, dict) and "i" in d}
+        # SÉCURITÉ : chaque image envoyée DOIT recevoir un texte non vide,
+        # sinon décompte incohérent / correction incomplète → échec.
+        for k, _i in kept:
+            if not by.get(k):
+                return lines, False, "vision_incomplete"
         out = list(lines)
         for k, i in kept:
-            t = (by.get(k) or "").strip()
-            if t:
-                out[i] = dict(out[i]); out[i]["text"] = t
-        return out, 1
+            out[i] = dict(out[i]); out[i]["text"] = by[k]
+        return out, True, None
     except Exception as e:
         print(f"[AUTO_VISION] refine échec ({e})", file=_sys.stderr)
-        return lines, 0
+        return lines, False, "vision_error"
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+_AUTO_VISION_FAIL_MSG = ("Vision n'a pas pu corriger certaines captions "
+                         "incertaines. Réessayez ou sélectionnez le mode Local.")
 
 
 def _strip_ocr_meta(lines):
@@ -3675,9 +3698,17 @@ def analyze():
             # CIBLÉ sur les seules captions incertaines, un seul appel par vidéo.
             _loc_lines, _meta = _analyze_local_engine_meta(path_b)
             if _loc_lines:
-                if has_key and any(l.get("_uncertain") for l in _loc_lines):
-                    _ref, _nc = _auto_refine_uncertain(path_b, _loc_lines, _model)
-                    lines, source = _ref, ("hybrid" if _nc > 0 else "local")
+                if any(l.get("_uncertain") for l in _loc_lines):
+                    # SÉCURITÉ : si Vision ne peut pas corriger les captions
+                    # incertaines (clé absente, erreur/timeout, réponse vide ou
+                    # invalide, décompte incohérent) → on STOPPE : erreur claire,
+                    # aucun rendu, AUCUN cache. Jamais continuer avec le mauvais
+                    # texte local comme si Auto avait réussi.
+                    _ref, _ok, _why = _auto_refine_uncertain(path_b, _loc_lines, _model)
+                    if not _ok:
+                        print(f"[AUTO] fallback Vision impossible ({_why}) → erreur, pas de cache", file=_sys_ocr.stderr)
+                        return jsonify({"error": _AUTO_VISION_FAIL_MSG}), 502
+                    lines, source = _ref, "hybrid"
                 else:
                     lines, source = _loc_lines, "local"
             elif has_key:
@@ -4352,9 +4383,17 @@ def batch_detect():
             # jamais rappelé pour chaque vidéo A en mode Matrice).
             _loc_lines, _meta = _analyze_local_engine_meta(path_b)
             if _loc_lines:
-                if has_key and any(l.get("_uncertain") for l in _loc_lines):
-                    _ref, _nc = _auto_refine_uncertain(path_b, _loc_lines, _model)
-                    lines, source = _ref, ("hybrid" if _nc > 0 else "local")
+                if any(l.get("_uncertain") for l in _loc_lines):
+                    # SÉCURITÉ : si Vision ne peut pas corriger les captions
+                    # incertaines (clé absente, erreur/timeout, réponse vide ou
+                    # invalide, décompte incohérent) → on STOPPE : erreur claire,
+                    # aucun rendu, AUCUN cache. Jamais continuer avec le mauvais
+                    # texte local comme si Auto avait réussi.
+                    _ref, _ok, _why = _auto_refine_uncertain(path_b, _loc_lines, _model)
+                    if not _ok:
+                        print(f"[AUTO] fallback Vision impossible ({_why}) → erreur, pas de cache", file=_sys_ocr.stderr)
+                        return jsonify({"error": _AUTO_VISION_FAIL_MSG}), 502
+                    lines, source = _ref, "hybrid"
                 else:
                     lines, source = _loc_lines, "local"
             elif has_key:
