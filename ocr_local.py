@@ -268,7 +268,14 @@ def _clean_caption_text(text):
     « À » restent (leur sort est décidé par les signaux OCR, pas par leur texte)."""
     out_lines = []
     for line in (text or "").split("\n"):
-        toks = [t for t in line.split() if re.search(r"[^\W_]", t)]  # garde tout token alphanumérique
+        toks = []
+        for t in line.split():
+            # retire les symboles PARASITES collés en bordure de token
+            # (« |have » → « have »), sans toucher la ponctuation de phrase
+            # (. , ? ! ' -) ni le contenu interne.
+            t = t.strip("|~€™/\\»«·•*_=+<>°¬`^§¤")
+            if re.search(r"[^\W_]", t):        # garde tout token alphanumérique
+                toks.append(t)
         if toks:
             out_lines.append(" ".join(toks))
     return "\n".join(out_lines).strip()
