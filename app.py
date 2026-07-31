@@ -1057,7 +1057,7 @@ def _sweep_orphan_zips(max_age_s=7200):
     _cleanup_stale_batches ne balayait QUE les dossiers de batch, jamais
     ces ZIP — d'où une fuite d'espace sur les gros lots répétés."""
     cutoff = time.time() - max_age_s
-    for pat in ("zipbuild_*.zip", "zipbuild_*.json", "batch_*.zip"):
+    for pat in ("zipbuild_*.zip", "zipbuild_*.json", "batch_*.zip", "reels_*.zip"):
         try:
             for f in DATA_DIR.glob(pat):
                 try:
@@ -1075,25 +1075,39 @@ def _free_disk_space(keep_batch_id=None, min_free=_DISK_MIN_FREE_BYTES):
     reste sous le plancher, purge AGRESSIVE : tous les dossiers de batch
     SAUF celui en cours (keep_batch_id) et ceux modifiés il y a < 10 min
     (possiblement en cours), + TOUS les ZIP orphelins. Ne touche JAMAIS
-    aux bases de données (users / OCR cache). Retourne l'espace libre."""
+    aux bases de données (users / OCR cache) NI aux bibliothèques persistantes
+    (videobot_libraries). Retourne l'espace libre."""
+    # nettoyage doux de TOUS les dossiers de travail temporaires sur /data
     _cleanup_stale_batches()
+    try:
+        _cleanup_stale_reels_mix()      # dossiers reels-mix > 6 h
+    except Exception:
+        pass
     _sweep_orphan_zips()
     free = _disk_free_bytes()
     if free is not None and free >= min_free:
         return free
-    recent = time.time() - 600   # 10 min → potentiellement en cours
+    # purge AGRESSIVE : tous les dossiers de travail temporaires sauf le lot
+    # courant et ceux modifiés il y a < 10 min (possiblement en cours).
+    recent = time.time() - 600
+    def _purge_dir(root):
+        try:
+            for d in root.iterdir():
+                try:
+                    if not d.is_dir():
+                        continue
+                    if keep_batch_id and d.name == keep_batch_id:
+                        continue
+                    if d.stat().st_mtime >= recent:
+                        continue
+                    shutil.rmtree(d, ignore_errors=True)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    _purge_dir(BATCH_DIR)
     try:
-        for d in BATCH_DIR.iterdir():
-            try:
-                if not d.is_dir():
-                    continue
-                if keep_batch_id and d.name == keep_batch_id:
-                    continue
-                if d.stat().st_mtime >= recent:
-                    continue
-                shutil.rmtree(d, ignore_errors=True)
-            except Exception:
-                pass
+        _purge_dir(REELS_MIX_DIR)       # temp reels-mix (jamais les libraries)
     except Exception:
         pass
     _sweep_orphan_zips(max_age_s=0)   # purge tous les ZIP orphelins
@@ -4809,6 +4823,69 @@ def batch_cleanup():
             shutil.rmtree(bdir, ignore_errors=True)
         gc.collect()
         return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+def _dir_size_bytes(p):
+    total = 0
+    try:
+        for root, _dirs, files in os.walk(str(p)):
+            for f in files:
+                try:
+                    total += os.path.getsize(os.path.join(root, f))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return total
+
+
+@app.route("/disk_status", methods=["GET"])
+def disk_status():
+    """Diagnostic disque : espace libre + répartition des dossiers /data.
+    Sert à voir CE QUI remplit le disque (temporaires vs bibliothèques)."""
+    try:
+        du = shutil.disk_usage(str(DATA_DIR))
+        mb = lambda b: round((b or 0) / 1_048_576, 1)
+        zips = {}
+        for pat in ("zipbuild_*.zip", "batch_*.zip", "reels_*.zip"):
+            fs = [f for f in DATA_DIR.glob(pat) if f.is_file()]
+            zips[pat] = {"count": len(fs), "mb": mb(sum(f.stat().st_size for f in fs))}
+        n_batch = sum(1 for _ in BATCH_DIR.iterdir()) if BATCH_DIR.exists() else 0
+        n_rmix = sum(1 for _ in REELS_MIX_DIR.iterdir()) if REELS_MIX_DIR.exists() else 0
+        return jsonify({
+            "disk_total_mb": mb(du.total),
+            "disk_used_mb":  mb(du.used),
+            "disk_free_mb":  mb(du.free),
+            "temp_batches_mb":   mb(_dir_size_bytes(BATCH_DIR)),
+            "temp_batches_count": n_batch,
+            "temp_reels_mix_mb":  mb(_dir_size_bytes(REELS_MIX_DIR)),
+            "temp_reels_mix_count": n_rmix,
+            "persist_libraries_mb": mb(_dir_size_bytes(REELS_LIB_DIR)),
+            "persist_users_db_mb":  mb(USERS_DB_PATH.stat().st_size if USERS_DB_PATH.exists() else 0),
+            "orphan_zips": zips,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/disk_reclaim", methods=["POST"])
+def disk_reclaim():
+    """Force la purge AGRESSIVE de tout le temporaire /data (dossiers de
+    batch + reels-mix + ZIP orphelins). Ne touche JAMAIS aux comptes ni
+    aux bibliothèques persistantes (videobot_libraries)."""
+    try:
+        before = _disk_free_bytes()
+        after  = _free_disk_space(min_free=10**18)
+        gc.collect()
+        mb = lambda b: round((b or 0) / 1_048_576, 1)
+        return jsonify({
+            "ok": True,
+            "free_before_mb": mb(before),
+            "free_after_mb":  mb(after),
+            "freed_mb":       mb((after or 0) - (before or 0)),
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
