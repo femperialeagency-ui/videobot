@@ -2727,6 +2727,20 @@ return (s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
 .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 }
 
+// Parse JSON de façon DÉFENSIVE. Si le serveur renvoie une page d'erreur HTML
+// (500/502, souvent une source trop lourde/longue), r.json() lèverait
+// « Unexpected token '<' » — illisible. On renvoie ici un message clair.
+async function httpJson(r) {
+let d = null;
+try { d = await r.json(); } catch (_e) { d = null; }
+if (!r.ok || !d || d.error) {
+throw new Error((d && d.error) || (r.status >= 500
+? "Le serveur a rencontré une erreur en traitant ce fichier (souvent : trop lourd ou trop long). Essaie un fichier plus léger, ou réduis le lot."
+: ("Erreur " + r.status + " — réessaie.")));
+}
+return d;
+}
+
 // OCR: read the user's choice for a scope ("S"=Simple, "B"=Batch).
 // Interface simplifiée : 3 choix visibles — Local (gratuit) / Auto ⭐
 // (recommandé) / Vision (haute qualité). Le modèle Vision précis (Sonnet/Opus)
@@ -3220,8 +3234,7 @@ fd.append("num_b", bFilesB.length);
 fd.append("capcut_outline", getCapcutOutline("B")); fd.append("ocr_mode", getOcrMode("B"));
 fd.append("lines_json", JSON.stringify(linesByB[b]));
 const r = await fetch("/batch_render", { method: "POST", body: fd });
-const d = await r.json();
-if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+const d = await httpJson(r);
 
 bResults[i].status = "done";
 bResults[i].statusText = "✅ Terminé";
@@ -3262,8 +3275,7 @@ fd.append("index", index);
 if (pairing) fd.append("pairing", "1");   // Pairing mode raises the 50→300 staging cap
 if (batchId) fd.append("batch_id", batchId);
 const r = await fetch("/batch_stage", { method: "POST", body: fd });
-const d = await r.json();
-if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+const d = await httpJson(r);
 return d.batch_id;
 }
 
@@ -3371,8 +3383,7 @@ fd.append("pairing", "1");
 fd.append("num_a", nA); fd.append("num_b", nB); fd.append("capcut_outline", getCapcutOutline("B")); fd.append("ocr_mode", getOcrMode("B"));
 fd.append("lines_json", JSON.stringify(linesByStagedB[sb]));
 const r = await fetch("/batch_render", { method: "POST", body: fd });
-const d = await r.json();
-if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+const d = await httpJson(r);
 bResults[i].status = "done"; bResults[i].statusText = "✅ Terminé"; bResults[i].batch_id = bBatchId;
 } catch (e) { bResults[i].status = "error"; bResults[i].statusText = "❌ " + e.message; }
 renderBatchResults(); updateBatchProgress(i + 1, pairs.length);
@@ -3462,8 +3473,7 @@ fd.append("variations", V);
 fd.append("num_a", nA); fd.append("num_b", nB); fd.append("capcut_outline", getCapcutOutline("B")); fd.append("ocr_mode", getOcrMode("B"));
 fd.append("lines_json", JSON.stringify(linesByStagedB[sb]));
 const r = await fetch("/batch_render", { method: "POST", body: fd });
-const d = await r.json();
-if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+const d = await httpJson(r);
 bResults[i].status = "done"; bResults[i].statusText = "✅ Terminé"; bResults[i].batch_id = bBatchId;
 } catch (e) { bResults[i].status = "error"; bResults[i].statusText = "❌ " + e.message; }
 renderBatchResults(); updateBatchProgress(i + 1, pairs.length);
@@ -3834,8 +3844,7 @@ if (!name) { msg.textContent = "Donnez un nom au préréglage."; msg.style.color
 msg.textContent = "Sauvegarde…"; msg.style.color = "var(--muted)";
 try {
 const r = await fetch("/variation_preset_save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name, config: getAdvancedConfig() }) });
-const d = await r.json();
-if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+const d = await httpJson(r);
 msg.textContent = `✅ Préréglage "${name}" sauvegardé.`; msg.style.color = "var(--success)";
 nameEl.value = "";
 refreshVariationPresets();
@@ -3867,8 +3876,7 @@ try {
 const fd = new FormData();
 fd.append("id", sel.value);
 const r = await fetch("/variation_preset_delete", { method: "POST", body: fd });
-const d = await r.json();
-if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+const d = await httpJson(r);
 msg.textContent = "🗑️ Préréglage supprimé."; msg.style.color = "var(--success)";
 refreshVariationPresets();
 } catch(e) {
@@ -4000,8 +4008,7 @@ const fd = new FormData();
 fd.append("file", vFile);
 fd.append("count", count);
 const r = await fetch("/variation_stage", { method: "POST", body: fd });
-const d = await r.json();
-if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+const d = await httpJson(r);
 vJobId = d.job_id;
 }
 
@@ -4301,8 +4308,7 @@ if (!name) { msg.textContent = "Donnez un nom au préréglage."; msg.style.color
 msg.textContent = "Sauvegarde…"; msg.style.color = "var(--muted)";
 try {
 const r = await fetch("/variation_preset_save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name, config: getVmAdvancedConfig() }) });
-const d = await r.json();
-if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+const d = await httpJson(r);
 msg.textContent = `✅ Préréglage "${name}" sauvegardé.`; msg.style.color = "var(--success)"; nameEl.value = ""; refreshVmPresets();
 } catch(e) { msg.textContent = "❌ " + e.message; msg.style.color = "var(--error)"; }
 });
@@ -4319,8 +4325,7 @@ const sel = document.getElementById("vmPresetSelect"); const msg = document.getE
 if (!sel.value) { msg.textContent = "Sélectionnez un préréglage."; msg.style.color = "var(--error)"; return; }
 try {
 const r = await fetch("/variation_preset_delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: parseInt(sel.value, 10) }) });
-const d = await r.json();
-if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+const d = await httpJson(r);
 msg.textContent = "🗑️ Supprimé."; msg.style.color = "var(--success)"; refreshVmPresets();
 } catch(e) { msg.textContent = "❌ " + e.message; msg.style.color = "var(--error)"; }
 });
@@ -4406,8 +4411,7 @@ let jobId = null;
 try {
 const fd = new FormData(); fd.append("file", f.file); fd.append("count", count);
 const r = await fetch("/variation_stage", { method: "POST", body: fd });
-const d = await r.json();
-if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+const d = await httpJson(r);
 jobId = d.job_id;
 vmJobs.push({ job_id: jobId, label: vmStem(f.name), name: f.name });
 } catch(e) {
@@ -4429,8 +4433,7 @@ fd.append("strength", strength); fd.append("config_mode", configMode);
 if (configMode === "advanced" && advancedConfig) fd.append("advanced_config", JSON.stringify(advancedConfig));
 _appendMetaOrigin(fd);
 const r = await fetch("/variation_multi_run", { method: "POST", body: fd });
-const d = await r.json();
-if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+const d = await httpJson(r);
 row.status = "done"; row.statusText = "✅ Terminé"; row.filename = d.filename || row.filename; row.job_id = jobId;
 } catch(e) { row.status = "error"; row.statusText = "❌ " + e.message; }
 done++; renderVmResults(); updateVmProgress(done, vmResults.length);
@@ -4590,8 +4593,7 @@ const fd = new FormData();
 fd.append("file", auFiles[i].file);
 if (auJobId) fd.append("job_id", auJobId);
 const r = await fetch("/audio_stage", { method: "POST", body: fd });
-const d = await r.json();
-if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+const d = await httpJson(r);
 auJobId = d.job_id;
 auResults[i].stored = d.stored_name;
 } catch(e) {
@@ -4615,8 +4617,7 @@ fd.append("out_name", row.outBase);
 fd.append("index", i);
 fd.append("count", total);
 const r = await fetch("/audio_convert", { method: "POST", body: fd });
-const d = await r.json();
-if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+const d = await httpJson(r);
 row.status = "done"; row.statusText = "✅ Converti"; row.filename = d.filename;
 } catch(e) { row.status = "error"; row.statusText = "❌ " + e.message; }
 done++; renderAuResults(); updateAuProgress(done, total);
@@ -4785,8 +4786,7 @@ const fd = new FormData();
 fd.append("file", phFiles[i].file);
 if (phJobId) fd.append("job_id", phJobId);
 const r = await fetch("/photo_stage", { method: "POST", body: fd });
-const d = await r.json();
-if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+const d = await httpJson(r);
 phJobId = d.job_id; phResults[i].stored = d.stored_name;
 } catch(e) { phResults[i].status = "error"; phResults[i].statusText = "❌ envoi: " + e.message; }
 }
@@ -4806,8 +4806,7 @@ fd.append("index", i);
 fd.append("count", total);
 Object.keys(opts).forEach(k => fd.append(k, opts[k]));
 const r = await fetch("/photo_process", { method: "POST", body: fd });
-const d = await r.json();
-if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+const d = await httpJson(r);
 row.status = "done"; row.statusText = "✅ Traité"; row.filename = d.filename;
 } catch(e) { row.status = "error"; row.statusText = "❌ " + e.message; }
 done++; renderPhResults(); updatePhProgress(done, total);
@@ -6345,6 +6344,11 @@ async function rDownloadZip(selectedOnly){
   const btn=document.getElementById(selectedOnly?"rZipSelBtn":"rZipBtn") || document.getElementById("rZipBtn");
   // Même flux arrière-plan (progression réelle + téléchargement natif).
   await rZipBackground("reels", rMixJobId, btn, filenames);
+  // Purge des sorties reels après un téléchargement complet (comme le Batch),
+  // pour garder le disque au plus bas. Le « ZIP sélection » ne purge pas.
+  if(!selectedOnly && rMixJobId){
+    fetch("/reels_mix_cleanup", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ job_id: rMixJobId }) }).catch(()=>{});
+  }
 }
 </script>
 </body>

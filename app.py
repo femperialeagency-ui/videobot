@@ -3920,6 +3920,10 @@ def process():
 
         va.save(path_a)
         vb.save(path_b)
+        # Plafonne la vidéo A (visuels) à 1080p si elle est en 4K → rendu bien
+        # plus rapide, pas de timeout. Sans effet si A ≤ 1080p. Captions %
+        # inchangées (fichier redimensionné physiquement avant lecture des dims).
+        _cap_source_1080(path_a)
         _usage_attempt_started = True
         _usage_source_seconds  = _get_video_duration_seconds(path_a)
 
@@ -4440,6 +4444,13 @@ def batch_stage():
                 )}), 507
             raise
 
+        # Plafonne les vidéos SOURCES (A = visuels) à 1080p si elles sont en 4K.
+        # Fait UNE fois au staging → réutilisé pour toutes les combinaisons A×B
+        # (efficace). Les cibles B (audio + captions) ne sont pas touchées :
+        # l'OCR les réduit déjà à 720px de son côté et n'apporte que l'audio.
+        if kind == "a":
+            _cap_source_1080(str(dest))
+
         return jsonify({"batch_id": batch_id, "kind": kind, "index": index})
 
     except Exception as e:
@@ -4959,6 +4970,43 @@ def _normalize_variation_source(raw_path: str, out_path: str, max_side: int = 19
         return proc.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 0
     except Exception:
         return False
+
+
+def _cap_source_1080(path: str, max_side: int = 1920) -> bool:
+    """Plafonne une vidéo à 1080p (côté long ≤ max_side) SUR PLACE, mais
+    UNIQUEMENT si elle dépasse déjà ce seuil. Une source 4K (2160×3840) est
+    ainsi ramenée à 1080×1920 avant le rendu → encodages bien plus rapides,
+    pas de timeout, coût disque moindre. Les vidéos ≤ 1080p ne sont PAS
+    touchées (aucune ré-encodage, qualité intacte). Comme le fichier est
+    physiquement redimensionné, les captions (positions en %) restent
+    parfaitement alignées — aucun changement au moteur de rendu. Retourne
+    True si un downscale a eu lieu."""
+    try:
+        w, h = get_video_dims(path)
+    except Exception:
+        return False
+    if not w or not h or max(w, h) <= max_side:
+        return False
+    tmp = path + ".cap1080.mp4"
+    vf = (f"scale='min({max_side},iw)':'min({max_side},ih)'"
+          f":force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2")
+    cmd = ["ffmpeg", "-y", "-i", path, "-vf", vf,
+           "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+           "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+           tmp, "-loglevel", "error"]
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        if p.returncode == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0:
+            os.replace(tmp, path)
+            return True
+    except Exception:
+        pass
+    try:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    except Exception:
+        pass
+    return False
 
 
 @app.route("/variation_stage", methods=["POST"])
