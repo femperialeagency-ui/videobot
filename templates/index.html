@@ -4024,20 +4024,25 @@ fd.append("advanced_config", JSON.stringify(advancedConfig));
 }
 _appendMetaOrigin(fd);
 let r = await fetch("/variation_run", { method: "POST", body: fd });
-let d = await r.json();
+let d = await r.json().catch(() => null);
 // Filet de sécurité : si la source a disparu côté serveur, on re-stage
 // UNE fois automatiquement (sans re-upload manuel) puis on retente.
 if (r.status === 404 && vFile) {
 const sfd = new FormData(); sfd.append("file", vFile); sfd.append("count", count);
 const sr = await fetch("/variation_stage", { method: "POST", body: sfd });
-const sd = await sr.json();
-if (sr.ok && sd.job_id) {
+const sd = await sr.json().catch(() => null);
+if (sr.ok && sd && sd.job_id) {
 vJobId = sd.job_id; fd.set("job_id", vJobId);
 r = await fetch("/variation_run", { method: "POST", body: fd });
-d = await r.json();
+d = await r.json().catch(() => null);
 }
 }
-if (!r.ok || d.error) throw new Error(d.error || r.statusText);
+// Réponse non-JSON (page d'erreur HTML d'un 500/502) → message clair au lieu
+// de « Unexpected token '<' ». Typiquement une vidéo trop lourde/longue.
+if (!r.ok || !d || d.error) throw new Error(
+(d && d.error) || (r.status >= 500
+? "Le serveur a rencontré une erreur en traitant cette vidéo (souvent : source trop lourde ou trop longue). Essaie une vidéo plus légère, ou réduis le nombre de variations."
+: ("Erreur " + r.status + " — réessaie.")));
 
 vResults[i].status = "done";
 vResults[i].statusText = "✅ Terminé";

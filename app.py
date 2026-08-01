@@ -4924,6 +4924,27 @@ def disk_reclaim():
 # is ever in flight for this feature, by construction.
 # ══════════════════════════════════════════════════════════════════
 
+def _normalize_variation_source(raw_path: str, out_path: str, max_side: int = 1920) -> bool:
+    """Transcode la source en H.264 MP4 avec le côté le plus long plafonné à
+    `max_side` (préserve le ratio, dimensions paires). Objectif : une source
+    LÉGÈRE et normalisée, réutilisée pour CHAQUE variante. Sans ça, une source
+    4K (2160×3840, iPhone HEVC) est ré-encodée en 4K à chaque variante → des
+    minutes par variante sur 1 CPU → timeout HTTP (502) → « Unexpected token
+    '<' » côté client. En 1080p, chaque variante s'encode en quelques secondes.
+    Retourne True si la normalisation a réussi (out_path écrit et non vide)."""
+    vf = (f"scale='min({max_side},iw)':'min({max_side},ih)'"
+          f":force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2")
+    cmd = ["ffmpeg", "-y", "-i", raw_path, "-vf", vf,
+           "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+           "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+           out_path, "-loglevel", "error"]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        return proc.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 0
+    except Exception:
+        return False
+
+
 @app.route("/variation_stage", methods=["POST"])
 def variation_stage():
     """
@@ -4951,8 +4972,19 @@ def variation_stage():
         (jdir / "out").mkdir(parents=True, exist_ok=True)
 
         source_filename = (request.files["file"].filename or "source.mp4").strip()
-        path_in = str(jdir / "in" / "source.mp4")
-        request.files["file"].save(path_in)
+        path_in  = str(jdir / "in" / "source.mp4")
+        raw_path = str(jdir / "in" / "_raw_upload")
+        request.files["file"].save(raw_path)
+
+        # Normalise la source (côté long ≤ 1080p, H.264). Évite les timeouts
+        # sur les sources 4K/HEVC et fixe des dimensions propres. Si la
+        # normalisation échoue, on retombe sur le fichier brut (best-effort).
+        if _normalize_variation_source(raw_path, path_in, max_side=1920):
+            try: os.remove(raw_path)
+            except Exception: pass
+        else:
+            try: shutil.move(raw_path, path_in)
+            except Exception: path_in = raw_path
 
         duration = _get_video_duration_seconds(path_in)
         width, height = get_video_dims(path_in)
