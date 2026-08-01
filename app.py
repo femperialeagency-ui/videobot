@@ -5455,7 +5455,7 @@ def variation_cleanup():
 # ══════════════════════════════════════════════════════════════════
 
 MAX_MULTI_VIDEOS = 300                      # max source videos per multi run
-MAX_MULTI_TOTAL  = 300                      # hard cap: videos × variants-per-video
+MAX_MULTI_TOTAL  = 900                      # hard cap: videos × variants-per-video
 
 
 @app.route("/variation_multi_run", methods=["POST"])
