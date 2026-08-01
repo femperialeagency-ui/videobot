@@ -3371,6 +3371,22 @@ def _require_login():
     return None
 
 
+@app.after_request
+def _cache_static_assets(resp):
+    """Met en cache navigateur les ressources statiques (polices, logo, sprites
+    emoji) qui ne changent jamais entre deux déploiements. Avant, elles étaient
+    servies « no-cache » et re-téléchargées à CHAQUE ouverture de page →
+    affichage plus lent. 30 jours de cache = pages qui se chargent bien plus
+    vite ensuite. Ne touche pas aux réponses dynamiques ni aux téléchargements."""
+    try:
+        p = request.path or ""
+        if p.startswith("/static/"):
+            resp.headers["Cache-Control"] = "public, max-age=2592000"
+    except Exception:
+        pass
+    return resp
+
+
 def admin_required(view):
     """Gate a route to admins only. Runs after _require_login has
     already populated request.current_user for this request."""

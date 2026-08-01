@@ -5156,7 +5156,23 @@ function rCapNameOf(id){ const c=rCaptions.find(x=>x.id===id); return c?c.name:"
 function rMusNameOf(id){ const m=rMusic.find(x=>x.id===id); return m?m.name:""; }
 
 // Lazy video loading (Module 10 — perf jusqu'à 500 items)
-const rIO = ("IntersectionObserver" in window) ? new IntersectionObserver(ents=>{ ents.forEach(en=>{ const v=en.target; if(en.isIntersecting && v.dataset.src && !v.src){ v.src=v.dataset.src; } }); },{root:null,rootMargin:"400px"}) : null;
+// Chargement des aperçus vidéo SÉRIALISÉ : une vidéo à la fois (pas 6 en même
+// temps). Décoder plusieurs gros .mov HEVC simultanément fige le navigateur et
+// l'affichage met des secondes à apparaître. Ici la grille s'affiche tout de
+// suite et les vidéos se chargent l'une après l'autre, avec un timeout pour ne
+// jamais bloquer la file si un .mov ne se décode pas.
+let _rVidQueue=[], _rVidBusy=false;
+function _rVidPump(){
+  if(_rVidBusy) return;
+  const v=_rVidQueue.shift(); if(!v) return;
+  if(v.src || !v.dataset.src || !v.isConnected){ _rVidPump(); return; }
+  _rVidBusy=true;
+  const done=()=>{ v.removeEventListener("loadedmetadata",done); v.removeEventListener("error",done); clearTimeout(to); _rVidBusy=false; _rVidPump(); };
+  const to=setTimeout(done, 1500);
+  v.addEventListener("loadedmetadata",done); v.addEventListener("error",done);
+  v.src=v.dataset.src;
+}
+const rIO = ("IntersectionObserver" in window) ? new IntersectionObserver(ents=>{ ents.forEach(en=>{ const v=en.target; if(en.isIntersecting && v.dataset.src && !v.src && !v.dataset.q){ v.dataset.q="1"; rIO.unobserve(v); _rVidQueue.push(v); _rVidPump(); } }); },{root:null,rootMargin:"150px"}) : null;
 function rLazyVideo(v,url){ if(rIO){ v.dataset.src=url; rIO.observe(v); } else { v.src=url; } }
 
 async function reelsOnOpen(){
