@@ -2039,12 +2039,20 @@ def _auto_refine_uncertain(video_path, lines, model: str = OCR_MODEL_SONNET):
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
         return lines, False, "no_key"                # incertain mais pas de clé
+    # Dès qu'UNE caption est incertaine, un appel Vision aura lieu de toute
+    # façon. Dans ce MÊME appel unique (même coût), on retranscrit TOUTES les
+    # captions — pas seulement les incertaines : une lecture locale « sûre »
+    # peut être fausse (ex. « teachime » au lieu de « teach me », espace
+    # avalé), et le seuil d'incertitude ne l'attrape pas toujours (il varie
+    # selon la version de Tesseract sur le serveur). Timings/géométrie
+    # restent ceux de l'OCR local ; seul le TEXTE est corrigé.
+    target_idx = list(range(len(lines)))
     import tempfile, shutil, sys as _sys
     tmpdir = tempfile.mkdtemp(prefix="ocrcrop_")
     try:
         import anthropic
         content, kept = [], []
-        for k, i in enumerate(unc_idx):
+        for k, i in enumerate(target_idx):
             cp = os.path.join(tmpdir, f"c{k}.png")
             if _crop_caption_frame(video_path, lines[i], cp):
                 with open(cp, "rb") as f:
@@ -3753,8 +3761,12 @@ def analyze():
         # l'ANCIEN moteur (filtrage fragment-par-fragment : « LES », fragments,
         # textes superposés). Sans ce bump, le nouveau moteur « piste dominante »
         # + Auto/Vision resservirait le cache périmé sur les mêmes vidéos B.
-        _cache_ver = ("v3-local" if _use_local else "v3-auto" if _use_auto
-                      else "v3-opus" if _is_opus else "v3-sonnet")
+        # v4 : bump — le fallback Vision d'Auto retranscrit désormais TOUTES les
+        # captions (plus seulement les incertaines), donc les entrées v3 où une
+        # lecture locale « sûre » mais fausse (ex. « teachime ») avait été mise
+        # en cache doivent être recalculées.
+        _cache_ver = ("v4-local" if _use_local else "v4-auto" if _use_auto
+                      else "v4-opus" if _is_opus else "v4-sonnet")
         _fallback_scale = "scale=1080:-2"
         # "Réanalyser sans cache" : saute le lookup et force une analyse
         # fraîche (le résultat est tout de même re-stocké pour les fois suivantes).
@@ -4475,8 +4487,12 @@ def batch_detect():
         # l'ANCIEN moteur (filtrage fragment-par-fragment : « LES », fragments,
         # textes superposés). Sans ce bump, le nouveau moteur « piste dominante »
         # + Auto/Vision resservirait le cache périmé sur les mêmes vidéos B.
-        _cache_ver = ("v3-local" if _use_local else "v3-auto" if _use_auto
-                      else "v3-opus" if _is_opus else "v3-sonnet")
+        # v4 : bump — le fallback Vision d'Auto retranscrit désormais TOUTES les
+        # captions (plus seulement les incertaines), donc les entrées v3 où une
+        # lecture locale « sûre » mais fausse (ex. « teachime ») avait été mise
+        # en cache doivent être recalculées.
+        _cache_ver = ("v4-local" if _use_local else "v4-auto" if _use_auto
+                      else "v4-opus" if _is_opus else "v4-sonnet")
         _fallback_scale = "scale=1080:-2"
         _ignore_cache = (request.form.get("ignore_cache", "0") or "0").strip().lower() in ("1", "true", "on", "yes")
         import sys as _sys_ocr

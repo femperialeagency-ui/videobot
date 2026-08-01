@@ -67,14 +67,16 @@ check("incertain + pas de clé → texte local NON modifié", out[1]["text"] == 
 
 if HAVE_VID:
     os.environ["ANTHROPIC_API_KEY"] = "test-key"
-    # succès Vision → seule l'incertaine change, 1 appel, 1 image, timings gardés
-    fake_anthropic(mapping={0: "CORRIGE PAR VISION"})
+    # succès Vision → dès qu'UNE caption est incertaine, TOUTES sont
+    # retranscrites dans le MÊME appel unique (corrige aussi une lecture
+    # locale « sûre » mais fausse). 1 appel, N images, timings gardés.
+    fake_anthropic(mapping={0: "FIABLE VISION", 1: "CORRIGE PAR VISION"})
     lines = [line("fiable", False), line("douteuse", True, st=2.0, en=4.0)]
     out, ok, why = A._auto_refine_uncertain(VID, lines)
     check("succès Vision → ok=True", ok and why is None)
-    check("succès : 1 appel, 1 image (uniquement l'incertaine)", CALLS["n"] == 1 and CALLS["images"] == 1)
-    check("succès : fiable inchangée, incertaine corrigée",
-          out[0]["text"] == "fiable" and out[1]["text"] == "CORRIGE PAR VISION")
+    check("succès : 1 appel, TOUTES les captions envoyées", CALLS["n"] == 1 and CALLS["images"] == 2)
+    check("succès : toutes les captions corrigées par Vision",
+          out[0]["text"] == "FIABLE VISION" and out[1]["text"] == "CORRIGE PAR VISION")
     check("succès : timings/géométrie conservés",
           out[1]["start_time"] == 2.0 and out[1]["end_time"] == 4.0 and out[1]["cy_pct"] == 0.66)
 
