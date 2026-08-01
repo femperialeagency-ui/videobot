@@ -1605,6 +1605,26 @@ def _build_variation_ffmpeg_cmd(path_in: str, path_out: str, params: dict,
     return cmd
 
 
+def _apply_encoder_tag(path_out, profile, app_source=""):
+    """Réécrit le tag « encoder » du MP4 (atome ©too) APRÈS l'encodage. FFmpeg
+    force ce tag à « Lavf<version> » sur toutes les sorties (impossible à changer
+    via -metadata) — c'est une empreinte identique repérable. On le remplace par
+    l'encodeur du profil d'appareil choisi (HEVC, Lavc60.3, CapCut…), qui VARIE
+    d'une variante à l'autre. Best-effort : ne lève jamais, n'échoue jamais le
+    rendu si mutagen manque ou si l'écriture rate."""
+    try:
+        app_meta = APP_SOURCE_META.get((app_source or "").strip().lower())
+        enc = (app_meta or {}).get("encoder") or (profile or {}).get("encoder", "")
+        if not enc:
+            return
+        from mutagen.mp4 import MP4
+        m = MP4(str(path_out))
+        m["\xa9too"] = str(enc)
+        m.save()
+    except Exception:
+        pass
+
+
 FONT_BOLD = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
 FONT_REG  = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
 
@@ -5186,6 +5206,8 @@ def variation_run():
             gc.collect()
 
         ok = (proc.returncode == 0 and path_out.exists())
+        if ok:
+            _apply_encoder_tag(path_out, profile, _app_source)
 
         # ── Last call of the run: record exactly ONE usage_logs row for
         # the whole job (per spec — "one row per attempt", and a
@@ -5432,7 +5454,7 @@ def variation_cleanup():
 # Cleanup reuses the existing /variation_cleanup (one call per job_id).
 # ══════════════════════════════════════════════════════════════════
 
-MAX_MULTI_VIDEOS = 100                      # max source videos per multi run
+MAX_MULTI_VIDEOS = 300                      # max source videos per multi run
 MAX_MULTI_TOTAL  = 300                      # hard cap: videos × variants-per-video
 
 
@@ -5530,6 +5552,8 @@ def variation_multi_run():
             gc.collect()
 
         ok = (proc.returncode == 0 and path_out.exists())
+        if ok:
+            _apply_encoder_tag(path_out, profile, _app_source)
 
         # One usage_logs row per video (at its last index), mode
         # "variation_multi" — mirrors /variation_run's per-job logging but
