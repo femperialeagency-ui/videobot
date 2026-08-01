@@ -5058,7 +5058,20 @@ function wsSetView(which, view){
         const url = URL.createObjectURL(f); urls[which].push(url);
         media = document.createElement("video");
         media.src = url; media.preload = "metadata"; media.muted = true; media.playsInline = true;
+        // Vidéo non décodable par le navigateur (.mov HEVC iPhone) → vignette
+        // serveur à la place du rectangle noir. Sinon un placeholder 🎞.
+        const _wsThumbFallback = async () => {
+          if (media.dataset.fb) return; media.dataset.fb = "1";
+          try {
+            const fd = new FormData(); fd.append("file", f);
+            const r = await fetch("/thumbnail", { method: "POST", body: fd });
+            if (r.ok){ const b = await r.blob(); const img = document.createElement("img"); img.className = "ws-thumb-ph"; img.src = URL.createObjectURL(b); media.replaceWith(img); return; }
+          } catch(e){}
+          const ph = document.createElement("div"); ph.className = "ws-thumb-ph"; ph.textContent = "🎞"; media.replaceWith(ph);
+        };
+        media.addEventListener("error", _wsThumbFallback);
         media.addEventListener("loadedmetadata", () => {
+          if (!media.videoWidth){ meta.innerHTML = `<span>${fmtSize(f.size)}</span>`; _wsThumbFallback(); return; }
           const d = media.duration, mm = Math.floor(d/60), ss = Math.round(d%60);
           const res = (media.videoWidth && media.videoHeight) ? media.videoWidth+"×"+media.videoHeight : "";
           meta.innerHTML = `<span>${isFinite(d) ? mm+":"+String(ss).padStart(2,"0") : ""}</span><span>${res}</span><span>${fmtSize(f.size)}</span>`;
