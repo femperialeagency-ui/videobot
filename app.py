@@ -6510,6 +6510,44 @@ def optimizer_cleanup():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/thumbnail", methods=["POST"])
+def thumbnail():
+    """Vignette (JPEG) d'UNE vidéo pour l'aperçu dans l'UI. Sert surtout aux
+    .mov HEVC iPhone que le navigateur ne sait pas afficher inline (aperçu
+    noir). Extraction FFmpeg d'une image redimensionnée. Aucun job/staging :
+    fichier temporaire lu puis supprimé. FFmpeg-only, 0 requête Claude."""
+    import tempfile
+    if "file" not in request.files:
+        return jsonify({"error": "Fichier manquant"}), 400
+    tmpdir = tempfile.mkdtemp(prefix="thumb_")
+    src = os.path.join(tmpdir, "in")
+    out = os.path.join(tmpdir, "t.jpg")
+    try:
+        request.files["file"].save(src)
+        made = False
+        for ss in ("1", "0"):
+            cmd = ["ffmpeg", "-y", "-ss", ss, "-i", src, "-frames:v", "1",
+                   "-vf", "scale='min(480,iw)':-2", "-q:v", "5",
+                   out, "-loglevel", "error"]
+            try:
+                subprocess.run(cmd, capture_output=True, timeout=30)
+            except Exception:
+                pass
+            if os.path.exists(out) and os.path.getsize(out) > 0:
+                made = True
+                break
+        if not made:
+            return jsonify({"error": "Aperçu indisponible"}), 422
+        with open(out, "rb") as f:
+            data = f.read()
+        from flask import Response
+        return Response(data, mimetype="image/jpeg")
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 # ══════════════════════════════════════════════════════════════════
 # REELS PRODUCTION WORKSPACE — a COMPLETELY SEPARATE, low-cost pipeline.
 # NO OCR, NO Claude Vision, claude_requests = 0. Persistent libraries live

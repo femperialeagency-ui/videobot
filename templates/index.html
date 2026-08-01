@@ -2782,16 +2782,49 @@ return (el && el.value === "0") ? "0" : "1";
 // ══════════════════════════════════════════
 function _upFmtSize(b){ b=b||0; return b<1048576 ? (b/1024).toFixed(0)+" Ko" : b<1073741824 ? (b/1048576).toFixed(1)+" Mo" : (b/1073741824).toFixed(2)+" Go"; }
 function _upFmtDur(d){ if(!d||!isFinite(d)) return ""; const m=Math.floor(d/60), s=Math.round(d%60); return m+":"+String(s).padStart(2,"0"); }
+// Aperçu de secours : les .mov HEVC iPhone ne s'affichent pas dans un <video>
+// (aperçu noir, 0×0). On demande alors au serveur une vignette (image extraite
+// par FFmpeg) et on l'affiche à la place. Si même ça échoue, un placeholder
+// clair remplace le rectangle noir. Bornée : une requête par fichier concerné.
+async function _videoPreviewFallback(vid, file){
+  if(!vid || vid.dataset.fbDone) return;
+  vid.dataset.fbDone="1";
+  const wrap = vid.closest(".up-preview-wrap") || vid.parentElement;
+  if(!wrap) return;
+  try{
+    const fd=new FormData(); fd.append("file", file);
+    const r=await fetch("/thumbnail",{method:"POST",body:fd});
+    if(r.ok){
+      const b=await r.blob();
+      let img=wrap.querySelector("img.up-preview-thumb");
+      if(!img){ img=document.createElement("img"); img.className="up-preview-thumb"; img.style.cssText="width:100%;max-height:260px;display:block;object-fit:contain;background:#05060a"; wrap.insertBefore(img, vid); }
+      img.src=URL.createObjectURL(b); vid.style.display="none";
+      return;
+    }
+  }catch(e){}
+  let ph=wrap.querySelector(".up-preview-ph");
+  if(!ph){ ph=document.createElement("div"); ph.className="up-preview-ph"; ph.style.cssText="padding:22px 12px;text-align:center;color:var(--muted);font-size:13px;background:#05060a"; ph.textContent="Aperçu indisponible pour ce format — la vidéo sera bien traitée."; wrap.insertBefore(ph, vid); }
+  vid.style.display="none";
+}
+function _upResetFallback(wrap, vid){
+  if(vid){ vid.dataset.fbDone=""; vid.style.display=""; }
+  if(wrap){ wrap.querySelectorAll("img.up-preview-thumb,.up-preview-ph").forEach(el=>el.remove()); }
+}
 function _upShowPreview(letter, file){
   const wrap=document.getElementById("previewWrap"+letter);
   const vid=document.getElementById("preview"+letter);
   const meta=document.getElementById("meta"+letter);
   if(!wrap||!vid) return;
+  _upResetFallback(wrap, vid);
   if(vid.dataset.url){ try{ URL.revokeObjectURL(vid.dataset.url); }catch(e){} }
   const url=URL.createObjectURL(file); vid.dataset.url=url; vid.src=url;
   wrap.style.display="block";
   if(meta) meta.textContent=`${file.name} · ${_upFmtSize(file.size)}`;
-  vid.onloadedmetadata=()=>{ if(meta) meta.textContent=`${file.name} · ${_upFmtDur(vid.duration)} · ${vid.videoWidth}×${vid.videoHeight} · ${_upFmtSize(file.size)}`; };
+  vid.onloadedmetadata=()=>{
+    if(!vid.videoWidth){ _videoPreviewFallback(vid, file); if(meta) meta.textContent=`${file.name} · ${_upFmtSize(file.size)}`; return; }
+    if(meta) meta.textContent=`${file.name} · ${_upFmtDur(vid.duration)} · ${vid.videoWidth}×${vid.videoHeight} · ${_upFmtSize(file.size)}`;
+  };
+  vid.onerror=()=>_videoPreviewFallback(vid, file);
 }
 ["A","B"].forEach(letter => {
 const input = document.getElementById("input"+letter);
@@ -3602,10 +3635,15 @@ probe.onerror = () => { URL.revokeObjectURL(url); };
 function _mkPreview(wrapId, vidId, metaId, file){
   const wrap=document.getElementById(wrapId), vid=document.getElementById(vidId), meta=document.getElementById(metaId);
   if(!wrap||!vid||!file) return;
+  _upResetFallback(wrap, vid);
   if(vid.dataset.url){ try{ URL.revokeObjectURL(vid.dataset.url); }catch(e){} }
   const url=URL.createObjectURL(file); vid.dataset.url=url; vid.src=url; wrap.style.display="block";
   if(meta) meta.textContent=`${file.name} · ${_upFmtSize(file.size)}`;
-  vid.onloadedmetadata=()=>{ if(meta) meta.textContent=`${file.name} · ${_upFmtDur(vid.duration)} · ${vid.videoWidth}×${vid.videoHeight} · ${_upFmtSize(file.size)}`; };
+  vid.onloadedmetadata=()=>{
+    if(!vid.videoWidth){ _videoPreviewFallback(vid, file); if(meta) meta.textContent=`${file.name} · ${_upFmtSize(file.size)}`; return; }
+    if(meta) meta.textContent=`${file.name} · ${_upFmtDur(vid.duration)} · ${vid.videoWidth}×${vid.videoHeight} · ${_upFmtSize(file.size)}`;
+  };
+  vid.onerror=()=>_videoPreviewFallback(vid, file);
   if(!vid.dataset.wired){ vid.dataset.wired="1"; vid.addEventListener("click", ()=>{ if(vid.paused){ document.querySelectorAll("video.up-preview").forEach(v=>{ if(v!==vid) v.pause(); }); vid.play().catch(()=>{}); } else vid.pause(); }); }
 }
 function vCleanupJob() {
