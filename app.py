@@ -1041,7 +1041,7 @@ def _cleanup_stale_batches(max_age_hours: float = 3.0):
 # le disque de 10 Go se remplit → « [Errno 28] No space left on device »
 # en plein staging. On nettoie AVANT de stager et on échoue proprement
 # (message clair, aucun fichier partiel laissé) si l'espace manque.
-_DISK_MIN_FREE_BYTES = 1_500_000_000   # plancher de sécurité : 1,5 Go
+_DISK_MIN_FREE_BYTES = 1_500_000_000   # plancher IDÉAL : 1,5 Go
 
 
 def _disk_free_bytes(path=None):
@@ -1049,6 +1049,22 @@ def _disk_free_bytes(path=None):
         return shutil.disk_usage(str(path or DATA_DIR)).free
     except Exception:
         return None
+
+
+def _disk_min_free():
+    """Plancher d'espace libre ADAPTATIF. Le plancher idéal (1,5 Go) peut
+    dépasser la taille TOTALE d'un petit disque (ex. disque Render de 1 Go),
+    ce qui bloquerait alors TOUTE génération. On plafonne donc le plancher à
+    20 % de la taille totale du disque : petit disque → petit plancher, gros
+    disque → 1,5 Go. Ne remplace pas le besoin d'un disque assez grand pour
+    les très gros lots, mais évite de bloquer les lots normaux."""
+    try:
+        total = shutil.disk_usage(str(DATA_DIR)).total
+    except Exception:
+        total = None
+    if total:
+        return min(_DISK_MIN_FREE_BYTES, int(total * 0.20))
+    return 300_000_000
 
 
 def _sweep_orphan_zips(max_age_s=7200):
@@ -1069,7 +1085,9 @@ def _sweep_orphan_zips(max_age_s=7200):
             pass
 
 
-def _free_disk_space(keep_batch_id=None, min_free=_DISK_MIN_FREE_BYTES):
+def _free_disk_space(keep_batch_id=None, min_free=None):
+    if min_free is None:
+        min_free = _disk_min_free()
     """Libère de l'espace sur le disque persistant. 1) nettoyage doux
     (dossiers de batch > 3 h + ZIP orphelins > 2 h). 2) si l'espace libre
     reste sous le plancher, purge AGRESSIVE : tous les dossiers de batch
@@ -4376,10 +4394,11 @@ def batch_stage():
         # Garde-fou : si le disque est déjà sous le plancher, tenter une
         # libération (en conservant le lot courant) ; si ça ne suffit pas,
         # échouer AVANT d'écrire pour ne pas laisser de fichier partiel.
+        _floor = _disk_min_free()
         free = _disk_free_bytes()
-        if free is not None and free < _DISK_MIN_FREE_BYTES:
+        if free is not None and free < _floor:
             free = _free_disk_space(keep_batch_id=batch_id)
-        if free is not None and free < _DISK_MIN_FREE_BYTES:
+        if free is not None and free < _floor:
             return jsonify({"error": (
                 "Espace disque serveur insuffisant pour préparer ce lot. "
                 "Les fichiers temporaires ont été purgés mais l'espace reste "
