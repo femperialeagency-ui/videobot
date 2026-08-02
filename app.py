@@ -336,18 +336,12 @@ ORIGIN_META = {
     "brazil": {"lang": "por", "country": "BR", "tz": "-0300"},
 }
 
-# Pool d'apps d'édition pour le marquage AUTOMATIQUE « modifié par … ». Quand
-# l'utilisateur ne choisit rien, chaque variante est étiquetée comme sortie
-# d'une vraie app de montage (software / comment / encoder), pondéré vers
-# CapCut (le plus courant). Varie d'une variante à l'autre via le rng seedé.
-_AUTO_APP_SOURCES = ["capcut", "capcut", "capcut", "tiktok", "tiktok", "instagram"]
-
-
-def _pick_app_source(rng: "random.Random") -> str:
-    try:
-        return rng.choice(_AUTO_APP_SOURCES)
-    except Exception:
-        return "capcut"
+# Marquage AUTOMATIQUE : quand l'utilisateur ne choisit pas d'app-source, on
+# étiquette chaque variante comme un export CapCut (software/comment/encoder =
+# CapCut). C'est le workflow d'édition le plus courant et le plus crédible —
+# un vrai export CapCut porte ses propres métadonnées, donc pas besoin (et
+# moins réaliste) de forcer de faux atomes d'appareil. Date, handler et
+# contenu varient par variante via le rng seedé.
 
 # ── Advanced Mode (additive, opt-in slider system) ──────────────────
 # Each of these 16 sliders runs 0-100 (default 50, "0=disabled,
@@ -5208,7 +5202,12 @@ def variation_run():
             strength_label = strength
         _app_source = (request.form.get("app_source") or "").strip().lower()
         if not _app_source:
-            _app_source = _pick_app_source(rng)   # marquage auto « modifié par … »
+            # Marquage auto « monté sur CapCut » : c'est le rendu le plus
+            # réaliste (un vrai export CapCut porte ses propres métadonnées et
+            # efface celles de la caméra d'origine — inutile et moins crédible
+            # de forcer de faux atomes iPhone). software/comment/encoder = CapCut,
+            # tandis que date, handler et contenu varient d'une variante à l'autre.
+            _app_source = "capcut"
         _origin = (request.form.get("origin") or "").strip().lower()
         cmd = _build_variation_ffmpeg_cmd(str(path_in), str(path_out), params, profile, width, height,
                                           app_source=_app_source, origin=_origin)
@@ -5556,7 +5555,12 @@ def variation_multi_run():
             strength_label = strength
         _app_source = (request.form.get("app_source") or "").strip().lower()
         if not _app_source:
-            _app_source = _pick_app_source(rng)   # marquage auto « modifié par … »
+            # Marquage auto « monté sur CapCut » : c'est le rendu le plus
+            # réaliste (un vrai export CapCut porte ses propres métadonnées et
+            # efface celles de la caméra d'origine — inutile et moins crédible
+            # de forcer de faux atomes iPhone). software/comment/encoder = CapCut,
+            # tandis que date, handler et contenu varient d'une variante à l'autre.
+            _app_source = "capcut"
         _origin = (request.form.get("origin") or "").strip().lower()
         cmd = _build_variation_ffmpeg_cmd(str(path_in), str(path_out), params, profile, width, height,
                                           app_source=_app_source, origin=_origin)
