@@ -4210,19 +4210,33 @@ let vmRunning = false;
 const vmInput = document.getElementById("vmInput");
 const vmZone = document.getElementById("vmZone");
 function vmStem(name) { return (name || "video").replace(/\.[^.]+$/, ""); }
+// Sonde les durées SANS figer : au plus 4 vidéos chargées à la fois (pas 300
+// d'un coup), avec un timeout par sonde pour ne jamais rester bloqué sur un
+// .mov qui ne se décode pas.
 function probeDurations(list, done) {
-let pending = list.length;
-if (!pending) { done(); return; }
-list.forEach(item => {
+let idx = 0, active = 0, remaining = list.length;
+if (!remaining) { done(); return; }
+const CONC = 4;
+function pump() {
+while (active < CONC && idx < list.length) {
+const item = list[idx++]; active++;
+let url, probe, to;
+const finish = () => {
+if (probe) { probe.onloadedmetadata = null; probe.onerror = null; try { probe.removeAttribute("src"); probe.load(); } catch(e){} }
+try { URL.revokeObjectURL(url); } catch(e){}
+clearTimeout(to); active--;
+if (--remaining === 0) done(); else pump();
+};
 try {
-const url = URL.createObjectURL(item.file);
-const probe = document.createElement("video");
-probe.preload = "metadata";
-probe.src = url;
-probe.onloadedmetadata = () => { if (isFinite(probe.duration) && probe.duration > 0) item.duration = probe.duration; URL.revokeObjectURL(url); if (--pending === 0) done(); };
-probe.onerror = () => { URL.revokeObjectURL(url); if (--pending === 0) done(); };
-} catch(e) { if (--pending === 0) done(); }
-});
+url = URL.createObjectURL(item.file);
+probe = document.createElement("video"); probe.preload = "metadata"; probe.muted = true; probe.src = url;
+probe.onloadedmetadata = () => { if (isFinite(probe.duration) && probe.duration > 0) item.duration = probe.duration; finish(); };
+probe.onerror = finish;
+to = setTimeout(finish, 3000);
+} catch(e) { active--; if (--remaining === 0) done(); else pump(); }
+}
+}
+pump();
 }
 function handleVmFiles(files) {
 const vids = files.filter(isVideoFile);
@@ -4235,7 +4249,10 @@ document.getElementById("vmName").textContent = n > 0 ? `✓ ${n} vidéo${n > 1 
 renderVmFileList();
 updateVmEstimate();
 checkVmReady();
-probeDurations(vmFiles, () => { renderVmFileList(); updateVmEstimate(); });
+// Ne sonde les durées que sur des lots raisonnables : sur 100-300 vidéos, on
+// s'en passe (le temps/coût estimé s'affiche « — »), ce qui évite tout
+// chargement massif de vidéos et garde l'interface fluide.
+if (vmFiles.length <= 40) probeDurations(vmFiles, () => { renderVmFileList(); updateVmEstimate(); });
 }
 vmInput.addEventListener("change", () => handleVmFiles(Array.from(vmInput.files)));
 vmZone.addEventListener("dragover", e => { e.preventDefault(); vmZone.classList.add("drag-over"); });
@@ -4250,15 +4267,18 @@ if (m < 60) return `${m} min ${r}s`;
 const h = Math.floor(m / 60), rm = m % 60; return `${h} h ${rm} min`;
 }
 function vmTogglePlay(v){ if(v.paused){ document.querySelectorAll("video.up-preview").forEach(x=>{ if(x!==v) x.pause(); }); v.play().catch(()=>{}); } else v.pause(); }
+const VM_PREVIEW_CAP = 16;   // au-delà, aperçus vidéo remplacés par des vignettes
+                             // légères : sinon 100-300 lecteurs <video> figent le navigateur.
 function renderVmFileList() {
 const el = document.getElementById("vmFileList");
 if (!vmFiles.length) { el.innerHTML = ""; return; }
-el.innerHTML = `<div class="vm-grid">` + vmFiles.map((f, i) =>
-`<div class="vm-card">
-  <video class="up-preview vm-thumb" muted playsinline preload="metadata" src="${f.url}" onclick="vmTogglePlay(this)"></video>
-  <div class="vm-card-info"><span class="vm-card-name" title="${escapeHtml(f.name)}">${i + 1}. ${escapeHtml(f.name)}</span><span class="vm-card-meta">${f.duration ? vmFmtDuration(f.duration) : "…"}</span></div>
-</div>`
-).join("") + `</div>`;
+const withThumb = vmFiles.length <= VM_PREVIEW_CAP;
+el.innerHTML = `<div class="vm-grid">` + vmFiles.map((f, i) => {
+const media = withThumb
+? `<video class="up-preview vm-thumb" muted playsinline preload="metadata" src="${f.url}" onclick="vmTogglePlay(this)"></video>`
+: `<div class="vm-thumb" style="display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:1.6rem" aria-hidden="true">🎞</div>`;
+return `<div class="vm-card">${media}<div class="vm-card-info"><span class="vm-card-name" title="${escapeHtml(f.name)}">${i + 1}. ${escapeHtml(f.name)}</span><span class="vm-card-meta">${f.duration ? vmFmtDuration(f.duration) : ""}</span></div></div>`;
+}).join("") + `</div>`;
 }
 
 // ── Count control ──
