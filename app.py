@@ -5625,12 +5625,12 @@ def variation_multi_run():
 @app.route("/variation_multi_zip", methods=["POST"])
 def variation_multi_zip():
     """
-    Build ONE structured ZIP from several finished per-video jobs. Body:
-    {"items": [{"job_id": "...", "label": "video1"}, ...]}. Each job's
-    out/video_*.mp4 is written under its own sanitized subfolder
-    (label/video_001.mp4). Only files that actually exist are zipped, so
-    failed variants are simply absent. Job ids and labels are sanitized
-    against path traversal.
+    Build ONE FLAT ZIP from several finished per-video jobs. Body:
+    {"items": [{"job_id": "...", "label": "video1"}, ...]}. All outputs go
+    at the ROOT of the archive (no per-video subfolders) so the user can
+    select every video at once — named <source>.mp4 for a single variant,
+    or <source>_1.mp4 / _2.mp4 when a source has several variants. Only
+    files that actually exist are zipped; ids/labels sanitized vs traversal.
     """
     try:
         data = request.get_json(force=True) or {}
@@ -5640,6 +5640,7 @@ def variation_multi_zip():
 
         zip_path = f"/tmp/variations_multi_{uuid.uuid4().hex}.zip"
         used_labels = set()
+        used_arcs = set()
         total_files = 0
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as zf:
             for i, it in enumerate(items):
@@ -5648,7 +5649,7 @@ def variation_multi_zip():
                 job_id = (it.get("job_id") or "").strip()
                 if not job_id or ".." in job_id or "/" in job_id:
                     continue
-                # Sanitize the folder label; fall back to videoN; de-dupe.
+                # Nettoyer le label (nom de la vidéo source) ; repli videoN ; unique.
                 raw_label = (it.get("label") or "").strip() or f"video{i + 1}"
                 label = "".join(c for c in raw_label if c.isalnum() or c in (" ", "-", "_")).strip()
                 label = label[:60] or f"video{i + 1}"
@@ -5660,8 +5661,17 @@ def variation_multi_zip():
 
                 out_dir = VARIATION_DIR / job_id / "out"
                 files = sorted(out_dir.glob("video_*.mp4")) if out_dir.exists() else []
-                for p in files:
-                    zf.write(str(p), f"{label}/{p.name}")
+                multi = len(files) > 1
+                for k, p in enumerate(files):
+                    # ZIP À PLAT : tout à la RACINE (plus de sous-dossier par vidéo)
+                    # → l'utilisateur sélectionne les 1000 vidéos d'un coup. Nom =
+                    # <source>.mp4 (1 variante) ou <source>_1.mp4/_2.mp4 (plusieurs).
+                    arc = f"{label}_{k + 1}{p.suffix}" if multi else f"{label}{p.suffix}"
+                    stem, ext = arc.rsplit(".", 1); ext = "." + ext; m = 2
+                    while arc in used_arcs:
+                        arc = f"{stem}_{m}{ext}"; m += 1
+                    used_arcs.add(arc)
+                    zf.write(str(p), arc)
                     total_files += 1
 
         if total_files == 0:
