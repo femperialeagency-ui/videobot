@@ -6507,38 +6507,59 @@ def optimize_video():
                     "-c:a", "libopus", "-b:a", "128k"]
 
         cmd = ["ffmpeg", "-y", "-i", str(path_in)] + vf + vcmd + ["-loglevel", "error", str(path_out)]
-        try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-        except subprocess.TimeoutExpired:
-            shutil.rmtree(jdir, ignore_errors=True)
-            return jsonify({"error": "Timeout (>10 min)"}), 200
-        finally:
+
+        # L'encodage d'une vidéo (jusqu'à 5 min) peut durer plusieurs minutes.
+        # Une requête HTTP silencieuse aussi longue est COUPÉE par le proxy
+        # Render (~100 s) → « Failed to fetch » côté navigateur. On garde donc
+        # la connexion vivante en STREAMANT des espaces pendant que FFmpeg
+        # tourne dans un thread, puis on envoie le JSON final. JSON.parse
+        # ignore les espaces de tête → le front n'a rien à changer.
+        from flask import Response, stream_with_context
+        _user = request.current_user
+        def _gen():
+            holder = {}
+            def _run():
+                try:
+                    holder["proc"] = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+                except subprocess.TimeoutExpired:
+                    holder["timeout"] = True
+                except Exception as _e:
+                    holder["exc"] = str(_e)
+            th = threading.Thread(target=_run, daemon=True); th.start()
+            while th.is_alive():
+                th.join(timeout=8)
+                yield " "          # keep-alive : empêche le proxy de couper
             gc.collect()
-
-        if proc.returncode != 0 or not path_out.exists():
-            err = (proc.stderr or "ffmpeg a échoué")[-500:]
-            shutil.rmtree(jdir, ignore_errors=True)
-            return jsonify({"error": err}), 200
-
-        new_size = path_out.stat().st_size
-        fw, fh = get_video_dims(str(path_out))
-        reduction = round((1 - new_size / orig_size) * 100, 1) if orig_size else 0.0
-
-        try:
-            log_usage_event(
-                request.current_user, "media_optimizer_video",
-                source_seconds=duration, output_seconds=duration,
-                source_count=1, output_count=1, success=True, claude_requests=0,
-            )
-        except Exception:
-            pass
-
-        return jsonify({
-            "job_id": job_id, "filename": out_name,
-            "duration": round(duration, 2),
-            "orig_w": ow, "orig_h": oh, "final_w": fw, "final_h": fh,
-            "orig_size": orig_size, "final_size": new_size, "reduction_pct": reduction,
-        })
+            if holder.get("timeout"):
+                shutil.rmtree(jdir, ignore_errors=True)
+                yield json.dumps({"error": "Timeout (>10 min)"}); return
+            if holder.get("exc"):
+                shutil.rmtree(jdir, ignore_errors=True)
+                yield json.dumps({"error": holder["exc"]}); return
+            proc = holder.get("proc")
+            if not proc or proc.returncode != 0 or not path_out.exists():
+                err = ((proc.stderr if proc else "") or "ffmpeg a échoué")[-500:]
+                shutil.rmtree(jdir, ignore_errors=True)
+                yield json.dumps({"error": err}); return
+            new_size = path_out.stat().st_size
+            fw, fh = get_video_dims(str(path_out))
+            reduction = round((1 - new_size / orig_size) * 100, 1) if orig_size else 0.0
+            try:
+                log_usage_event(_user, "media_optimizer_video",
+                                source_seconds=duration, output_seconds=duration,
+                                source_count=1, output_count=1, success=True, claude_requests=0)
+            except Exception:
+                pass
+            yield json.dumps({
+                "job_id": job_id, "filename": out_name,
+                "duration": round(duration, 2),
+                "orig_w": ow, "orig_h": oh, "final_w": fw, "final_h": fh,
+                "orig_size": orig_size, "final_size": new_size, "reduction_pct": reduction,
+            })
+        resp = Response(stream_with_context(_gen()), mimetype="application/json")
+        resp.headers["X-Accel-Buffering"] = "no"
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
