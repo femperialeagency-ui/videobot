@@ -3242,20 +3242,27 @@ bBatchId = await stageFile(bFilesB[j], "b", j, bBatchId);
 // ── Step 3: detect captions once per B file, reused across all A's ──
 document.getElementById("bProgressTitle").textContent = "🔍 Analyse des cibles B…";
 const linesByB = [];
+const failedB = [];   // cibles B dont l'analyse a échoué → on les SAUTE (on ne bloque plus tout le batch)
 let _bCacheHits = 0, _bVisionRuns = 0;
 for (let j = 0; j < bFilesB.length; j++) {
 const fd = new FormData();
 fd.append("batch_id", bBatchId);
 fd.append("b_index", j);
 fd.append("ocr_mode", getOcrMode("B"));
+let d = null;
+try {
 const r = await fetch("/batch_detect", { method: "POST", body: fd });
-const d = await r.json();
-if (d.error) throw new Error(`Analyse B${pad2(j + 1)} : ${d.error}`);
+d = await r.json();
+if (d.error) throw new Error(d.error);
+} catch(e) {
+failedB[j] = (e && e.message) ? e.message : "analyse impossible";
+linesByB.push(null);
+continue;
+}
 if (d.source === "cache") _bCacheHits++; else if (d.source === "vision") _bVisionRuns++;
 document.getElementById("bProgressTitle").textContent = `🔍 Analyse des cibles B… (${j + 1}/${bFilesB.length} · ⚡${_bCacheHits} cache · 🤖${_bVisionRuns} Vision)`;
 const lines = (d.lines || []).filter(l => l.text);
-if (!lines.length) throw new Error(`Aucun texte détecté dans
-la vidéo B${pad2(j + 1)}`);
+if (!lines.length) { failedB[j] = "aucun texte détecté"; linesByB.push(null); continue; }
 linesByB.push(lines);
 }
 
@@ -3263,6 +3270,13 @@ linesByB.push(lines);
 document.getElementById("bProgressTitle").textContent = "⚙️ Génération des vidéos…";
 for (let i = 0; i < combos.length; i++) {
 const { a, b, filename } = combos[i];
+if (failedB[b] != null) {
+bResults[i].status = "error";
+bResults[i].statusText = `❌ Cible B${pad2(b + 1)} ignorée : ${failedB[b]}`;
+renderBatchResults();
+updateBatchProgress(i + 1, combos.length);
+continue;
+}
 bResults[i].status = "processing";
 bResults[i].statusText = "⚙️ Génération…";
 renderBatchResults();
@@ -3291,7 +3305,14 @@ renderBatchResults();
 updateBatchProgress(i + 1, combos.length);
 }
 
+const _nFailedB = failedB.filter(x => x != null).length;
+if (_nFailedB) {
+const _skipped = failedB.map((v, j) => v != null ? ("B" + pad2(j + 1)) : null).filter(Boolean).join(", ");
+document.getElementById("bProgressTitle").textContent = `✅ Batch terminé — ${_nFailedB} cible(s) B ignorée(s) : ${_skipped}`;
+alert(`Batch terminé.\n\n${_nFailedB} cible(s) B n'ont pas pu être analysées et ont été ignorées : ${_skipped}.\nToutes les autres vidéos ont bien été générées.\n\nPour ces cibles : relance-les seules, ou passe-les en mode Local.`);
+} else {
 document.getElementById("bProgressTitle").textContent = "✅ Batch terminé";
+}
 } catch(e) {
 document.getElementById("bProgressTitle").textContent = "❌ Erreur";
 alert("Erreur batch : " + e.message);

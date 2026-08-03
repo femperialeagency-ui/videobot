@@ -2101,30 +2101,40 @@ def _auto_refine_uncertain(video_path, lines, model: str = OCR_MODEL_SONNET):
             "visible. Réponds UNIQUEMENT en JSON : "
             "[{\"i\": <numéro d'image>, \"text\": \"...\"}].")})
         client = anthropic.Anthropic(api_key=api_key)
-        resp = client.messages.create(model=model, max_tokens=1024,
-                                       messages=[{"role": "user", "content": content}])
-        raw = (resp.content[0].text or "").strip()
-        if not raw:
-            return lines, False, "vision_empty"
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        try:
-            parsed = json.loads(raw)
-        except Exception:
-            return lines, False, "vision_unusable"
-        by = {int(d["i"]): (d.get("text") or "").strip()
-              for d in parsed if isinstance(d, dict) and "i" in d}
-        # SÉCURITÉ : chaque image envoyée DOIT recevoir un texte non vide,
-        # sinon décompte incohérent / correction incomplète → échec.
-        for k, _i in kept:
-            if not by.get(k):
-                return lines, False, "vision_incomplete"
-        out = list(lines)
-        for k, i in kept:
-            out[i] = dict(out[i]); out[i]["text"] = by[k]
-        return out, True, None
+        # ROBUSTESSE : un échec Vision est souvent TRANSITOIRE (timeout, coupure
+        # réseau, rate-limit, réponse tronquée). On réessaie jusqu'à 3 fois avec
+        # une petite pause avant de renoncer — ça évite qu'une seule cible B
+        # fasse échouer tout le batch pour un simple hoquet d'API.
+        last_why = "vision_error"
+        for _attempt in range(3):
+            try:
+                resp = client.messages.create(model=model, max_tokens=1024,
+                                               messages=[{"role": "user", "content": content}])
+                raw = (resp.content[0].text or "").strip()
+                if not raw:
+                    last_why = "vision_empty"; time.sleep(0.8 * (_attempt + 1)); continue
+                if raw.startswith("```"):
+                    raw = raw.split("```")[1]
+                    if raw.startswith("json"):
+                        raw = raw[4:]
+                try:
+                    parsed = json.loads(raw)
+                except Exception:
+                    last_why = "vision_unusable"; time.sleep(0.8 * (_attempt + 1)); continue
+                by = {int(d["i"]): (d.get("text") or "").strip()
+                      for d in parsed if isinstance(d, dict) and "i" in d}
+                # SÉCURITÉ : chaque image envoyée DOIT recevoir un texte non vide,
+                # sinon décompte incohérent / correction incomplète → on réessaie.
+                if any(not by.get(k) for k, _i in kept):
+                    last_why = "vision_incomplete"; time.sleep(0.8 * (_attempt + 1)); continue
+                out = list(lines)
+                for k, i in kept:
+                    out[i] = dict(out[i]); out[i]["text"] = by[k]
+                return out, True, None
+            except Exception as e:
+                print(f"[AUTO_VISION] refine tentative {_attempt + 1}/3 échec ({e})", file=_sys.stderr)
+                last_why = "vision_error"; time.sleep(0.8 * (_attempt + 1))
+        return lines, False, last_why
     except Exception as e:
         print(f"[AUTO_VISION] refine échec ({e})", file=_sys.stderr)
         return lines, False, "vision_error"
