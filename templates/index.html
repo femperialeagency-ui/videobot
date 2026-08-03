@@ -1652,11 +1652,12 @@ SIMPLE MODE
 <div class="adv-params-body">
 <div class="adv-row">
 <span class="adv-lbl">OCR :</span>
-<label class="v-opt"><input type="radio" name="ocrModeS" value="local"> Local <span style="font-weight:500;opacity:.7">(gratuit)</span></label>
-<label class="v-opt"><input type="radio" name="ocrModeS" value="auto" checked> Auto ⭐ <span style="font-weight:500;opacity:.7">(recommandé)</span></label>
-<label class="v-opt"><input type="radio" name="ocrModeS" value="vision" onchange="_ocrVisAdv('S')"> Vision <span style="font-weight:500;opacity:.7">(haute qualité)</span></label>
+<label class="v-opt"><input type="radio" name="ocrModeS" value="local" onchange="_ocrModeWarn('S')"> Local <span style="font-weight:500;opacity:.7">(gratuit)</span></label>
+<label class="v-opt"><input type="radio" name="ocrModeS" value="auto" checked onchange="_ocrModeWarn('S')"> Auto ⭐ <span style="font-weight:500;opacity:.7">(recommandé)</span></label>
+<label class="v-opt"><input type="radio" name="ocrModeS" value="vision" onchange="_ocrVisAdv('S');_ocrModeWarn('S')"> Vision <span style="font-weight:500;opacity:.7">(haute qualité)</span></label>
 <button type="button" class="v-ghost-btn" onclick="reanalyzeNoCache()" title="Force une nouvelle analyse Vision en ignorant le cache OCR">🔄 Réanalyser sans cache</button>
 </div>
+<div id="ocrWarnS" style="display:none;margin:6px 0 0;padding:7px 10px;border-radius:8px;background:rgba(220,120,20,.14);border:1px solid rgba(220,120,20,.45);color:#e8a24a;font-size:12.5px;font-weight:600;">⚠ Mode Local : le texte peut être approximatif sur les captions stylisées (ex. « check my profil » → « chk mi profile »). Pour un texte <b>exact</b>, choisis <b>Auto ⭐</b>.</div>
 <details class="adv-params" id="ocrAdvS" style="margin:6px 0 0;">
 <summary><span class="adv-chev">▸</span> Paramètres avancés <span class="adv-hint">modèle Vision</span></summary>
 <div class="adv-params-body"><div class="adv-row">
@@ -1779,9 +1780,10 @@ BATCH MODE
       </div>
       <div class="ws-set-sec">
         <div class="ws-set-h" data-ico="🔍">Moteur OCR</div>
-        <label class="v-opt2"><input type="radio" name="ocrModeB" value="local"> <span><b>Local</b><em>gratuit</em></span></label>
-        <label class="v-opt2"><input type="radio" name="ocrModeB" value="auto" checked> <span><b>Auto ⭐</b><em>recommandé</em></span></label>
-        <label class="v-opt2"><input type="radio" name="ocrModeB" value="vision" onchange="_ocrVisAdv('B')"> <span><b>Vision</b><em>haute qualité</em></span></label>
+        <label class="v-opt2"><input type="radio" name="ocrModeB" value="local" onchange="_ocrModeWarn('B')"> <span><b>Local</b><em>gratuit</em></span></label>
+        <label class="v-opt2"><input type="radio" name="ocrModeB" value="auto" checked onchange="_ocrModeWarn('B')"> <span><b>Auto ⭐</b><em>recommandé</em></span></label>
+        <label class="v-opt2"><input type="radio" name="ocrModeB" value="vision" onchange="_ocrVisAdv('B');_ocrModeWarn('B')"> <span><b>Vision</b><em>haute qualité</em></span></label>
+        <div id="ocrWarnB" style="display:none;margin:8px 0 0;padding:7px 10px;border-radius:8px;background:rgba(220,120,20,.14);border:1px solid rgba(220,120,20,.45);color:#e8a24a;font-size:12.5px;font-weight:600;">⚠ Mode Local : le texte peut être approximatif sur les captions stylisées. Pour un texte <b>exact</b>, choisis <b>Auto ⭐</b>.</div>
         <details class="adv-params" id="ocrAdvB" style="margin:8px 0 0;">
         <summary><span class="adv-chev">▸</span> Paramètres avancés <span class="adv-hint">modèle Vision</span></summary>
         <div class="adv-params-body" style="padding-top:6px">
@@ -2762,6 +2764,14 @@ return (v === "local" || v === "auto") ? v : "auto";
 function _ocrVisAdv(scope) {
 const d = document.getElementById("ocrAdv" + scope);
 if (d) d.open = true;
+}
+// Affiche un avertissement quand "Local" est sélectionné (texte parfois
+// approximatif sur les captions stylisées) pour éviter de le choisir par erreur.
+function _ocrModeWarn(scope) {
+const w = document.getElementById("ocrWarn" + scope);
+if (!w) return;
+const sel = document.querySelector('input[name="ocrMode' + scope + '"]:checked');
+w.style.display = (sel && sel.value === "local") ? "block" : "none";
 }
 // Si l'utilisateur choisit explicitement un modèle Vision (Sonnet/Opus) dans
 // les avancés, on bascule automatiquement le choix principal sur "Vision".
