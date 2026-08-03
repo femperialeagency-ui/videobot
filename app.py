@@ -1523,11 +1523,14 @@ def _build_variation_ffmpeg_cmd(path_in: str, path_out: str, params: dict,
     """
     vf, af, _out_fps = _build_variation_filter_graph(params, src_w, src_h)
 
-    # Bitrate : jamais assez bas pour détruire la vidéo. On borne le multiplicateur
-    # ET on impose un plancher RELATIF à la source (≥ 75% du débit source, min 600k)
-    # → pas de compression qui « détruit » l'image.
+    # Encodage en QUALITÉ CONSTANTE (CRF), pas en débit fixe : un débit plancher
+    # bas (ancien 600k) pixelisait les vidéos 1080p avec du mouvement. Le CRF
+    # garantit une image nette quel que soit le mouvement, la taille s'adapte.
+    # On garde une PETITE variation de CRF (19–23, tous nets) comme empreinte
+    # anti-doublon (taille de fichier légèrement différente d'une variante à
+    # l'autre), pilotée par l'ancien multiplicateur de débit.
     bitrate_mult = max(0.8, min(1.3, float(params.get("bitrate_mult", 1.0))))
-    target_kbps  = max(600, int(src_bitrate_kbps * 0.75), int(src_bitrate_kbps * bitrate_mult))
+    crf_val = max(19, min(23, int(round(22 - (bitrate_mult - 1.0) * 6))))
 
     # App-source & origine simulée (métadonnées seulement) : surchargent le
     # profil appareil si demandé, sans jamais toucher au flux vidéo/audio.
@@ -1556,7 +1559,7 @@ def _build_variation_ffmpeg_cmd(path_in: str, path_out: str, params: dict,
 
     cmd += [
         "-c:v", "libx264", "-preset", "veryfast",
-        "-b:v", f"{target_kbps}k", "-maxrate", f"{int(target_kbps * 1.2)}k", "-bufsize", f"{target_kbps * 2}k",
+        "-crf", str(crf_val), "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "128k",
         "-metadata", f"creation_time={creation_time}",
         "-metadata", f"encoder={enc}",
