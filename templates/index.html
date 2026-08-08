@@ -4528,7 +4528,12 @@ row.status = "done"; row.statusText = "✅ Terminé"; row.filename = d.filename 
 done++; renderVmResults(); updateVmProgress(done, vmResults.length);
 }
 }
-document.getElementById("vmProgressTitle").textContent = "✅ Variations terminées";
+{
+const _nFail = vmResults.filter(r => r.status === "error").length;
+document.getElementById("vmProgressTitle").textContent = _nFail
+? `⚠️ Terminé — ${vmResults.length - _nFail}/${vmResults.length} réussies (${_nFail} en échec)`
+: "✅ Variations terminées";
+}
 } catch(e) {
 document.getElementById("vmProgressTitle").textContent = "❌ Erreur";
 alert("Erreur Variation Multi : " + e.message);
@@ -4536,7 +4541,9 @@ alert("Erreur Variation Multi : " + e.message);
 
 vmRunning = false; checkVmReady();
 const ok = vmResults.filter(r => r.status === "done");
+const _nFailEnd = vmResults.filter(r => r.status === "error").length;
 if (ok.length > 0) { const b = document.getElementById("vmZipBtn"); b.style.display = "inline-flex"; b.textContent = `📦 Télécharger tout (${ok.length} variante${ok.length > 1 ? "s" : ""}) en .zip`; }
+if (_nFailEnd > 0) { alert(`${ok.length} variante(s) générée(s), ${_nFailEnd} en échec.\n\nLe ZIP contiendra les ${ok.length} réussies. Si beaucoup ont échoué, relance-les — l'espace disque a été élargi côté serveur.`); }
 }
 
 function renderVmResults() {

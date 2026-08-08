@@ -245,7 +245,14 @@ PROFITABILITY_MARGIN_ORANGE_THRESHOLD = 30.0   # margin_percent >= this (and < g
 # analyze_with_claude_vision*, FONT_*, or any caption/typography code).
 # ══════════════════════════════════════════════════════════════════
 
-VARIATION_DIR = Path("/tmp/videobot_variations")
+# Sur le disque PERSISTANT (DATA_DIR = /data, 10 Go sur Render), EXACTEMENT
+# comme BATCH_DIR et REELS_MIX_DIR. AVANT : /tmp (éphémère, souvent limité à
+# quelques centaines de Mo). Un gros run « plusieurs vidéos » (ex. 300 × N)
+# dépassait la place de /tmp → les encodages suivants échouaient (Errno 28),
+# le fichier n'était pas écrit et manquait donc dans le ZIP final (symptôme :
+# « 422 variantes terminées » mais seulement ~168 dans le .zip). /data a la
+# place. Nettoyé pareil (jobs >3 h + purge par job après ZIP).
+VARIATION_DIR = DATA_DIR / "videobot_variations"
 VARIATION_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_VARIATIONS = 100  # hard server-side cap — mirrors the UI's 10/25/50/100 options
