@@ -7655,6 +7655,487 @@ def reels_mix_cleanup():
         return jsonify({"error": str(e)}), 500
 
 
+# ══════════════════════════════════════════════════════════════════
+# BATCH VIDEO EXPORT — additif, isolé. 0 IA, 0 crédit, 100% FFmpeg.
+#
+# Réexporte en masse (jusqu'à 500 vidéos/batch) : chaque fichier est
+# réellement DÉCODÉ puis RÉENCODÉ (libx264, jamais -c copy / remux) en un
+# MP4 1080p propre, en conservant orientation/ratio/durée/fps/audio. Pas de
+# watermark, filtre, crop, zoom ni modification volontaire. Pipeline pensé
+# pour les gros volumes : upload fichier par fichier, file d'attente serveur
+# à concurrence limitée (traitement en tâche de fond → survit au refresh /
+# fermeture d'onglet), état persistant sur le disque Render (DATA_DIR), ZIP
+# robuste (STORED, jamais tout en RAM). Isolé par utilisateur (ownership).
+#
+# NE touche à AUCUNE autre fonctionnalité (Caption Renderer, OCR, Reels,
+# Variations, Optimizer, auth, crédits IA, analytics). Ne falsifie ni ne
+# supprime aucune info de provenance / C2PA : simple réexport standard.
+# ══════════════════════════════════════════════════════════════════
+from concurrent.futures import ThreadPoolExecutor
+
+EXPORT_DIR = DATA_DIR / "videobot_video_exports"     # disque PERSISTANT (comme batches/reels/variations)
+EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+
+VEXPORT_MAX_FILES     = 500                           # limite STRICTE par batch (front + back)
+VEXPORT_CONCURRENCY   = 2                             # encodages FFmpeg simultanés (Render 1 worker)
+VEXPORT_ALLOWED_EXT   = {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
+VEXPORT_TARGET_SHORT  = 1080                          # côté court cible (1080p en conservant le ratio)
+VEXPORT_CRF           = 20                            # très bonne qualité, fichiers non absurdes
+VEXPORT_PRESET        = "fast"                        # bon compromis qualité/débit sur Render
+VEXPORT_AAC_BITRATE   = "192k"
+VEXPORT_MAX_SECONDS   = 1800                          # garde-fou : 30 min/vidéo max
+
+_VEXPORT_EXECUTOR   = ThreadPoolExecutor(max_workers=VEXPORT_CONCURRENCY)
+_VEXPORT_REG_LOCK   = threading.Lock()               # protège _VEXPORT_LOCKS / _VEXPORT_ACTIVE
+_VEXPORT_LOCKS      = {}                              # batch_id -> Lock (accès state.json)
+_VEXPORT_ACTIVE     = set()                           # batch_id actuellement en file en mémoire
+
+
+def _vexport_safe_id(s: str) -> str:
+    s = (s or "").strip()
+    if not s or ".." in s or "/" in s or "\\" in s:
+        return ""
+    return s if all(c.isalnum() or c in "-_" for c in s) else ""
+
+
+def _vexport_lock(batch_id: str) -> "threading.Lock":
+    with _VEXPORT_REG_LOCK:
+        lk = _VEXPORT_LOCKS.get(batch_id)
+        if lk is None:
+            lk = threading.Lock(); _VEXPORT_LOCKS[batch_id] = lk
+        return lk
+
+
+def _vexport_dir(batch_id: str) -> Path:
+    return EXPORT_DIR / batch_id
+
+
+def _vexport_state_path(batch_id: str) -> Path:
+    return EXPORT_DIR / batch_id / "state.json"
+
+
+def _vexport_load_state(batch_id: str):
+    try:
+        with open(_vexport_state_path(batch_id), "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _vexport_save_state(state: dict) -> None:
+    """Écriture atomique (tmp + rename) pour ne jamais laisser un state.json
+    tronqué si le process est coupé en plein milieu."""
+    bid = state["batch_id"]
+    state["updated"] = time.time()
+    p = _vexport_state_path(bid)
+    tmp = str(p) + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+        os.replace(tmp, str(p))
+    except Exception:
+        try: os.path.exists(tmp) and os.remove(tmp)
+        except Exception: pass
+
+
+def _cleanup_stale_vexport(max_age_hours: float = 6.0):
+    """Purge les batchs d'export trop anciens (onglet fermé sans nettoyage).
+    Ne tourne qu'à la création d'un nouveau batch."""
+    cutoff = time.time() - max_age_hours * 3600
+    try:
+        for d in EXPORT_DIR.iterdir():
+            try:
+                if d.is_dir() and d.stat().st_mtime < cutoff:
+                    shutil.rmtree(d, ignore_errors=True)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _vexport_owner_state(batch_id: str):
+    """Charge l'état et vérifie la propriété. Retourne (state, err_response).
+    Isolation stricte : un utilisateur ne voit jamais le batch d'un autre."""
+    bid = _vexport_safe_id(batch_id)
+    if not bid:
+        return None, (jsonify({"error": "batch_id invalide"}), 400)
+    st = _vexport_load_state(bid)
+    if not st:
+        return None, (jsonify({"error": "Batch introuvable"}), 404)
+    try:
+        if int(st.get("user_id")) != int(request.current_user["id"]):
+            return None, (jsonify({"error": "Accès refusé"}), 403)
+    except Exception:
+        return None, (jsonify({"error": "Accès refusé"}), 403)
+    return st, None
+
+
+def _vexport_has_video_stream(path: str) -> bool:
+    """Valide RÉELLEMENT le fichier (pas seulement l'extension) : ffprobe doit
+    y trouver un flux vidéo. Rejette images/audio/fichiers corrompus."""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_streams", path],
+            capture_output=True, text=True, timeout=30)
+        for s in json.loads(r.stdout).get("streams", []):
+            if s.get("codec_type") == "video":
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _vexport_scale_args(ow: int, oh: int):
+    """Calcule le -vf de mise à l'échelle 1080p en CONSERVANT le ratio :
+    on ramène le CÔTÉ COURT à 1080 uniquement s'il est plus grand (jamais
+    d'upscale inutile), dimensions PAIRES (exigence H.264). Aucun étirement.
+    Retourne [] si aucune mise à l'échelle nécessaire."""
+    if ow <= 0 or oh <= 0:
+        return []
+    short = min(ow, oh)
+    if short <= VEXPORT_TARGET_SHORT:
+        return []                                    # déjà ≤1080p → pas d'upscale
+    if ow <= oh:                                     # vertical/carré : largeur = côté court
+        nw = VEXPORT_TARGET_SHORT
+        nh = round(oh * VEXPORT_TARGET_SHORT / ow)
+    else:                                            # horizontal : hauteur = côté court
+        nh = VEXPORT_TARGET_SHORT
+        nw = round(ow * VEXPORT_TARGET_SHORT / oh)
+    nw -= nw % 2; nh -= nh % 2
+    nw = max(2, nw); nh = max(2, nh)
+    return ["-vf", f"scale={nw}:{nh}"]
+
+
+def _vexport_build_cmd(path_in: str, path_out: str, ow: int, oh: int) -> list:
+    """VRAI réencodage : décode l'entrée → réencode libx264 (jamais -c copy).
+    yuv420p + faststart + AAC. Si la source n'a pas d'audio, FFmpeg produit
+    simplement une sortie sans piste audio (le mapping n'échoue pas)."""
+    return (["ffmpeg", "-y", "-i", path_in]
+            + _vexport_scale_args(ow, oh)
+            + ["-c:v", "libx264", "-crf", str(VEXPORT_CRF), "-preset", VEXPORT_PRESET,
+               "-pix_fmt", "yuv420p",
+               "-c:a", "aac", "-b:a", VEXPORT_AAC_BITRATE,
+               "-movflags", "+faststart",
+               "-loglevel", "error", path_out])
+
+
+def _vexport_process_one(batch_id: str, idx: int):
+    """Traite UNE vidéo (dans un thread du pool). Met à jour l'état de façon
+    atomique (verrou par batch), supprime l'entrée après encodage pour borner
+    le disque, et n'interrompt JAMAIS le batch en cas d'échec d'un fichier."""
+    lk = _vexport_lock(batch_id)
+    jdir = _vexport_dir(batch_id)
+    # 1) marquer "processing"
+    with lk:
+        st = _vexport_load_state(batch_id)
+        if not st:
+            return
+        item = next((it for it in st["items"] if it["idx"] == idx), None)
+        if not item or item["status"] in ("done",):
+            return
+        item["status"] = "processing"; item["error"] = ""
+        _vexport_save_state(st)
+        in_name  = item["in_name"]; out_name = item["out_name"]
+    path_in  = str(jdir / "input" / in_name)
+    path_out = str(jdir / "output" / out_name)
+    ow = oh = 0
+    err = None
+    try:
+        dur, ow, oh = _probe_video_meta(path_in)
+        if dur and dur > VEXPORT_MAX_SECONDS:
+            err = f"Vidéo trop longue (>{VEXPORT_MAX_SECONDS // 60} min)"
+        else:
+            cmd = _vexport_build_cmd(path_in, path_out, ow, oh)
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1200)
+            if proc.returncode != 0 or not os.path.exists(path_out):
+                err = (proc.stderr or "ffmpeg a échoué")[-400:]
+                try: os.path.exists(path_out) and os.remove(path_out)
+                except Exception: pass
+    except subprocess.TimeoutExpired:
+        err = "Timeout d'encodage (>20 min)"
+        try: os.path.exists(path_out) and os.remove(path_out)
+        except Exception: pass
+    except Exception as e:
+        err = str(e)[-400:]
+    finally:
+        gc.collect()
+    # Supprimer l'ENTRÉE (plus nécessaire) → borne l'espace disque sur 500 vidéos.
+    try: os.path.exists(path_in) and os.remove(path_in)
+    except Exception: pass
+    # 2) marquer done/error
+    with lk:
+        st = _vexport_load_state(batch_id)
+        if not st:
+            return
+        item = next((it for it in st["items"] if it["idx"] == idx), None)
+        if item:
+            if err:
+                item["status"] = "error"; item["error"] = err
+            else:
+                item["status"] = "done"; item["error"] = ""
+                try: item["out_size"] = os.path.getsize(path_out)
+                except Exception: item["out_size"] = 0
+            _vexport_save_state(st)
+
+
+def _vexport_enqueue_pending(batch_id: str):
+    """Soumet au pool toutes les vidéos encore à faire. Idempotent : marque le
+    batch 'actif' en mémoire pour éviter les doubles soumissions (polls). Toute
+    vidéo restée 'processing' sans thread actif (ex. après un redémarrage) est
+    remise à 'pending' puis relancée → reprise propre."""
+    with _VEXPORT_REG_LOCK:
+        if batch_id in _VEXPORT_ACTIVE:
+            return
+        _VEXPORT_ACTIVE.add(batch_id)
+    try:
+        lk = _vexport_lock(batch_id)
+        with lk:
+            st = _vexport_load_state(batch_id)
+            if not st:
+                with _VEXPORT_REG_LOCK: _VEXPORT_ACTIVE.discard(batch_id)
+                return
+            todo = []
+            for it in st["items"]:
+                if it["status"] in ("pending", "processing"):
+                    it["status"] = "pending"; todo.append(it["idx"])
+            _vexport_save_state(st)
+        if not todo:
+            with _VEXPORT_REG_LOCK: _VEXPORT_ACTIVE.discard(batch_id)
+            return
+
+        def _run_all():
+            try:
+                futs = [_VEXPORT_EXECUTOR.submit(_vexport_process_one, batch_id, i) for i in todo]
+                for fu in futs:
+                    try: fu.result()
+                    except Exception: pass
+            finally:
+                with _VEXPORT_REG_LOCK:
+                    _VEXPORT_ACTIVE.discard(batch_id)
+        threading.Thread(target=_run_all, daemon=True).start()
+    except Exception:
+        with _VEXPORT_REG_LOCK: _VEXPORT_ACTIVE.discard(batch_id)
+
+
+def _vexport_progress(st: dict) -> dict:
+    items = st.get("items", [])
+    done = sum(1 for it in items if it["status"] == "done")
+    err  = sum(1 for it in items if it["status"] == "error")
+    proc = sum(1 for it in items if it["status"] == "processing")
+    pend = sum(1 for it in items if it["status"] == "pending")
+    total = len(items)
+    finished = (st.get("started") and (done + err) >= total and total > 0)
+    return {"total": total, "done": done, "error": err,
+            "processing": proc, "pending": pend, "finished": bool(finished)}
+
+
+@app.route("/vexport_create", methods=["POST"])
+def vexport_create():
+    """Crée un batch d'export vide. Nettoie les vieux batchs + vérifie l'espace
+    disque avant de commencer."""
+    try:
+        _cleanup_stale_vexport()
+        free = _disk_free_bytes(EXPORT_DIR)
+        if free is not None and free < 800_000_000:      # <0,8 Go → refuser proprement
+            return jsonify({"error": "Espace disque serveur insuffisant, réessaie plus tard."}), 507
+        batch_id = uuid.uuid4().hex
+        jdir = _vexport_dir(batch_id)
+        (jdir / "input").mkdir(parents=True, exist_ok=True)
+        (jdir / "output").mkdir(parents=True, exist_ok=True)
+        st = {"batch_id": batch_id, "user_id": int(request.current_user["id"]),
+              "created": time.time(), "updated": time.time(),
+              "started": False, "items": []}
+        _vexport_save_state(st)
+        return jsonify({"batch_id": batch_id, "max_files": VEXPORT_MAX_FILES})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/vexport_upload", methods=["POST"])
+def vexport_upload():
+    """Ajoute UNE vidéo au batch (upload fichier par fichier). Valide extension
+    ET flux vidéo réel (ffprobe). Applique la limite stricte de 500 côté
+    serveur, indépendamment du client."""
+    try:
+        st, err = _vexport_owner_state(request.form.get("batch_id"))
+        if err:
+            return err
+        if st.get("started"):
+            return jsonify({"error": "Batch déjà lancé"}), 400
+        batch_id = st["batch_id"]
+        if "file" not in request.files:
+            return jsonify({"error": "Fichier manquant"}), 400
+        f = request.files["file"]
+        orig = f.filename or "video"
+        ext = os.path.splitext(orig)[1].lower()
+        if ext not in VEXPORT_ALLOWED_EXT:
+            return jsonify({"error": f"Format non supporté ({ext or 'inconnu'})"}), 400
+
+        lk = _vexport_lock(batch_id)
+        with lk:
+            st = _vexport_load_state(batch_id)
+            if not st or st.get("started"):
+                return jsonify({"error": "Batch indisponible"}), 400
+            if len(st["items"]) >= VEXPORT_MAX_FILES:
+                return jsonify({"error": f"Maximum {VEXPORT_MAX_FILES} vidéos par batch. Lance un second batch pour les vidéos restantes."}), 400
+            idx = len(st["items"])
+            in_name = f"{idx:04d}{ext}"
+            jdir = _vexport_dir(batch_id)
+            path_in = jdir / "input" / in_name
+            f.save(str(path_in))
+            # Validation RÉELLE du contenu (pas que l'extension).
+            if not _vexport_has_video_stream(str(path_in)):
+                try: path_in.unlink(missing_ok=True)
+                except Exception: pass
+                return jsonify({"error": "Fichier vidéo invalide ou illisible"}), 400
+            # Nom de sortie = nom d'origine assaini + .mp4, unicité garantie.
+            base = os.path.splitext(_photo_sanitize_name(orig))[0] or f"video_{idx + 1:03d}"
+            out_name = f"{base}.mp4"
+            used = {it["out_name"] for it in st["items"]}
+            k = 2
+            while out_name in used:
+                out_name = f"{base}_{k}.mp4"; k += 1
+            item = {"idx": idx, "orig_name": orig[:200], "in_name": in_name,
+                    "out_name": out_name, "status": "pending", "error": "",
+                    "in_size": path_in.stat().st_size, "out_size": 0}
+            st["items"].append(item)
+            _vexport_save_state(st)
+        return jsonify({"ok": True, "idx": idx, "count": len(st["items"])})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/vexport_start", methods=["POST"])
+def vexport_start():
+    """Démarre le traitement en tâche de fond (ne bloque pas la requête)."""
+    try:
+        st, err = _vexport_owner_state(request.form.get("batch_id"))
+        if err:
+            return err
+        batch_id = st["batch_id"]
+        if not st["items"]:
+            return jsonify({"error": "Aucune vidéo à exporter"}), 400
+        if len(st["items"]) > VEXPORT_MAX_FILES:
+            return jsonify({"error": f"Maximum {VEXPORT_MAX_FILES} vidéos par batch. Lance un second batch pour les vidéos restantes."}), 400
+        lk = _vexport_lock(batch_id)
+        with lk:
+            st = _vexport_load_state(batch_id)
+            st["started"] = True
+            _vexport_save_state(st)
+        _vexport_enqueue_pending(batch_id)
+        return jsonify({"ok": True, "total": len(st["items"])})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/vexport_status/<batch_id>", methods=["GET"])
+def vexport_status(batch_id):
+    """État complet du batch (progression + par-fichier). Sert de point de
+    reprise après refresh/fermeture d'onglet. Relance le traitement si le batch
+    était lancé mais que la mémoire du process a été perdue (redéploiement)."""
+    try:
+        st, err = _vexport_owner_state(batch_id)
+        if err:
+            return err
+        bid = st["batch_id"]
+        prog = _vexport_progress(st)
+        # Reprise auto : lancé, pas fini, et aucun thread actif en mémoire.
+        if st.get("started") and not prog["finished"]:
+            with _VEXPORT_REG_LOCK:
+                active = bid in _VEXPORT_ACTIVE
+            if not active and (prog["pending"] + prog["processing"]) > 0:
+                _vexport_enqueue_pending(bid)
+        items = [{"idx": it["idx"], "name": it["orig_name"], "out_name": it["out_name"],
+                  "status": it["status"], "error": it.get("error", ""),
+                  "out_size": it.get("out_size", 0)} for it in st["items"]]
+        return jsonify({"batch_id": bid, "started": bool(st.get("started")),
+                        "progress": prog, "items": items})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/vexport_file/<batch_id>/<path:filename>", methods=["GET"])
+def vexport_file(batch_id, filename):
+    """Télécharge UNE vidéo exportée (avec vérification de propriété)."""
+    st, err = _vexport_owner_state(batch_id)
+    if err:
+        return err
+    if ".." in filename or "/" in filename or "\\" in filename:
+        return jsonify({"error": "Nom invalide"}), 400
+    path = _vexport_dir(st["batch_id"]) / "output" / filename
+    if not path.exists():
+        return jsonify({"error": "Fichier introuvable"}), 404
+    return send_file(str(path), as_attachment=True, download_name=filename, mimetype="video/mp4")
+
+
+@app.route("/vexport_zip/<batch_id>", methods=["GET"])
+def vexport_zip(batch_id):
+    """ZIP À PLAT de toutes les vidéos RÉUSSIES. ZIP_STORED (pas de
+    recompression → rapide, faible CPU) écrit sur le disque persistant puis
+    streamé : jamais tout en RAM. Supprimé après envoi (les vidéos restent)."""
+    st, err = _vexport_owner_state(batch_id)
+    if err:
+        return err
+    bid = st["batch_id"]
+    out_dir = _vexport_dir(bid) / "output"
+    done = [it for it in st["items"] if it["status"] == "done"]
+    if not done:
+        return jsonify({"error": "Aucune vidéo terminée à télécharger"}), 400
+    zip_path = str(EXPORT_DIR / f"_zip_{bid}_{uuid.uuid4().hex}.zip")
+    used = set()
+    n = 0
+    try:
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as zf:
+            for it in done:
+                p = out_dir / it["out_name"]
+                if not p.exists():
+                    continue
+                arc = it["out_name"]
+                stem, ext = (arc.rsplit(".", 1) + ["mp4"])[:2]
+                m = 2
+                while arc in used:
+                    arc = f"{stem}_{m}.{ext}"; m += 1
+                used.add(arc)
+                zf.write(str(p), arc)
+                n += 1
+        if n == 0:
+            try: os.remove(zip_path)
+            except Exception: pass
+            return jsonify({"error": "Aucun fichier valide"}), 400
+
+        @after_this_request
+        def _rm(resp):
+            try: os.path.exists(zip_path) and os.remove(zip_path)
+            except Exception: pass
+            return resp
+        return send_file(zip_path, as_attachment=True,
+                         download_name="video_exports.zip", mimetype="application/zip")
+    except Exception as e:
+        try: os.path.exists(zip_path) and os.remove(zip_path)
+        except Exception: pass
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/vexport_cleanup", methods=["POST"])
+def vexport_cleanup():
+    """Supprime un batch d'export (entrées + sorties + état)."""
+    try:
+        st, err = _vexport_owner_state((request.get_json(force=True) or {}).get("batch_id"))
+        if err:
+            return err
+        bid = st["batch_id"]
+        with _VEXPORT_REG_LOCK:
+            if bid in _VEXPORT_ACTIVE:
+                return jsonify({"error": "Batch en cours, réessaie à la fin"}), 409
+        shutil.rmtree(_vexport_dir(bid), ignore_errors=True)
+        with _VEXPORT_REG_LOCK:
+            _VEXPORT_LOCKS.pop(bid, None)
+        gc.collect()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)

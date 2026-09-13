@@ -2323,6 +2323,41 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 <div id="optVdErr" style="display:none;color:var(--error);font-size:.82rem;margin-top:12px;"></div>
 </div>
 
+<!-- BATCH VIDEO EXPORT -->
+<div class="card">
+<h2><span class="num">3</span> Batch Video Export</h2>
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-4px 0 14px;">
+<span class="free-badge" title="Aucune API IA — uniquement FFmpeg côté serveur.">⚡ 100% FFmpeg · 0 crédit IA</span>
+<span style="font-size:.78rem;color:var(--muted);">Réexport MP4 1080p propre (décodage → réencodage), ratio et orientation conservés.</span>
+</div>
+
+<div class="drop-zone upcard" id="veZone" style="max-width:520px;margin:0 auto;">
+<input type="file" id="veInput" accept=".mp4,.mov,.m4v,.avi,.mkv,video/*" multiple />
+<span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="4" width="13" height="10" rx="1.8" stroke="currentColor" stroke-width="1.6"/><path d="M7.5 7 L11 9 L7.5 11 Z" fill="currentColor"/></svg></span>
+<div class="meta"><div class="lbl" id="veLbl">Vidéos à exporter</div><div class="sub">.mp4 .mov .m4v .avi .mkv</div><div class="fn" id="veName"></div></div>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;">
+<div id="veCount" style="font-size:.9rem;font-weight:700;color:var(--accent);">0 vidéo sélectionnée</div>
+<div style="font-size:.78rem;color:var(--muted);">Maximum : 500 vidéos par batch</div>
+</div>
+<div id="veLimitErr" style="display:none;color:var(--error);font-size:.82rem;margin-top:8px;"></div>
+
+<button id="veBtn" class="primary-btn" style="margin-top:16px;" onclick="runVideoExport()" disabled>Exporter les vidéos</button>
+
+<div id="veProgressWrap" style="display:none;margin-top:18px;">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
+<div id="veProgressTitle" style="font-weight:700;font-size:.92rem;">Batch Video Export</div>
+<div id="veProgressStatus" style="font-size:.82rem;color:var(--muted);">0 / 0</div>
+</div>
+<div class="batch-progress" style="height:8px;background:rgba(255,255,255,.08);border-radius:6px;overflow:hidden;margin-bottom:6px;"><div id="veGlobalFill" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--accent2,#a855f7));transition:width .3s;"></div></div>
+<div id="veSummary" style="display:none;font-size:.85rem;margin:8px 0;"></div>
+<button class="zip-btn" id="veZipBtn" onclick="downloadVideoExportZip()" style="display:none;margin:6px 0 10px;"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span> Télécharger toutes les vidéos (.zip)</button>
+<div id="veResultsList"></div>
+</div>
+<div id="veErr" style="display:none;color:var(--error);font-size:.82rem;margin-top:12px;"></div>
+</div>
+
 </div><!-- /optimizerTab -->
 
 <!-- ═══════════ REELS PRODUCTION STUDIO (pipeline low-cost, 0 OCR / 0 Claude) ═══════════ -->
@@ -5038,6 +5073,152 @@ async function runOptimizeVideo() {
     prog.style.display = "none";
     btn.disabled = false; btn.textContent = "Optimiser la vidéo";
   }
+}
+
+// ═══════════ BATCH VIDEO EXPORT — 100% FFmpeg, 0 crédit IA. Upload fichier
+// par fichier, traitement serveur en tâche de fond (survit au refresh), suivi
+// par polling. Limite stricte 500 (front + back). ═══════════
+const VE_MAX = 500;
+const VE_EXT = [".mp4", ".mov", ".m4v", ".avi", ".mkv"];
+let veFiles = [];
+let veBatchId = null;
+let vePolling = false;
+
+(function initVideoExport() {
+  const inp = document.getElementById("veInput");
+  if (inp) inp.addEventListener("change", e => {
+    const all = Array.from(e.target.files || []);
+    veFiles = all.filter(f => VE_EXT.includes("." + (f.name.split(".").pop() || "").toLowerCase()));
+    const cnt = document.getElementById("veCount");
+    cnt.textContent = veFiles.length + " vidéo" + (veFiles.length > 1 ? "s" : "") + " sélectionnée" + (veFiles.length > 1 ? "s" : "");
+    const limErr = document.getElementById("veLimitErr");
+    const over = veFiles.length > VE_MAX;
+    limErr.style.display = over ? "block" : "none";
+    if (over) limErr.textContent = `Maximum ${VE_MAX} vidéos par batch. Lance un second batch pour les vidéos restantes.`;
+    document.getElementById("veBtn").disabled = (veFiles.length === 0 || over);
+    document.getElementById("veName").textContent = veFiles.length ? veFiles.slice(0, 3).map(f => f.name).join(", ") + (veFiles.length > 3 ? "…" : "") : "";
+  });
+  // Reprise après refresh / réouverture d'onglet.
+  const saved = localStorage.getItem("ve_batch_id");
+  if (saved) { veBatchId = saved; veResume(); }
+})();
+
+async function veResume() {
+  try {
+    const r = await fetch("/vexport_status/" + encodeURIComponent(veBatchId));
+    if (!r.ok) { localStorage.removeItem("ve_batch_id"); veBatchId = null; return; }
+    const d = await r.json();
+    if (d.error || !d.started) { localStorage.removeItem("ve_batch_id"); veBatchId = null; return; }
+    document.getElementById("veProgressWrap").style.display = "block";
+    document.getElementById("veBtn").disabled = true;
+    veApplyStatus(d);
+    if (!d.progress.finished) vePollLoop();
+    else veFinish(d);
+  } catch (e) { /* silencieux : reprise best-effort */ }
+}
+
+async function runVideoExport() {
+  if (!veFiles.length || veFiles.length > VE_MAX) return;
+  const btn = document.getElementById("veBtn");
+  const err = document.getElementById("veErr");
+  err.style.display = "none";
+  btn.disabled = true;
+  document.getElementById("veProgressWrap").style.display = "block";
+  document.getElementById("veZipBtn").style.display = "none";
+  document.getElementById("veSummary").style.display = "none";
+  document.getElementById("veResultsList").innerHTML = "";
+  try {
+    // 1) créer le batch
+    const cr = await fetch("/vexport_create", { method: "POST" });
+    const cd = await cr.json();
+    if (cd.error) throw new Error(cd.error);
+    veBatchId = cd.batch_id;
+    localStorage.setItem("ve_batch_id", veBatchId);
+    // 2) upload fichier par fichier (jamais une seule requête géante)
+    let up = 0, upErr = 0;
+    for (let i = 0; i < veFiles.length; i++) {
+      document.getElementById("veProgressTitle").textContent = "⬆️ Envoi des vidéos…";
+      document.getElementById("veProgressStatus").textContent = `${i + 1} / ${veFiles.length}`;
+      document.getElementById("veGlobalFill").style.width = Math.round((i + 1) / veFiles.length * 100) + "%";
+      const fd = new FormData();
+      fd.append("batch_id", veBatchId);
+      fd.append("file", veFiles[i]);
+      try {
+        const r = await fetch("/vexport_upload", { method: "POST", body: fd });
+        const d = await r.json();
+        if (d.error) upErr++; else up++;
+      } catch (e) { upErr++; }
+    }
+    if (up === 0) throw new Error("Aucune vidéo valide n'a pu être envoyée." + (upErr ? " (" + upErr + " rejetée·s)" : ""));
+    // 3) démarrer le traitement serveur (tâche de fond)
+    document.getElementById("veProgressTitle").textContent = "⚙️ Traitement…";
+    const sr = await fetch("/vexport_start", { method: "POST", body: (() => { const f = new FormData(); f.append("batch_id", veBatchId); return f; })() });
+    const sd = await sr.json();
+    if (sd.error) throw new Error(sd.error);
+    document.getElementById("veGlobalFill").style.width = "0%";
+    vePollLoop();
+  } catch (e) {
+    err.textContent = "⚠️ " + e.message; err.style.display = "block";
+    document.getElementById("veProgressTitle").textContent = "❌ Erreur";
+    btn.disabled = false;
+  }
+}
+
+async function vePollLoop() {
+  if (vePolling) return;
+  vePolling = true;
+  while (true) {
+    let d;
+    try {
+      const r = await fetch("/vexport_status/" + encodeURIComponent(veBatchId));
+      d = await r.json();
+      if (d.error) throw new Error(d.error);
+    } catch (e) { await new Promise(r => setTimeout(r, 3000)); continue; }
+    veApplyStatus(d);
+    if (d.progress.finished) { veFinish(d); break; }
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  vePolling = false;
+}
+
+function veApplyStatus(d) {
+  const p = d.progress;
+  const doneN = p.done + p.error;
+  document.getElementById("veProgressTitle").textContent = p.finished ? "✅ Export terminé" : "⚙️ Traitement…";
+  document.getElementById("veProgressStatus").textContent = `${doneN} / ${p.total} vidéos terminées · ${p.total ? Math.round(doneN / p.total * 100) : 0}%`;
+  document.getElementById("veGlobalFill").style.width = (p.total ? Math.round(doneN / p.total * 100) : 0) + "%";
+  veRenderList(d.items);
+}
+
+function veRenderList(items) {
+  const icon = { pending: "⏳ En attente", processing: "⚙️ Traitement", done: "✅ Terminé", error: "❌ Erreur" };
+  const color = { pending: "var(--muted)", processing: "var(--accent2,#a855f7)", done: "var(--success)", error: "var(--error)" };
+  document.getElementById("veResultsList").innerHTML = items.map((it, i) => {
+    const st = icon[it.status] || it.status;
+    const stxt = it.status === "error" && it.error ? (st + " — " + escapeHtml(it.error.slice(0, 80))) : st;
+    const dl = (it.status === "done")
+      ? `<a class="dl-link" href="/vexport_file/${encodeURIComponent(veBatchId)}/${encodeURIComponent(it.out_name)}" title="Télécharger" download>⬇️</a>`
+      : `<span style="width:1.1rem;display:inline-block"></span>`;
+    return `<div class="batch-row"><span class="batch-idx">${i + 1}</span><span class="batch-fname" title="${escapeHtml(it.name)}">${escapeHtml(it.name)}</span><span class="batch-st" style="color:${color[it.status] || "var(--muted)"}">${stxt}</span>${dl}</div>`;
+  }).join("");
+}
+
+function veFinish(d) {
+  const p = d.progress;
+  const sum = document.getElementById("veSummary");
+  sum.style.display = "block";
+  sum.innerHTML = `<b style="color:var(--success)">${p.done} réussie${p.done > 1 ? "s" : ""}</b>` + (p.error ? ` · <b style="color:var(--error)">${p.error} erreur${p.error > 1 ? "s" : ""}</b>` : "");
+  const zb = document.getElementById("veZipBtn");
+  zb.style.display = p.done > 0 ? "inline-flex" : "none";
+  zb.textContent = "📦 Télécharger toutes les vidéos (" + p.done + ") en .zip";
+  const btn = document.getElementById("veBtn");
+  btn.disabled = false;
+  localStorage.removeItem("ve_batch_id");   // batch fini : plus besoin de reprise
+}
+
+function downloadVideoExportZip() {
+  if (!veBatchId) return;
+  window.location.href = "/vexport_zip/" + encodeURIComponent(veBatchId);
 }
 
 // ═══════════ WORKSPACE BATCH — présentation UNIQUEMENT (lecture seule).
