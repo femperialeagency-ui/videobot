@@ -7958,6 +7958,7 @@ def reels_mix_cleanup():
 # ══════════════════════════════════════════════════════════════════
 import errno
 import fcntl
+import weakref
 import hashlib
 import math
 import sys as _vx_sys
@@ -8122,8 +8123,11 @@ def _vexport_clear_live() -> None:
 def _vexport_is_active(st: dict) -> bool:
     """Batch lancé, non en pause, avec du travail restant : vidéo en file ou en
     cours, ou archive ZIP encore à créer (en attente, en cours, disque plein)."""
-    if not (st and st.get("started")):
+    if not (st and st.get("started")) or st.get("cleaned"):
         return False
+    if st.get("cancelled"):                           # annulé : seul ce qui tourne encore compte
+        return (any(it.get("status") == "processing" for it in st.get("items", []))
+                or any((z or {}).get("status") == "building" for z in (st.get("zips") or {}).values()))
     if not st.get("paused") and any(it.get("status") in ("pending", "processing") for it in st.get("items", [])):
         return True
     return any((z or {}).get("status") in ("pending", "building", "no_space", "error")
@@ -8134,7 +8138,10 @@ def _cleanup_stale_vexport(max_age_hours: float = None):
     """Purge les batchs inactifs depuis plus de VEXPORT_RETENTION_HOURS (6 h
     par défaut, depuis la DERNIÈRE activité) et les ZIP orphelins. Ne supprime
     JAMAIS un batch encore en file ou en cours, même s'il attend depuis
-    longtemps derrière un autre batch."""
+    longtemps derrière un autre batch. Passe par la fonction centrale de
+    nettoyage (verrous, téléchargements actifs) et termine les nettoyages
+    interrompus par un redémarrage. Un dossier à l'état incertain (state.json
+    absent ou sans propriétaire) n'est jamais supprimé automatiquement."""
     hours = VEXPORT_RETENTION_HOURS if max_age_hours is None else max_age_hours
     now = time.time()
     cutoff = now - hours * 3600
@@ -8147,15 +8154,27 @@ def _cleanup_stale_vexport(max_age_hours: float = None):
             if d.is_file() and d.name.startswith("_zip_") and d.stat().st_mtime < now - 3600:
                 d.unlink(missing_ok=True)               # ZIP d'un envoi interrompu
                 continue
-            if not d.is_dir():
+            if not d.is_dir() or not _vexport_safe_id(d.name):
                 continue
             st = _vexport_load_state(d.name)
-            last = float((st or {}).get("updated") or d.stat().st_mtime)
+            if not st or st.get("user_id") is None:
+                continue                                # état incertain : action ciblée (admin) uniquement
+            last = float(st.get("updated") or d.stat().st_mtime)
+            if st.get("cleaned"):                       # métadonnées d'un batch déjà nettoyé
+                if last < cutoff:
+                    with _vexport_flock(_VEXPORT_CLEAN_LOCK):
+                        _vexport_remove_batch_dir(d.name)
+                continue
+            if st.get("cleaning"):                      # nettoyage interrompu (redémarrage) → reprise
+                with _vexport_flock(_VEXPORT_CLEAN_LOCK):
+                    _vexport_clean_batch(d.name, system=True, reason="reprise")
+                continue
             if last >= cutoff or _vexport_is_active(st):
                 continue
-            shutil.rmtree(d, ignore_errors=True)
-            with _VEXPORT_REG_LOCK:
-                _VEXPORT_LOCKS.pop(d.name, None)
+            with _vexport_flock(_VEXPORT_CLEAN_LOCK):
+                r = _vexport_clean_batch(d.name, system=True, reason="retention")
+                if r.get("cleaned"):
+                    _vexport_remove_batch_dir(d.name)
         except Exception:
             pass
 
@@ -8320,6 +8339,7 @@ def _vexport_recover_batch(batch_id: str) -> int:
             return 0
         out_dir = _vexport_dir(batch_id) / "output"
         in_dir = _vexport_dir(batch_id) / "input"
+        cancelled = bool(st.get("cancelled"))
         for it in st.get("items", []):
             if it.get("status") != "processing":
                 continue
@@ -8341,6 +8361,8 @@ def _vexport_recover_batch(batch_id: str) -> int:
                 it.update(status="done", error="", progress=100, out_size=final.stat().st_size)
                 try: (in_dir / it["in_name"]).unlink(missing_ok=True)
                 except Exception: pass
+            elif cancelled:
+                it.update(status="error", progress=0, error=_VEXPORT_CANCEL_MSG)
             elif att >= VEXPORT_MAX_ATTEMPTS:
                 it.update(status="error", progress=0,
                           error=f"Traitement interrompu {att} fois (redémarrage du serveur). Relance nécessaire.")
@@ -8376,13 +8398,13 @@ def _vexport_claim_next():
         if any(it.get("status") == "processing" for it in st.get("items", [])):
             _vexport_recover_batch(bid)
             st = _vexport_load_state(bid) or {}
-        if st.get("started") and not st.get("paused") and any(
+        if st.get("started") and not st.get("paused") and not _vexport_closed(st) and any(
                 it.get("status") == "pending" for it in st.get("items", [])):
             cands.append((float(st.get("last_pick") or 0), float(st.get("created") or 0), bid))
     for _, _, bid in sorted(cands):
         with _vexport_state_lock(bid):
             st = _vexport_load_state(bid)
-            if not st or not st.get("started") or st.get("paused"):
+            if not st or not st.get("started") or st.get("paused") or _vexport_closed(st):
                 continue
             changed = False
             in_dir = _vexport_dir(bid) / "input"
@@ -8446,6 +8468,21 @@ def _vexport_encode(batch_id: str, item: dict, lock_fd: int) -> None:
             timer = threading.Timer(VEXPORT_ENCODE_TIMEOUT, _kill)
             timer.daemon = True
             timer.start()
+            # Annulation demandée par l'utilisateur (marqueur posé par
+            # /vexport_cancel, visible de tous les process) : FFmpeg est tué
+            # PUIS attendu (proc.wait ci-dessous) → aucun FFmpeg orphelin.
+            cancel_flag = jdir / ".cancel"
+            cancelled = threading.Event()
+
+            def _watch_cancel():
+                while proc.poll() is None:
+                    if cancel_flag.exists():
+                        cancelled.set()
+                        try: proc.kill()
+                        except Exception: pass
+                        return
+                    time.sleep(0.5)
+            threading.Thread(target=_watch_cancel, name="vexport-cancel", daemon=True).start()
             try:
                 last_write = 0.0
                 for raw in proc.stdout:               # lignes « clé=valeur » de -progress
@@ -8465,7 +8502,9 @@ def _vexport_encode(batch_id: str, item: dict, lock_fd: int) -> None:
                 try: proc.stdout.close()
                 except Exception: pass
             rc = proc.returncode
-            if timed_out.is_set():
+            if cancelled.is_set():
+                err = _VEXPORT_CANCEL_MSG
+            elif timed_out.is_set():
                 err = f"Timeout d'encodage (>{VEXPORT_ENCODE_TIMEOUT // 60} min)"
             elif rc != 0:
                 try:
@@ -8505,6 +8544,8 @@ def _vexport_encode(batch_id: str, item: dict, lock_fd: int) -> None:
                           out_size=os.path.getsize(final) if os.path.exists(final) else 0)
                 try: os.path.exists(path_in) and os.remove(path_in)   # source supprimée APRÈS succès validé
                 except Exception: pass
+            elif err == _VEXPORT_CANCEL_MSG or st.get("cancelled"):
+                it.update(status="error", error=_VEXPORT_CANCEL_MSG, progress=0)
             elif "No space left" in err or "Errno 28" in err:
                 # Disque plein : pas un défaut de la vidéo → remise en file sans
                 # consommer de tentative (reprise quand l'espace revient).
@@ -8610,6 +8651,8 @@ def _vexport_write_zip(part: str, out_dir: Path, members: list) -> None:
         with zipfile.ZipFile(raw, "w", zipfile.ZIP_STORED, allowZip64=True) as zf:
             pending = 0
             for name, _size in members:
+                if (out_dir.parent / ".cancel").exists():   # batch annulé : on s'arrête proprement
+                    raise RuntimeError("archive annulée")
                 src = out_dir / name
                 zi = zipfile.ZipInfo.from_file(str(src), arcname=name)
                 zi.compress_type = zipfile.ZIP_STORED
@@ -8671,7 +8714,18 @@ def _vexport_zip_prepare(batch_id: str):
     Retourne (groupe, membres, signature) ou None."""
     with _vexport_state_lock(batch_id):
         st = _vexport_load_state(batch_id)
-        if not st or not st.get("started"):
+        if not st or not st.get("started") or st.get("cleaning") or st.get("cleaned"):
+            return None
+        if st.get("cancelled"):                           # annulé : plus aucune archive créée
+            changed = False
+            for g, z in (st.get("zips") or {}).items():
+                if z.get("status") == "building":         # verrou ZIP tenu → création orpheline
+                    try: Path(str(_vexport_zip_path(batch_id, int(g))) + ".part").unlink(missing_ok=True)
+                    except Exception: pass
+                if z.get("status") not in ("ready", "empty", "cancelled"):
+                    z.update(status="cancelled", message=""); changed = True
+            if changed:
+                _vexport_save_state(st)
             return None
         zips = st.setdefault("zips", {})
         changed = False
@@ -8740,12 +8794,16 @@ def _vexport_zip_build(batch_id: str, g: int, members: list, sig: str) -> None:
         err = str(e)[:200] or "erreur inconnue"
     with _vexport_state_lock(batch_id):
         st = _vexport_load_state(batch_id)
-        if not st:
+        if not st or st.get("cleaning") or st.get("cleaned"):
             try: os.remove(part)
             except Exception: pass
             return
         z = st.setdefault("zips", {}).setdefault(str(g), {})
-        if err:
+        if st.get("cancelled"):
+            try: os.remove(part)
+            except Exception: pass
+            z.update(status="cancelled", message="")
+        elif err:
             try: os.remove(part)
             except Exception: pass
             if no_space:
@@ -8839,12 +8897,15 @@ def _vexport_groups_view(st: dict) -> list:
         zs = z.get("status") or "waiting"
         if final and zs == "waiting":
             zs = "pending"                                # le créateur de ZIP va le prendre
+        if st.get("cancelled") and zs not in ("ready", "empty"):
+            zs = "cancelled"
         out.append({"n": g + 1, "first": g * VEXPORT_GROUP_SIZE + 1, "last": g * VEXPORT_GROUP_SIZE + len(its),
                     "total": len(its), "done": done, "error": err, "processing": proc, "final": final,
                     "zip": {"status": zs, "name": _vexport_zip_name(g),
                             "url": f"/vexport_group_zip/{bid}/{g + 1}" if zs == "ready" else "",
                             "size": int(z.get("size") or 0) if zs == "ready" else 0,
                             "count": int(z.get("count") or 0) if zs == "ready" else 0,
+                            "downloads": int(((st.get("downloads") or {}).get(str(g)) or {}).get("n") or 0),
                             "message": z.get("message") or ""}})
     return out
 
@@ -8866,25 +8927,478 @@ def _vexport_progress(st: dict, pcts: dict = None) -> dict:
             "pending": pend, "finished": bool(finished), "percent": percent}
 
 
+# ── Nettoyage automatique du stockage (batchs terminés) ───────────
+# Un batch terminé occupe sources restantes + vidéos exportées + ZIP. Au
+# lancement d'un nouveau batch, les anciens batchs DU MÊME utilisateur sont
+# nettoyés par UNE fonction centrale, seulement si c'est sûr :
+#   • rien ne l'utilise (encodage, file d'attente, ZIP en création, envoi en
+#     cours, téléchargement actif — marqueurs fichiers visibles de tous les
+#     process) ;
+#   • autorisation : « J'ai sauvegardé mes ZIP » (persistée dans l'état),
+#     confirmation explicite de l'utilisateur pour CE batch, ou batch sans
+#     aucun fichier exporté (envoi abandonné / annulé).
+# Le nettoyage est marqué dans state.json AVANT toute suppression : après un
+# redémarrage il est terminé automatiquement (idempotent). Il ne reste ensuite
+# que des métadonnées minimales (state.json) + une ligne de journal.
+# Ordre des verrous : _VEXPORT_CLEAN_LOCK → verrou d'état du batch.
+VEXPORT_UPLOAD_IDLE_S = 900                           # batch non lancé sans envoi depuis 15 min = envoi abandonné
+_VEXPORT_CLEAN_LOCK   = EXPORT_DIR / ".cleanup.lock"  # nettoyages + créations de batch : un à la fois (tous process)
+_VEXPORT_CLEAN_LOG    = EXPORT_DIR / ".cleanup_log.jsonl"
+_VEXPORT_CLEAN_KEEP   = {"state.json", ".state.lock"}
+_VEXPORT_CANCEL_MSG   = "Annulé par l'utilisateur"
+_VEXPORT_DL_MAX_AGE   = 12 * 3600                     # marqueur de téléchargement plus vieux : périmé
+
+
+def _vexport_closed(st: dict) -> bool:
+    """Batch annulé, en cours de nettoyage ou nettoyé : plus aucun traitement."""
+    return bool(st and (st.get("cancelled") or st.get("cleaning") or st.get("cleaned")))
+
+
+def _vexport_gone_response():
+    return jsonify({"error": "Ce batch a été nettoyé : ses fichiers ne sont plus disponibles.",
+                    "code": "cleaned"}), 410
+
+
+class _VexportDownload:
+    """Téléchargement EN COURS : fichier marqueur verrouillé (flock partagé)
+    tant que la réponse est vivante. Le verrou disparaît avec la réponse
+    (fin d'envoi, coupure, objet libéré) ou avec le process (redémarrage,
+    OOM) : jamais de faux « téléchargement en cours » durable."""
+
+    def __init__(self, batch_id: str):
+        d = _vexport_dir(batch_id) / ".dl"
+        d.mkdir(exist_ok=True)
+        self.path = d / f"{os.getpid()}-{uuid.uuid4().hex[:12]}"
+        self.f = open(self.path, "a+")
+        fcntl.flock(self.f.fileno(), fcntl.LOCK_SH)
+
+    def end(self) -> None:
+        try: self.path.unlink(missing_ok=True)
+        except Exception: pass
+        try: self.f.close()
+        except Exception: pass
+
+
+def _vexport_dl_begin(batch_id: str):
+    """Appelé sous le verrou d'état du batch : le nettoyage ne peut pas s'intercaler."""
+    return _VexportDownload(batch_id)
+
+
+def _vexport_dl_end(marker) -> None:
+    if marker is not None:
+        marker.end()
+
+
+def _vexport_active_downloads(batch_id: str, _collected: bool = False) -> int:
+    """Téléchargements en cours (tous process) : marqueurs dont le verrou est
+    tenu. Un marqueur libre (process mort, réponse disparue) est retiré."""
+    d = _vexport_dir(batch_id) / ".dl"
+    n, now = 0, time.time()
+    try:
+        markers = list(d.iterdir())
+    except Exception:
+        return 0
+    for m in markers:
+        try:
+            fd = os.open(str(m), os.O_RDONLY)
+        except OSError:
+            continue
+        try:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                held = False
+            except BlockingIOError:
+                held = True
+            if held and now - m.stat().st_mtime < _VEXPORT_DL_MAX_AGE:
+                n += 1
+            elif now - m.stat().st_mtime > 60:              # libre (ou trop ancien) : périmé
+                m.unlink(missing_ok=True)
+        except Exception:
+            pass
+        finally:
+            os.close(fd)
+    if n and not _collected:
+        gc.collect()                                     # réponse abandonnée sans fermeture ?
+        return _vexport_active_downloads(batch_id, _collected=True)
+    return n
+
+
+def _vexport_send_tracked(st: dict, path: Path, download_name: str, mimetype: str, group: int = None):
+    """Envoie un fichier d'un batch en enregistrant le téléchargement : refusé
+    si le batch est (en cours de) nettoyage ; marqueur « téléchargement actif »
+    retiré à la fin de l'envoi (ou à la coupure). Une requête HEAD n'est pas un
+    téléchargement. Une demande de ZIP est comptée dans l'état du batch — ce
+    n'est PAS une preuve de sauvegarde (seule la validation explicite compte)."""
+    bid = st["batch_id"]
+    marker = None
+    with _vexport_state_lock(bid):
+        cur = _vexport_load_state(bid)
+        if not cur or cur.get("cleaning") or cur.get("cleaned"):
+            return _vexport_gone_response()
+        if request.method != "HEAD":
+            marker = _vexport_dl_begin(bid)
+            if group is not None:
+                dl = cur.setdefault("downloads", {}).setdefault(str(group), {})
+                dl["n"] = int(dl.get("n") or 0) + 1
+                dl.setdefault("first", time.time())
+                dl["last"] = time.time()
+                _vexport_save_state(cur)
+    try:
+        resp = send_file(str(path), as_attachment=True, download_name=download_name, mimetype=mimetype)
+    except Exception:
+        _vexport_dl_end(marker)
+        raise
+    if marker is not None:
+        _vexport_on_close(resp, lambda: _vexport_dl_end(marker))
+    return resp
+
+
+def _vexport_on_close(resp, fn) -> None:
+    """Appelle `fn` (une seule fois) à la fin de l'envoi ou à la coupure.
+    send_file renvoie le flux du fichier tel quel (direct_passthrough) : le
+    serveur WSGI ferme CE flux, pas la réponse Flask (call_on_close n'est
+    alors jamais appelé). On enveloppe donc sa méthode close() — l'envoi
+    reste un sendfile Gunicorn, sans copie en Python."""
+    done = []
+
+    def once():
+        if not done:
+            done.append(1)
+            fn()
+    resp.call_on_close(once)                          # réponses non « passthrough » (304…)
+    body = resp.response
+    # Sans cycle de références (le flux reste libérable immédiatement) :
+    # close d'instance (Gunicorn : celui du fichier) ou de classe via weakref.
+    inst_close = getattr(body, "__dict__", {}).get("close")
+    cls_close = getattr(type(body), "close", None)
+    try:
+        ref = weakref.ref(body)
+    except TypeError:
+        return
+
+    def close():
+        try:
+            if inst_close is not None:
+                inst_close()
+            elif cls_close is not None:
+                b = ref()
+                if b is not None:
+                    cls_close(b)
+        finally:
+            once()
+    try:
+        body.close = close
+    except Exception:
+        pass
+
+
+def _vexport_busy_reasons(st: dict) -> list:
+    """Tout ce qui utilise encore le batch (liste vide = rien)."""
+    bid = st["batch_id"]
+    items = st.get("items") or []
+    out = []
+    live = _vexport_read_live() or {}
+    if (any(it.get("status") == "processing" for it in items)
+            or (live.get("batch_id") == bid and time.time() - float(live.get("t") or 0) < 120)):
+        out.append("encoding")
+    if (st.get("started") and not st.get("paused") and not st.get("cancelled")
+            and any(it.get("status") == "pending" for it in items)):
+        out.append("queued")
+    if any((z or {}).get("status") == "building" for z in (st.get("zips") or {}).values()):
+        out.append("zipping")
+    if (not st.get("started") and not st.get("cancelled")
+            and time.time() - float(st.get("updated") or 0) < VEXPORT_UPLOAD_IDLE_S):
+        out.append("uploading")
+    if _vexport_active_downloads(bid):
+        out.append("downloading")
+    return out
+
+
+def _vexport_busy_reason(st: dict) -> str:
+    r = _vexport_busy_reasons(st)
+    return r[0] if r else ""
+
+
+def _vexport_has_outputs(st: dict) -> bool:
+    return (any(it.get("status") == "done" for it in st.get("items") or [])
+            or any((z or {}).get("status") == "ready" for z in (st.get("zips") or {}).values()))
+
+
+def _vexport_clean_auth(st: dict, confirmed: bool) -> str:
+    if st.get("saved_confirmed"):
+        return "saved"
+    if confirmed:
+        return "confirmed"
+    if not _vexport_has_outputs(st):
+        return "no_output"
+    return ""
+
+
+def _vexport_dir_size(batch_id: str) -> int:
+    total = 0
+    for root, _dirs, files in os.walk(str(_vexport_dir(batch_id))):
+        for f in files:
+            try: total += os.lstat(os.path.join(root, f)).st_size
+            except OSError: pass
+    return total
+
+
+def _vexport_purge_files(batch_id: str) -> int:
+    """Supprime le contenu du dossier du batch SAUF state.json / .state.lock.
+    Chemin construit côté serveur (identifiant validé), liens symboliques
+    jamais suivis. Retourne les octets libérés."""
+    d = _vexport_dir(batch_id)
+    if d.resolve().parent != EXPORT_DIR.resolve():
+        raise RuntimeError("chemin de batch inattendu")
+    freed = 0
+    for e in list(os.scandir(str(d))):
+        if e.name in _VEXPORT_CLEAN_KEEP:
+            continue
+        if e.is_dir(follow_symlinks=False):
+            for root, dirs, files in os.walk(e.path, topdown=False):
+                for f in files:
+                    p = os.path.join(root, f)
+                    try:
+                        freed += os.lstat(p).st_size
+                        os.unlink(p)
+                    except FileNotFoundError:
+                        pass
+                for sd in dirs:
+                    p = os.path.join(root, sd)
+                    try:
+                        os.unlink(p) if os.path.islink(p) else os.rmdir(p)
+                    except FileNotFoundError:
+                        pass
+            try: os.rmdir(e.path)
+            except FileNotFoundError: pass
+        else:
+            try:
+                freed += os.lstat(e.path).st_size
+                os.unlink(e.path)
+            except FileNotFoundError:
+                pass
+    return freed
+
+
+def _vexport_clean_log(entry: dict) -> None:
+    try:
+        if _VEXPORT_CLEAN_LOG.exists() and _VEXPORT_CLEAN_LOG.stat().st_size > 2_000_000:
+            os.replace(str(_VEXPORT_CLEAN_LOG), str(_VEXPORT_CLEAN_LOG) + ".1")
+        with open(_VEXPORT_CLEAN_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass
+
+
+def _vexport_clean_batch(batch_id: str, user_id=None, confirmed: bool = False, system: bool = False,
+                         reason: str = "", dry_run: bool = False, allow_busy=()) -> dict:
+    """FONCTION CENTRALE de nettoyage d'un Batch Video Export.
+    L'appelant tient _VEXPORT_CLEAN_LOCK. Vérifie propriétaire, activité
+    (encodage, file, ZIP, envoi, téléchargement) et autorisation, marque le
+    nettoyage dans l'état, supprime sources / vidéos exportées / ZIP /
+    temporaires, puis ne garde que des métadonnées minimales. Idempotent ;
+    reprise automatique si un redémarrage l'a interrompu.
+    Retour : {"ok", "cleaned", "freed"} | {"busy": raison} | {"need_confirm"}
+             | {"would_clean", "bytes"} (dry_run) | {"uncertain"} | {"forbidden"}."""
+    bid = _vexport_safe_id(batch_id)
+    if not bid:
+        return {"ok": False, "error": "batch_id invalide"}
+    if not _vexport_dir(bid).is_dir():
+        return {"ok": True, "cleaned": True, "freed": 0, "missing": True}
+    with _vexport_state_lock(bid):
+        st = _vexport_load_state(bid)
+        if not st or st.get("user_id") is None:
+            return {"ok": False, "uncertain": True}
+        try:
+            owner_ok = system or int(st["user_id"]) == int(user_id)
+        except Exception:
+            owner_ok = False
+        if not owner_ok:
+            return {"ok": False, "forbidden": True}
+        if st.get("cleaned"):
+            return {"ok": True, "cleaned": True, "freed": 0, "already": True}
+        if not st.get("cleaning"):
+            busy = [b for b in _vexport_busy_reasons(st) if b not in allow_busy]
+            if busy:
+                return {"ok": False, "busy": busy[0]}
+            auth = "system" if system else _vexport_clean_auth(st, confirmed)
+            if not auth:
+                return {"ok": False, "need_confirm": True, "bytes": _vexport_dir_size(bid)}
+            if dry_run:
+                return {"ok": True, "would_clean": True, "auth": auth, "bytes": _vexport_dir_size(bid)}
+            st["cleaning"] = {"at": time.time(), "reason": reason or auth, "auth": auth,
+                              "bytes": _vexport_dir_size(bid), "pid": os.getpid()}
+            _vexport_save_state(st)                       # marqué AVANT toute suppression
+        elif dry_run:
+            return {"ok": True, "would_clean": True, "auth": "reprise", "bytes": _vexport_dir_size(bid)}
+        items = st.get("items") or []
+        prog = _vexport_progress(st) if items else {}
+        zips = st.get("zips") or {}
+        cleaning = st["cleaning"]
+        freed = _vexport_purge_files(bid)
+        tomb = {"batch_id": bid, "user_id": st["user_id"], "created": st.get("created"),
+                "started": bool(st.get("started")), "started_at": st.get("started_at"),
+                "profile": st.get("profile"), "items": [], "zips": {},
+                "cleaned": True, "cleaned_at": time.time(), "clean_reason": cleaning.get("reason"),
+                "clean_auth": cleaning.get("auth"), "freed_bytes": int(cleaning.get("bytes") or freed),
+                "saved_confirmed": bool(st.get("saved_confirmed")), "cancelled": bool(st.get("cancelled")),
+                "summary": {"total": len(items), "done": prog.get("done", 0), "error": prog.get("error", 0),
+                            "zips_ready": sum(1 for z in zips.values() if (z or {}).get("status") == "ready"),
+                            "zips_downloaded": len(st.get("downloads") or {})}}
+        _vexport_save_state(tomb)
+    _vexport_clean_log({"t": time.time(), "batch_id": bid, "user_id": tomb["user_id"],
+                        "reason": tomb["clean_reason"], "auth": tomb["clean_auth"],
+                        "freed_bytes": tomb["freed_bytes"], "summary": tomb["summary"]})
+    _vexport_log(f"cleanup batch={bid[:8]} user={tomb['user_id']} reason={tomb['clean_reason']} "
+                 f"auth={tomb['clean_auth']} freed={tomb['freed_bytes'] / 1e9:.2f}GB")
+    return {"ok": True, "cleaned": True, "freed": tomb["freed_bytes"]}
+
+
+def _vexport_remove_batch_dir(batch_id: str) -> None:
+    """Supprime le dossier d'un batch DÉJÀ nettoyé (ou nettoyé à l'instant)."""
+    bid = _vexport_safe_id(batch_id)
+    if not bid:
+        return
+    d = _vexport_dir(bid)
+    if d.resolve().parent != EXPORT_DIR.resolve():
+        return
+    shutil.rmtree(d, ignore_errors=True)
+    with _VEXPORT_REG_LOCK:
+        _VEXPORT_LOCKS.pop(bid, None)
+
+
+def _vexport_user_states(user_id: int) -> list:
+    """États (non nettoyés) des batchs de l'utilisateur, du plus récent au plus ancien."""
+    out = []
+    try:
+        names = [d.name for d in EXPORT_DIR.iterdir() if d.is_dir() and _vexport_safe_id(d.name)]
+    except Exception:
+        names = []
+    for bid in names:
+        st = _vexport_load_state(bid)
+        try:
+            mine = st is not None and int(st.get("user_id")) == int(user_id)
+        except Exception:
+            mine = False
+        if mine and not st.get("cleaned"):
+            out.append(st)
+    out.sort(key=lambda s: float(s.get("created") or 0), reverse=True)
+    return out
+
+
+def _vexport_batch_summary(st: dict, busy: str = "", size: int = None) -> dict:
+    items = st.get("items") or []
+    zips = st.get("zips") or {}
+    dls = st.get("downloads") or {}
+    ready = [g for g, z in zips.items() if (z or {}).get("status") == "ready"]
+    prog = _vexport_progress(st)
+    return {"batch_id": st["batch_id"], "created": st.get("created"), "started": bool(st.get("started")),
+            "total": len(items), "done": prog["done"], "error": prog["error"],
+            "remaining": prog["pending"] + prog["processing"],
+            "zips_ready": len(ready),
+            "zips_downloaded": sum(1 for g in ready if int((dls.get(g) or {}).get("n") or 0) > 0),
+            "saved": bool(st.get("saved_confirmed")), "cancelled": bool(st.get("cancelled")),
+            "bytes": _vexport_dir_size(st["batch_id"]) if size is None else size, "busy": busy}
+
+
+_VEXPORT_BUSY_MSG = {
+    "encoding": "Votre précédent export est encore en cours de traitement.",
+    "queued": "Votre précédent export est encore en file d'attente.",
+    "zipping": "Les archives ZIP de votre précédent export sont en cours de création.",
+    "uploading": "Un envoi de vidéos est en cours (ou a été interrompu il y a moins de 15 min).",
+    "downloading": "Un téléchargement de votre précédent export est en cours.",
+}
+
+
 @app.route("/vexport_create", methods=["POST"])
 def vexport_create():
     """Crée un batch d'export vide. Nettoie les vieux batchs + vérifie l'espace
-    disque avant de commencer."""
+    disque avant de commencer. Avec clean_previous=1 (interface) : les anciens
+    batchs de l'utilisateur sont d'abord nettoyés s'ils sont sûrs à supprimer ;
+    sinon 409 (export actif → patienter/annuler ; ZIP non sauvegardés →
+    confirmation explicite, confirm_ids) ou 507 (disque insuffisant même après
+    nettoyage). Rien n'est supprimé tant que le nouveau batch ne peut pas
+    démarrer."""
     try:
         _cleanup_stale_vexport()
-        free = _disk_free_bytes(EXPORT_DIR)
-        if free is not None and free < VEXPORT_MIN_FREE_CREATE:
-            return jsonify({"error": "Espace disque serveur insuffisant, réessaie plus tard."}), 507
-        batch_id = uuid.uuid4().hex
-        jdir = _vexport_dir(batch_id)
-        (jdir / "input").mkdir(parents=True, exist_ok=True)
-        (jdir / "output").mkdir(parents=True, exist_ok=True)
-        profile = _vexport_sanitize_profile(request.form)
-        st = {"batch_id": batch_id, "user_id": int(request.current_user["id"]),
-              "created": time.time(), "updated": time.time(),
-              "started": False, "items": [], "profile": profile}
-        _vexport_save_state(st)
-        return jsonify({"batch_id": batch_id, "max_files": VEXPORT_MAX_FILES, "profile": profile})
+        uid = int(request.current_user["id"])
+        clean_prev = request.form.get("clean_previous") == "1"
+        confirm_ids = {x for x in (request.form.get("confirm_ids") or "").split(",") if _vexport_safe_id(x)}
+        try:
+            expected = max(0, int(float(request.form.get("expected_bytes") or 0)))
+            exp_n = max(0, int(request.form.get("expected_count") or 0))
+        except Exception:
+            expected, exp_n = 0, 0
+        # Pic disque d'un batch ≈ sources + vidéos exportées + ZIP (les sources
+        # sont supprimées au fil de l'encodage) ≈ 2 × l'envoi + marge.
+        need = VEXPORT_MIN_FREE_CREATE + 2 * expected
+        cleaned = {"batches": 0, "freed": 0}
+
+        def _disk_full(free_after, after_clean):
+            msg = "Espace disque serveur insuffisant"
+            if expected:
+                msg += (f" pour ce batch : environ {need / 1e9:.1f} Go nécessaires"
+                        + (f" pour {exp_n} vidéos" if exp_n else "")
+                        + f", {max(0, free_after) / 1e9:.1f} Go disponibles"
+                        + (" après nettoyage de vos anciens exports" if after_clean else "") + ".")
+                if exp_n and expected:
+                    per = 2 * expected / exp_n
+                    can = int(max(0, free_after - VEXPORT_MIN_FREE_CREATE) // per) if per else 0
+                    msg += (f" Réduis la sélection (≈ {can} vidéos maximum) ou réessaie plus tard."
+                            if can > 0 else " Réessaie plus tard.")
+            else:
+                msg += ", réessaie plus tard."
+            return jsonify({"error": msg, "code": "disk_full", "free": free_after, "need": need,
+                            "cleaned": cleaned}), 507
+
+        with _vexport_flock(_VEXPORT_CLEAN_LOCK):
+            if clean_prev:
+                plan = []
+                for st in _vexport_user_states(uid):
+                    r = _vexport_clean_batch(st["batch_id"], user_id=uid, dry_run=True,
+                                             confirmed=st["batch_id"] in confirm_ids)
+                    plan.append((st, r))
+                busy = [(st, r) for st, r in plan if r.get("busy")]
+                if busy:
+                    st, r = busy[0]
+                    return jsonify({"error": _VEXPORT_BUSY_MSG.get(r["busy"], "Votre précédent export est en cours."),
+                                    "code": "batch_active", "batch": _vexport_batch_summary(st, r["busy"])}), 409
+                reclaim = sum(int(r.get("bytes") or 0) for _, r in plan if r.get("would_clean") or r.get("need_confirm"))
+                free = _disk_free_bytes(EXPORT_DIR)
+                if free is not None and free + reclaim < need:
+                    return _disk_full(free + reclaim, bool(reclaim))          # rien n'est supprimé
+                ask = [(st, r) for st, r in plan if r.get("need_confirm")]
+                if ask:
+                    return jsonify({"error": "Le lancement d'un nouveau batch supprimera les fichiers de votre "
+                                             "précédent export. Avez-vous sauvegardé vos ZIP ?",
+                                    "code": "confirm_cleanup",
+                                    "batches": [_vexport_batch_summary(st, size=r.get("bytes")) for st, r in ask]}), 409
+                for st, r in plan:
+                    if not r.get("would_clean"):
+                        continue
+                    res = _vexport_clean_batch(st["batch_id"], user_id=uid, reason="nouveau_batch",
+                                               confirmed=st["batch_id"] in confirm_ids)
+                    if res.get("busy"):                   # un téléchargement a démarré entre-temps
+                        return jsonify({"error": _VEXPORT_BUSY_MSG.get(res["busy"], "Export en cours."),
+                                        "code": "batch_active", "cleaned": cleaned,
+                                        "batch": _vexport_batch_summary(st, res["busy"])}), 409
+                    if res.get("cleaned"):
+                        cleaned["batches"] += 1
+                        cleaned["freed"] += int(res.get("freed") or 0)
+            free = _disk_free_bytes(EXPORT_DIR)
+            if free is not None and free < max(VEXPORT_MIN_FREE_CREATE, need):
+                return _disk_full(free, cleaned["batches"] > 0)
+            batch_id = uuid.uuid4().hex
+            jdir = _vexport_dir(batch_id)
+            (jdir / "input").mkdir(parents=True, exist_ok=True)
+            (jdir / "output").mkdir(parents=True, exist_ok=True)
+            profile = _vexport_sanitize_profile(request.form)
+            st = {"batch_id": batch_id, "user_id": uid,
+                  "created": time.time(), "updated": time.time(),
+                  "started": False, "items": [], "profile": profile}
+            _vexport_save_state(st)
+        return jsonify({"batch_id": batch_id, "max_files": VEXPORT_MAX_FILES, "profile": profile,
+                        "cleaned": cleaned})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -8898,6 +9412,8 @@ def vexport_upload():
         st, err = _vexport_owner_state(request.form.get("batch_id"))
         if err:
             return err
+        if _vexport_closed(st):
+            return jsonify({"error": "Batch annulé ou nettoyé : relance un nouvel export.", "code": "cleaned"}), 410
         if st.get("started"):
             return jsonify({"error": "Batch déjà lancé"}), 400
         batch_id = st["batch_id"]
@@ -8914,7 +9430,7 @@ def vexport_upload():
 
         with _vexport_state_lock(batch_id):
             st = _vexport_load_state(batch_id)
-            if not st or st.get("started"):
+            if not st or st.get("started") or _vexport_closed(st):
                 return jsonify({"error": "Batch indisponible"}), 400
             if len(st["items"]) >= VEXPORT_MAX_FILES:
                 return jsonify({"error": f"Maximum {VEXPORT_MAX_FILES} vidéos par batch. Lance un second batch pour les vidéos restantes."}), 400
@@ -8957,12 +9473,16 @@ def vexport_start():
         if err:
             return err
         batch_id = st["batch_id"]
+        if _vexport_closed(st):
+            return jsonify({"error": "Batch annulé ou nettoyé : relance un nouvel export.", "code": "cleaned"}), 410
         if not st["items"]:
             return jsonify({"error": "Aucune vidéo à exporter"}), 400
         if len(st["items"]) > VEXPORT_MAX_FILES:
             return jsonify({"error": f"Maximum {VEXPORT_MAX_FILES} vidéos par batch. Lance un second batch pour les vidéos restantes."}), 400
         with _vexport_state_lock(batch_id):
             st = _vexport_load_state(batch_id)
+            if not st or _vexport_closed(st):
+                return jsonify({"error": "Batch annulé ou nettoyé : relance un nouvel export.", "code": "cleaned"}), 410
             if not st.get("started"):
                 st["started"] = True
                 st["started_at"] = time.time()
@@ -8984,6 +9504,10 @@ def vexport_status(batch_id):
             return err
         bid = st["batch_id"]
         _vexport_ensure_worker()
+        if st.get("cleaned") or st.get("cleaning"):
+            # Batch nettoyé : métadonnées seulement, jamais ses anciens fichiers.
+            return jsonify({"batch_id": bid, "cleaned": True, "started": bool(st.get("started")),
+                            "cleaned_at": st.get("cleaned_at"), "freed_bytes": int(st.get("freed_bytes") or 0)})
         live = _vexport_read_live() or {}
         live_fresh = (time.time() - float(live.get("t") or 0)) < 120
         pcts = {}
@@ -9009,6 +9533,8 @@ def vexport_status(batch_id):
                              and live.get("batch_id") not in (None, bid))
         groups = _vexport_groups_view(st)
         settled = bool(groups) and all(g["final"] and g["zip"]["status"] in ("ready", "empty") for g in groups)
+        if st.get("cancelled") and prog["processing"] == 0:
+            settled = not any((z or {}).get("status") == "building" for z in (st.get("zips") or {}).values())
         all_ready = settled and any(g["zip"]["status"] == "ready" for g in groups)
         free = _disk_free_bytes(EXPORT_DIR)
         disk_low = bool(st.get("started") and not prog["finished"] and prog["pending"] > 0
@@ -9018,7 +9544,10 @@ def vexport_status(batch_id):
                         "paused": bool(st.get("paused")), "pause_reason": st.get("pause_reason", ""),
                         "waiting_other": waiting_other, "retryable": retryable, "disk_low": disk_low,
                         "progress": prog, "items": items, "group_size": VEXPORT_GROUP_SIZE,
-                        "groups": groups, "archives_settled": settled, "all_zips_ready": all_ready})
+                        "groups": groups, "archives_settled": settled, "all_zips_ready": all_ready,
+                        "cancelled": bool(st.get("cancelled")), "cleaned": False,
+                        "saved_confirmed": bool(st.get("saved_confirmed")),
+                        "downloads": {g: int((v or {}).get("n") or 0) for g, v in (st.get("downloads") or {}).items()}})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -9037,6 +9566,8 @@ def vexport_retry():
             st = _vexport_load_state(bid)
             if not st or not st.get("started"):
                 return jsonify({"error": "Batch non lancé"}), 400
+            if _vexport_closed(st):
+                return jsonify({"error": "Batch annulé ou nettoyé : relance un nouvel export.", "code": "cleaned"}), 410
             in_dir = _vexport_dir(bid) / "input"
             for it in st["items"]:
                 if it["status"] == "error" and (in_dir / it["in_name"]).exists():
@@ -9061,6 +9592,8 @@ def vexport_file(batch_id, filename):
     st, err = _vexport_owner_state(batch_id)
     if err:
         return err
+    if st.get("cleaning") or st.get("cleaned"):
+        return _vexport_gone_response()
     if ".." in filename or "/" in filename or "\\" in filename:
         return jsonify({"error": "Nom invalide"}), 400
     if not any(it["out_name"] == filename and it["status"] == "done" for it in st["items"]):
@@ -9068,8 +9601,8 @@ def vexport_file(batch_id, filename):
     path = _vexport_dir(st["batch_id"]) / "output" / filename
     if not path.exists():
         return jsonify({"error": "Fichier introuvable"}), 404
-    return send_file(str(path), as_attachment=True, download_name=filename,
-                     mimetype="video/webm" if filename.endswith(".webm") else "video/mp4")
+    return _vexport_send_tracked(st, path, filename,
+                                 "video/webm" if filename.endswith(".webm") else "video/mp4")
 
 
 def _vexport_serve_group_zip(st: dict, g: int):
@@ -9077,6 +9610,8 @@ def _vexport_serve_group_zip(st: dict, g: int):
     Le chemin est construit côté serveur (jamais à partir de l'URL) : aucun
     « .part » ni fichier arbitraire ne peut être servi."""
     bid = st["batch_id"]
+    if st.get("cleaning") or st.get("cleaned"):
+        return _vexport_gone_response()
     if g < 0 or g >= _vexport_n_groups(st):
         return jsonify({"error": "Archive introuvable"}), 404
     z = (st.get("zips") or {}).get(str(g)) or {}
@@ -9095,8 +9630,7 @@ def _vexport_serve_group_zip(st: dict, g: int):
         return jsonify({"error": "Archive invalide détectée : reconstruction en cours, réessaie dans un instant."}), 409
     # Le fichier est ouvert par send_file : une reconstruction ultérieure le
     # remplace par renommage atomique sans couper ce téléchargement.
-    return send_file(str(zp), as_attachment=True, download_name=_vexport_zip_name(g),
-                     mimetype="application/zip")
+    return _vexport_send_tracked(st, zp, _vexport_zip_name(g), "application/zip", group=g)
 
 
 @app.route("/vexport_group_zip/<batch_id>/<int:n>", methods=["GET"])
@@ -9132,15 +9666,181 @@ def vexport_cleanup():
         if err:
             return err
         bid = st["batch_id"]
-        if any(it.get("status") == "processing" for it in st.get("items", [])):
-            return jsonify({"error": "Batch en cours, réessaie à la fin"}), 409
-        shutil.rmtree(_vexport_dir(bid), ignore_errors=True)
-        with _VEXPORT_REG_LOCK:
-            _VEXPORT_LOCKS.pop(bid, None)
+        with _vexport_flock(_VEXPORT_CLEAN_LOCK):        # suppression explicite = confirmée
+            # En file / envoi non lancé : suppression explicite possible (comme
+            # avant) ; jamais pendant un encodage, une archive ou un téléchargement.
+            r = _vexport_clean_batch(bid, user_id=int(request.current_user["id"]), confirmed=True,
+                                     reason="suppression", allow_busy=("queued", "uploading"))
+            if r.get("busy"):
+                return jsonify({"error": "Batch en cours, réessaie à la fin", "code": "batch_active",
+                                "busy": r["busy"]}), 409
+            if not r.get("cleaned"):
+                return jsonify({"error": "Suppression impossible pour le moment", "busy": r.get("busy", "")}), 409
+            _vexport_remove_batch_dir(bid)
         gc.collect()
-        return jsonify({"ok": True})
+        return jsonify({"ok": True, "freed": int(r.get("freed") or 0)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/vexport_current", methods=["GET"])
+def vexport_current():
+    """Dernier batch LANCÉ et non nettoyé de l'utilisateur : point de reprise
+    après actualisation (même sans localStorage, autre appareil)."""
+    try:
+        for st in _vexport_user_states(int(request.current_user["id"])):
+            if st.get("started") and not st.get("cleaning"):
+                return jsonify({"batch_id": st["batch_id"]})
+        return jsonify({"batch_id": None})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/vexport_mark_saved", methods=["POST"])
+def vexport_mark_saved():
+    """Validation explicite « J'ai sauvegardé mes ZIP », conservée dans l'état
+    du batch : il sera nettoyé sans confirmation au prochain lancement."""
+    try:
+        st, err = _vexport_owner_state(request.form.get("batch_id") or (request.get_json(silent=True) or {}).get("batch_id"))
+        if err:
+            return err
+        bid = st["batch_id"]
+        with _vexport_state_lock(bid):
+            st = _vexport_load_state(bid)
+            if not st or st.get("cleaning") or st.get("cleaned"):
+                return _vexport_gone_response()
+            if not st.get("started"):
+                return jsonify({"error": "Batch non lancé"}), 400
+            if any(it.get("status") in ("pending", "processing") for it in st.get("items") or []):
+                return jsonify({"error": "Attends la fin de l'export avant de valider la sauvegarde."}), 409
+            st["saved_confirmed"] = True
+            st["saved_at"] = time.time()
+            _vexport_save_state(st)
+        return jsonify({"ok": True, "saved_confirmed": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/vexport_cancel", methods=["POST"])
+def vexport_cancel():
+    """Annule PROPREMENT un export : les vidéos en attente passent en
+    « Annulé », l'encodage en cours est arrêté par son propre thread (FFmpeg
+    tué puis attendu : aucun orphelin), plus aucune archive n'est créée. Rien
+    n'est supprimé ici, sauf un envoi jamais lancé (aucun fichier exporté).
+    only_unstarted=1 : n'agit que sur un envoi non lancé (reprise après
+    actualisation de l'onglet qui envoyait)."""
+    try:
+        data = request.form if request.form else (request.get_json(silent=True) or {})
+        st, err = _vexport_owner_state(data.get("batch_id"))
+        if err:
+            return err
+        bid = st["batch_id"]
+        uid = int(request.current_user["id"])
+        only_unstarted = str(data.get("only_unstarted") or "") == "1"
+        with _vexport_state_lock(bid):
+            st = _vexport_load_state(bid)
+            if not st or st.get("cleaning") or st.get("cleaned"):
+                return jsonify({"ok": True, "cancelled": True, "cleaned": True})
+            if only_unstarted and st.get("started"):
+                return jsonify({"ok": True, "cancelled": False, "started": True})
+            if not st.get("cancelled"):
+                st["cancelled"] = True
+                st["cancelled_at"] = time.time()
+                st["paused"] = False
+                for it in st.get("items") or []:
+                    if it.get("status") == "pending":
+                        it.update(status="error", error=_VEXPORT_CANCEL_MSG, progress=0)
+                _vexport_save_state(st)
+                _vexport_log(f"cancel batch={bid[:8]} user={uid} started={bool(st.get('started'))}")
+            try: (_vexport_dir(bid) / ".cancel").touch()
+            except Exception: pass
+            started = bool(st.get("started"))
+        cleaned = False
+        if not started:
+            with _vexport_flock(_VEXPORT_CLEAN_LOCK):
+                cleaned = bool(_vexport_clean_batch(bid, user_id=uid, reason="envoi_annule").get("cleaned"))
+        _VEXPORT_ZIP_WAKE.set()
+        _VEXPORT_WAKE.set()
+        return jsonify({"ok": True, "cancelled": True, "cleaned": cleaned})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/vexport_storage", methods=["GET"])
+@admin_required
+def vexport_storage():
+    """(Admin) Inventaire du stockage Batch Video Export : propriétaire, état,
+    taille. « certain » = state.json lisible avec propriétaire."""
+    rows, total = [], 0
+    try:
+        dirs = [d for d in EXPORT_DIR.iterdir() if d.is_dir() and _vexport_safe_id(d.name)]
+    except Exception:
+        dirs = []
+    for d in dirs:
+        st = _vexport_load_state(d.name)
+        certain = bool(st and st.get("user_id") is not None)
+        size = _vexport_dir_size(d.name)
+        total += size
+        if not certain:
+            state = "incertain"
+        elif st.get("cleaned"):
+            state = "nettoyé"
+        elif st.get("cleaning"):
+            state = "nettoyage interrompu"
+        elif _vexport_is_active(st):
+            state = "actif"
+        elif not st.get("started"):
+            state = "non lancé"
+        else:
+            state = "terminé"
+        rows.append({"batch_id": d.name, "user_id": (st or {}).get("user_id"), "certain": certain,
+                     "state": state, "busy": _vexport_busy_reasons(st) if certain and not st.get("cleaned") else [],
+                     "bytes": size, "updated": (st or {}).get("updated") or d.stat().st_mtime,
+                     "saved_confirmed": bool((st or {}).get("saved_confirmed"))})
+    rows.sort(key=lambda r: r["updated"] or 0)
+    try:
+        du = shutil.disk_usage(str(EXPORT_DIR))
+        disk = {"total": du.total, "used": du.used, "free": du.free}
+    except Exception:
+        disk = {}
+    return jsonify({"disk": disk, "exports_bytes": total, "batches": rows})
+
+
+@app.route("/vexport_storage_clean", methods=["POST"])
+@admin_required
+def vexport_storage_clean():
+    """(Admin) Nettoyage CIBLÉ et confirmé d'UN batch (identifiant validé,
+    chemin construit côté serveur). Batch à l'état certain : fonction
+    centrale (jamais s'il est utilisé). État incertain : seulement si rien
+    n'y a été écrit depuis 10 min et qu'il n'est pas en cours d'encodage."""
+    data = request.get_json(silent=True) or request.form or {}
+    bid = _vexport_safe_id(str(data.get("batch_id") or ""))
+    if not bid or not _vexport_dir(bid).is_dir():
+        return jsonify({"error": "Batch introuvable"}), 404
+    if str(data.get("confirm") or "").lower() not in ("1", "true", "yes", "oui"):
+        return jsonify({"error": "Confirmation requise (confirm=1)."}), 400
+    with _vexport_flock(_VEXPORT_CLEAN_LOCK):
+        st = _vexport_load_state(bid)
+        if st and st.get("user_id") is not None:
+            r = _vexport_clean_batch(bid, system=True, reason="admin")
+            if not r.get("cleaned"):
+                return jsonify({"error": _VEXPORT_BUSY_MSG.get(r.get("busy"), "Nettoyage impossible pour le moment."),
+                                "busy": r.get("busy", "")}), 409
+            return jsonify({"ok": True, "freed": int(r.get("freed") or 0)})
+        newest = 0.0
+        for root, _dirs, files in os.walk(str(_vexport_dir(bid))):
+            for f in files + [""]:
+                try: newest = max(newest, os.lstat(os.path.join(root, f)).st_mtime)
+                except OSError: pass
+        live = _vexport_read_live() or {}
+        if time.time() - newest < 600 or (live.get("batch_id") == bid and time.time() - float(live.get("t") or 0) < 120):
+            return jsonify({"error": "Dossier modifié récemment : réessaie plus tard."}), 409
+        size = _vexport_dir_size(bid)
+        _vexport_remove_batch_dir(bid)
+    _vexport_clean_log({"t": time.time(), "batch_id": bid, "user_id": None, "reason": "admin_incertain",
+                        "auth": "admin", "freed_bytes": size})
+    _vexport_log(f"cleanup batch={bid[:8]} reason=admin_incertain freed={size / 1e9:.2f}GB")
+    return jsonify({"ok": True, "freed": size})
 
 
 # Ordonnanceur lancé dès l'import (worker Gunicorn) : reprend automatiquement

@@ -1253,7 +1253,19 @@ body {
 #vtOptParams { margin-top:6px; padding:4px 14px 14px; border:1px solid var(--border); border-radius:12px; background:var(--surface-2); }
 /* Archives (Batch Video Export V2) : .zip-btn est masqué par défaut (affiché par JS
    ailleurs) → le bouton « Tout télécharger » et les liens d'archive doivent être visibles. */
-#veZipBtn, #veArchList .zip-btn { display:inline-flex; }
+#veZipBtn, #veArchList .zip-btn, #veSavedBtn { display:inline-flex; }
+/* Nettoyage automatique du stockage (Batch Video Export) */
+.ve-save-box { margin-top:10px; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background:var(--surface-2);
+  display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.ve-save-info { flex:1 1 220px; min-width:0; font-size:.8rem; color:var(--muted); line-height:1.45; }
+.ve-clean-note { font-size:.8rem; color:var(--success); margin-top:8px; }
+.ve-modal-box { width:min(480px,94vw); }
+.ve-modal-text { font-size:.88rem; line-height:1.5; margin-bottom:10px; }
+.ve-modal-details:empty { display:none; }
+.ve-modal-details { margin-bottom:14px; }
+.ve-modal-row { font-size:.78rem; color:var(--muted); padding:7px 10px; border-radius:8px; background:rgba(255,255,255,.04); margin-bottom:6px; }
+.ve-modal-box .r-modal-actions { flex-wrap:wrap; }
+.ve-modal-box .r-modal-actions .primary-btn { width:auto; margin:0; }
 .mt-section-title { margin:22px 0 10px; font-weight:700; font-size:.95rem; display:flex; align-items:baseline; gap:8px; }
 .mt-section-title span { font-weight:500; font-size:.78rem; color:var(--muted); }
 .r-render-opts { display:flex; flex-direction:column; gap:8px; padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:var(--surface-2); }
@@ -2368,6 +2380,7 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 <div style="font-size:.78rem;color:var(--muted);">Maximum : 500 vidéos par batch</div>
 </div>
 <div id="veLimitErr" style="display:none;color:var(--error);font-size:.82rem;margin-top:8px;"></div>
+<div id="veCleanNote" class="ve-clean-note" style="display:none;"></div>
 
 <button id="veBtn" class="primary-btn" style="margin-top:16px;" onclick="runVideoTools()" disabled>Lancer le réexport</button>
 <div id="optVdProgress" style="display:none;font-size:.85rem;color:var(--muted);margin-top:14px;">⏳ Optimisation en cours… (peut prendre plusieurs minutes selon la durée)</div>
@@ -2402,10 +2415,22 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 </div>
 <div id="veArchList"></div>
 <div id="veAllNote" style="display:none;font-size:.78rem;color:var(--muted);margin-top:6px;"></div>
+<div id="veSaveBox" class="ve-save-box" style="display:none;">
+<div id="veSaveInfo" class="ve-save-info"></div>
+<button class="zip-btn" id="veSavedBtn" onclick="veMarkSaved()" style="margin:0;">✅ J'ai sauvegardé mes ZIP</button>
+</div>
 </div>
 <div id="veResultsList"></div>
 </div>
 <div id="veErr" style="display:none;color:var(--error);font-size:.82rem;margin-top:12px;"></div>
+<div id="veModal" class="r-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="veModalTitle">
+<div class="r-modal-box ve-modal-box">
+<div class="r-modal-head"><span id="veModalTitle"></span></div>
+<div id="veModalText" class="ve-modal-text"></div>
+<div id="veModalDetails" class="ve-modal-details"></div>
+<div id="veModalActions" class="r-modal-actions"></div>
+</div>
+</div>
 </div>
 
 </div><!-- /optimizerTab -->
@@ -5248,16 +5273,88 @@ let veDlQueue = null;      // « Tout télécharger » guidé (mobile)
     document.getElementById("veName").textContent = veFiles.length ? veFiles.slice(0, 3).map(f => f.name).join(", ") + (veFiles.length > 3 ? "…" : "") : "";
   });
   // Reprise après refresh / réouverture d'onglet.
-  const saved = localStorage.getItem("ve_batch_id");
-  if (saved) { veBatchId = saved; veResume(); }
+  veInitResume();
+  // Retour sur l'onglet : le batch affiché a pu être nettoyé ou avancer
+  // depuis un autre onglet / appareil → état revérifié.
+  if (typeof document.addEventListener === "function")
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") veRecheck(); });
+  if (typeof window !== "undefined") window.addEventListener("focus", veRecheck);
 })();
 
-async function veResume() {
+async function veRecheck() {
+  if (!veBatchId || vePolling) return;
   try {
     const r = await fetch("/vexport_status/" + encodeURIComponent(veBatchId));
-    if (!r.ok) { localStorage.removeItem("ve_batch_id"); veBatchId = null; return; }
+    if (!r.ok) return;
     const d = await r.json();
-    if (d.error || !d.started) { localStorage.removeItem("ve_batch_id"); veBatchId = null; return; }
+    if (d.cleaned) { veClearCleaned(); return; }
+    if (!d.progress || !d.started) return;
+    veApplyStatus(d);
+    if (d.progress.finished) veFinish(d);
+    else vePollLoop();
+  } catch (e) {}
+}
+
+// Reprise : batch mémorisé, sinon dernier batch lancé et non nettoyé (serveur).
+// Un envoi interrompu par l'actualisation de CET onglet (sessionStorage) n'a
+// jamais été lancé : il est abandonné côté serveur (aucun fichier exporté).
+async function veInitResume() {
+  let up = null, id = null;
+  try { up = sessionStorage.getItem("ve_uploading"); sessionStorage.removeItem("ve_uploading"); } catch (e) {}
+  if (up) {
+    try { const f = new FormData(); f.append("batch_id", up); f.append("only_unstarted", "1");
+          await fetch("/vexport_cancel", { method: "POST", body: f }); } catch (e) {}
+  }
+  try { id = localStorage.getItem("ve_batch_id"); } catch (e) {}
+  if (!id) id = await veCurrentBatch();
+  if (id && !veBatchId) { veBatchId = id; veResume(true); }
+}
+
+async function veCurrentBatch() {
+  try { const r = await fetch("/vexport_current"); const d = await r.json(); return (d && d.batch_id) || null; }
+  catch (e) { return null; }
+}
+
+const veSleep = ms => new Promise(r => setTimeout(r, ms));
+function veFmtBytes(b) {
+  b = +b || 0;
+  return b >= 1e9 ? (b / 1e9).toFixed(1).replace(".", ",") + " Go" : Math.max(1, Math.round(b / 1e6)) + " Mo";
+}
+function veSetCleanNote(txt) {
+  const n = document.getElementById("veCleanNote");
+  if (!n) return;
+  n.textContent = txt || "";
+  n.style.display = txt ? "block" : "none";
+}
+
+// Batch nettoyé : interface vide, prête pour un nouvel import (jamais ses anciens fichiers).
+function veClearCleaned(msg) {
+  veBatchId = null; veLastStatus = null; veDlQueue = null;
+  try { localStorage.removeItem("ve_batch_id"); } catch (e) {}
+  document.getElementById("veProgressWrap").style.display = "none";
+  document.getElementById("veArchives").style.display = "none";
+  document.getElementById("veArchList").innerHTML = "";
+  document.getElementById("veResultsList").innerHTML = "";
+  document.getElementById("veSummary").style.display = "none";
+  const sb = document.getElementById("veSaveBox"); if (sb) sb.style.display = "none";
+  document.getElementById("veBtn").disabled = (veFiles.length === 0 || veFiles.length > VE_MAX);
+  if (msg) veSetCleanNote(msg);
+}
+
+async function veResume(fallback) {
+  try {
+    const r = await fetch("/vexport_status/" + encodeURIComponent(veBatchId));
+    let d = null;
+    if (r.ok) d = await r.json();
+    if (!d || d.cleaned || d.error || !d.started) {
+      const was = veBatchId;
+      if (d && d.cleaned) veClearCleaned(); else { localStorage.removeItem("ve_batch_id"); veBatchId = null; }
+      if (fallback) {                                  // un batch plus récent (autre onglet / appareil) ?
+        const cur = await veCurrentBatch();
+        if (cur && cur !== was && !veBatchId) { veBatchId = cur; return veResume(false); }
+      }
+      return;
+    }
     document.getElementById("veProgressWrap").style.display = "block";
     document.getElementById("veBtn").disabled = true;
     veApplyStatus(d);
@@ -5266,12 +5363,107 @@ async function veResume() {
   } catch (e) { /* silencieux : reprise best-effort */ }
 }
 
+// Fenêtre de confirmation ViralScale (Promise → valeur du bouton choisi).
+function veAsk(title, text, details, buttons) {
+  return new Promise(resolve => {
+    const m = document.getElementById("veModal");
+    document.getElementById("veModalTitle").textContent = title;
+    document.getElementById("veModalText").textContent = text;
+    document.getElementById("veModalDetails").innerHTML = details || "";
+    const acts = document.getElementById("veModalActions");
+    acts.innerHTML = "";
+    buttons.forEach(b => {
+      const el = document.createElement("button");
+      el.type = "button";
+      el.className = b.primary ? "primary-btn" : "v-ghost-btn";
+      el.textContent = b.label;
+      el.dataset.value = b.value;
+      el.onclick = () => { m.style.display = "none"; resolve(b.value); };
+      acts.appendChild(el);
+    });
+    m.style.display = "flex";
+  });
+}
+
+function veBatchLine(b) {
+  const s = n => (n > 1 ? "s" : "");
+  const when = b.created ? new Date(b.created * 1000).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+  const parts = ["Export" + (when ? " du " + when : ""), `${b.done} vidéo${s(b.done)} exportée${s(b.done)}`];
+  if (b.zips_ready) parts.push(`${b.zips_downloaded} / ${b.zips_ready} ZIP téléchargé${s(b.zips_downloaded)}`);
+  parts.push(veFmtBytes(b.bytes));
+  return `<div class="ve-modal-row">${escapeHtml(parts.join(" · "))}</div>`;
+}
+
+async function veCreateBatch(confirmIds) {
+  const fd = veCreateForm();
+  fd.append("clean_previous", "1");
+  fd.append("expected_count", String(veFiles.length));
+  fd.append("expected_bytes", String(veFiles.reduce((t, f) => t + (f.size || 0), 0)));
+  if (confirmIds.length) fd.append("confirm_ids", confirmIds.join(","));
+  const r = await fetch("/vexport_create", { method: "POST", body: fd });
+  try { return await r.json(); } catch (e) { return { error: "Réponse inattendue du serveur (" + r.status + ")" }; }
+}
+
+// Nouveau batch : le serveur nettoie seul les anciens exports sûrs à supprimer
+// (sauvegarde validée, rien d'exporté). Sinon : confirmation explicite (ZIP
+// peut-être non récupérés) ou export encore actif (patienter / annuler).
+// Retourne la réponse de création, ou null si l'utilisateur a renoncé.
+async function veObtainBatch() {
+  let confirmIds = [], cancelling = null, t0 = 0;
+  for (let i = 0; i < 200; i++) {
+    const d = await veCreateBatch(confirmIds);
+    if (d.batch_id) return d;
+    if (d.code === "confirm_cleanup") {
+      const bs = d.batches || [];
+      const ids = bs.map(b => b.batch_id);
+      if (!ids.length || ids.every(x => confirmIds.includes(x))) throw new Error(d.error || "Confirmation impossible");
+      veSetCleanNote("");
+      const ok = await veAsk("Nouveau batch", d.error, bs.map(veBatchLine).join(""),
+        [{ label: "Annuler", value: "no" }, { label: "Supprimer et continuer", value: "yes", primary: true }]);
+      if (ok !== "yes") return null;
+      confirmIds = ids;
+      continue;
+    }
+    if (d.code === "batch_active") {
+      const b = d.batch || {};
+      if (cancelling === b.batch_id && Date.now() - t0 < 120000) { await veSleep(1500); continue; }
+      veSetCleanNote("");
+      const canCancel = ["encoding", "queued", "uploading"].includes(b.busy);
+      const prog = b.total ? `<div class="ve-modal-row">${b.done + b.error} / ${b.total} vidéos traitées</div>` : "";
+      const btns = [{ label: "Patienter", value: "wait", primary: !canCancel }];
+      if (canCancel) btns.push({ label: b.busy === "uploading" ? "Annuler l'ancien envoi" : "Annuler l'ancien export", value: "cancel", primary: true });
+      const choice = await veAsk("Export en cours", d.error + " Ses fichiers ne seront pas supprimés tant qu'il est en cours.", prog, btns);
+      if (choice !== "cancel") {
+        if (b.started && b.busy !== "downloading" && b.batch_id !== veBatchId) { veBatchId = b.batch_id; veResume(false); }
+        return null;
+      }
+      const f = new FormData(); f.append("batch_id", b.batch_id);
+      await fetch("/vexport_cancel", { method: "POST", body: f });
+      cancelling = b.batch_id; t0 = Date.now();
+      veSetCleanNote("⏳ Arrêt de l'ancien export…");
+      continue;
+    }
+    throw new Error(d.error || "Création du batch impossible");
+  }
+  throw new Error("L'ancien export n'a pas pu être arrêté à temps. Réessaie dans un instant.");
+}
+
 async function runVideoExport() {
   if (!veFiles.length || veFiles.length > VE_MAX) return;
   const btn = document.getElementById("veBtn");
   const err = document.getElementById("veErr");
   err.style.display = "none";
   btn.disabled = true;
+  let cd;
+  try {
+    cd = await veObtainBatch();
+  } catch (e) {
+    veSetCleanNote("");
+    err.textContent = "⚠️ " + e.message; err.style.display = "block";
+    btn.disabled = false;
+    return;
+  }
+  if (!cd) { btn.disabled = false; return; }           // renoncement : rien n'a été supprimé
   document.getElementById("veProgressWrap").style.display = "block";
   document.getElementById("veArchives").style.display = "none";
   document.getElementById("veAllNote").style.display = "none";
@@ -5281,13 +5473,15 @@ async function runVideoExport() {
   document.getElementById("veNote").style.display = "none";
   document.getElementById("veRetryBtn").style.display = "none";
   document.getElementById("veResultsList").innerHTML = "";
+  const sbx = document.getElementById("veSaveBox"); if (sbx) sbx.style.display = "none";
+  veSaveArmed = false;
+  veBatchId = cd.batch_id;
+  veSetCleanNote(cd.cleaned && cd.cleaned.batches
+    ? `🧹 Ancien batch nettoyé · ${veFmtBytes(cd.cleaned.freed)} libérés` : "");
   try {
-    // 1) créer le batch
-    const cr = await fetch("/vexport_create", { method: "POST", body: veCreateForm() });
-    const cd = await cr.json();
-    if (cd.error) throw new Error(cd.error);
-    veBatchId = cd.batch_id;
+    // 1) batch créé (anciens exports nettoyés si autorisé)
     localStorage.setItem("ve_batch_id", veBatchId);
+    try { sessionStorage.setItem("ve_uploading", veBatchId); } catch (e) {}
     // 2) upload fichier par fichier (jamais une seule requête géante)
     let up = 0, upErr = 0;
     for (let i = 0; i < veFiles.length; i++) {
@@ -5309,12 +5503,17 @@ async function runVideoExport() {
     const sr = await fetch("/vexport_start", { method: "POST", body: (() => { const f = new FormData(); f.append("batch_id", veBatchId); return f; })() });
     const sd = await sr.json();
     if (sd.error) throw new Error(sd.error);
+    try { sessionStorage.removeItem("ve_uploading"); } catch (e) {}
     document.getElementById("veGlobalFill").style.width = "0%";
     vePollLoop();
   } catch (e) {
     err.textContent = "⚠️ " + e.message; err.style.display = "block";
     document.getElementById("veProgressTitle").textContent = "❌ Erreur";
     btn.disabled = false;
+    // Envoi jamais lancé : abandonné côté serveur (aucun fichier exporté).
+    try { sessionStorage.removeItem("ve_uploading"); } catch (x) {}
+    try { const f = new FormData(); f.append("batch_id", veBatchId); f.append("only_unstarted", "1");
+          fetch("/vexport_cancel", { method: "POST", body: f }); } catch (x) {}
   }
 }
 
@@ -5342,6 +5541,8 @@ async function vePollLoop() {
       }
       if (d.error) throw new Error(d.error);
     } catch (e) { await new Promise(r => setTimeout(r, 3000)); continue; }
+    if (d.cleaned) { veClearCleaned(); break; }
+    if (!d.started) { await new Promise(r => setTimeout(r, 2000)); continue; }   // envoi en cours
     veApplyStatus(d);
     if (d.progress.finished) veFinish(d);
     // On continue tant que des archives restent à créer (ZIP du dernier groupe…).
@@ -5356,7 +5557,7 @@ function veApplyStatus(d) {
   const doneN = p.done + p.error;
   // % global = vidéos finies + avancement réel (FFmpeg) de la vidéo en cours.
   const pct = (typeof p.percent === "number") ? p.percent : (p.total ? doneN / p.total * 100 : 0);
-  let title = p.finished ? "✅ Export terminé" : "⚙️ Traitement…";
+  let title = d.cancelled ? "⏹️ Export annulé" : (p.finished ? "✅ Export terminé" : "⚙️ Traitement…");
   if (!p.finished && d.paused) title = "⏸️ Export en pause";
   else if (!p.finished && d.waiting_other) title = "⏳ En file d'attente…";
   document.getElementById("veProgressTitle").textContent = title;
@@ -5381,7 +5582,70 @@ function veApplyStatus(d) {
   rb.textContent = d.paused ? "▶️ Reprendre l'export" : `🔁 Relancer les vidéos en erreur (${d.retryable})`;
   veLastStatus = d;
   veRenderArchives(d);
+  veRenderSaveBox(d);
   veRenderList(d.items);
+}
+
+// « J'ai sauvegardé mes ZIP » : validation explicite, conservée côté serveur.
+// Une demande de téléchargement n'est pas une preuve de sauvegarde ; elle
+// sert seulement à prévenir si une archive n'a jamais été téléchargée.
+let veSaveArmed = false;
+function veRenderSaveBox(d) {
+  const box = document.getElementById("veSaveBox");
+  if (!box) return;
+  const p = d.progress || {};
+  const show = !!(p.finished && d.archives_settled !== false && p.done > 0);
+  box.style.display = show ? "flex" : "none";
+  if (!show) return;
+  const info = document.getElementById("veSaveInfo");
+  const btn = document.getElementById("veSavedBtn");
+  if (d.saved_confirmed) {
+    info.textContent = "✅ Sauvegarde confirmée : ce batch sera nettoyé automatiquement au lancement du prochain batch.";
+    btn.style.display = "none";
+    return;
+  }
+  if (veSaveArmed) return;
+  const ready = (d.groups || []).filter(g => g.zip && g.zip.status === "ready");
+  const dl = ready.filter(g => (g.zip.downloads || 0) > 0).length;
+  info.textContent = (ready.length ? `Archives téléchargées : ${dl} / ${ready.length}. ` : "")
+    + "Une fois vos fichiers enregistrés sur votre appareil, confirmez-le : le prochain batch libérera l'espace automatiquement.";
+  btn.style.display = "inline-flex";
+  btn.textContent = "✅ J'ai sauvegardé mes ZIP";
+}
+
+async function veMarkSaved() {
+  if (!veBatchId) return;
+  const btn = document.getElementById("veSavedBtn");
+  const info = document.getElementById("veSaveInfo");
+  btn.disabled = true;
+  try {
+    let d = veLastStatus || {};
+    try {                                              // compteurs de téléchargement à jour
+      const r0 = await fetch("/vexport_status/" + encodeURIComponent(veBatchId));
+      const f0 = await r0.json();
+      if (f0 && f0.cleaned) { veClearCleaned(); return; }
+      if (f0 && f0.progress) d = f0;
+    } catch (e) {}
+    const missing = (d.groups || []).filter(g => g.zip && g.zip.status === "ready" && !(g.zip.downloads > 0)).map(g => "ZIP " + g.n);
+    if (missing.length && !veSaveArmed) {
+      veSaveArmed = true;
+      info.textContent = `⚠️ ${missing.join(", ")} : jamais téléchargé${missing.length > 1 ? "s" : ""} depuis ViralScale. Confirmer quand même ?`;
+      btn.textContent = "Confirmer quand même";
+      return;
+    }
+    const fd = new FormData(); fd.append("batch_id", veBatchId);
+    const r = await fetch("/vexport_mark_saved", { method: "POST", body: fd });
+    const res = await r.json();
+    if (res.error) throw new Error(res.error);
+    veSaveArmed = false;
+    d.saved_confirmed = true;
+    veApplyStatus(d);
+  } catch (e) {
+    veSaveArmed = false;
+    info.textContent = "⚠️ " + e.message;
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function retryVideoExport() {
@@ -5446,6 +5710,7 @@ function veRenderArchives(d) {
     else if (z.status === "empty") { st = "Aucune vidéo exportée"; col = "var(--error)"; }
     else if (z.status === "no_space") { st = "Espace disque insuffisant"; col = "var(--error)"; }
     else if (z.status === "error") { st = "Erreur de création"; col = "var(--error)"; }
+    else if (z.status === "cancelled") { st = "Annulé"; col = "var(--muted)"; }
     else { st = "Création du ZIP…"; col = "var(--accent2,#a855f7)"; }
     const sub = (g.final || g.error)
       ? `${g.done} vidéo${s(g.done)} exportée${s(g.done)}` + (g.error ? ` — ${g.error} erreur${s(g.error)}` : "")

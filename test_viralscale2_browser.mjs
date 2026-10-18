@@ -157,6 +157,9 @@ fcntl.flock(fd, fcntl.LOCK_EX); print("held", flush=True); time.sleep(7)`], { st
   check("Réexport standard : archive ZIP 1 prête (2 vidéos exportées)", (await txt(page, "#veArchList")).includes("2 vidéos exportées"));
   const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 30000 }), page.click("#veZipBtn")]);
   check("« Tout télécharger » : téléchargement Batch_001.zip", dl.suggestedFilename() === "Batch_001.zip");
+  await page.click("#veSavedBtn");
+  await page.waitForFunction(() => /Sauvegarde confirmée/.test(document.getElementById("veSaveInfo").innerText), null, { timeout: 15000 });
+  check("« J'ai sauvegardé mes ZIP » : validation enregistrée", (await txt(page, "#veSaveInfo")).includes("Sauvegarde confirmée"));
   await page.locator('label:has(input[name="vtMode"][value="optimize"])').click();
   check("Optimisation : réglages (résolution, codec, compression) affichés", await page.locator("#vtOptParams").isVisible() && await page.locator("#optVdCodec").isVisible());
   await page.setInputFiles("#veInput", [V1080]);
@@ -170,6 +173,8 @@ fcntl.flock(fd, fcntl.LOCK_EX); print("held", flush=True); time.sleep(7)`], { st
   check("Optimisation multiple : « Optimiser les 2 vidéos »", (await txt(page, "#veBtn")) === "Optimiser les 2 vidéos");
   await page.click("#veBtn");
   await page.waitForFunction(id => veLastStatus && veLastStatus.batch_id !== id && veLastStatus.archives_settled && veLastStatus.all_zips_ready, firstBatch, { timeout: 180000 });
+  check("Nouveau batch : ancien batch nettoyé automatiquement (sans confirmation)",
+        await page.locator("#veModal").isHidden() && (await txt(page, "#veCleanNote")).includes("Ancien batch nettoyé"));
   check("Optimisation multiple : profil d'optimisation appliqué au batch", await page.evaluate(() => veLastStatus.profile.kind === "optimize"));
   check("Optimisation multiple : 2 vidéos traitées par le moteur Batch Video Export", (await txt(page, "#veResultsList")).match(/Terminée/g)?.length === 2);
   await tab(page, "photo");

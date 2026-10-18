@@ -266,7 +266,8 @@ one = next(it for it in final["items"] if it["status"] == "done")
 r = c.get(f"/vexport_file/{bid}/{one['out_name']}")
 check("E. téléchargement individuel : 200 + octets identiques au disque",
       r.status_code == 200 and r.data == (out_dir / one["out_name"]).read_bytes(), f"status={r.status_code}")
-r_trav = c.get(f"/vexport_file/{bid}/..%2Fstate.json")
+r.close()                                              # téléchargement terminé (sinon : « en cours » pour le serveur)
+r_trav =c.get(f"/vexport_file/{bid}/..%2Fstate.json")
 check("E. traversée de chemin refusée", r_trav.status_code in (400, 404), f"status={r_trav.status_code}")
 check("E. fichier non terminé / inconnu refusé (404)", c.get(f"/vexport_file/{bid}/inconnu.mp4").status_code == 404)
 
