@@ -429,6 +429,65 @@ dL = wait(c, L1, settled, timeout=120)
 check("16. espace libéré → le batch actif reprend et se termine", dL["progress"]["done"] == 3 and dL["all_zips_ready"], str(dL["progress"]))
 A._disk_free_bytes = real_free
 
+# ══ 17. « Annuler et supprimer le batch » (batch actif) ══════════════════
+code, d = create(c2)
+V2 = d["batch_id"]
+fill(c2, V2, 2); start(c2, V2); wait(c2, V2, settled)
+snapL1, snapV2 = files(L1), files(V2)
+M1 = c.post("/vexport_create").get_json()["batch_id"]
+fill(c, M1, 4, MID_B, prefix="del"); start(c, M1)
+wait(c, M1, lambda x: x["progress"]["processing"] >= 1, timeout=60, step=0.05)
+snapM1 = files(M1)
+r = c2.post("/vexport_cancel", data={"batch_id": M1, "delete": "1"})
+check("17. autre utilisateur : refusé (403), rien touché", r.status_code == 403 and not A._vexport_load_state(M1).get("cancelled"))
+r = c.post("/vexport_cancel", data={"batch_id": M1, "delete": "1"})
+dd = r.get_json()
+check("17.1 encodage en cours → annulé et supprimé", r.status_code == 200 and dd.get("cleaned") is True and dd.get("freed", 0) > 0
+      and dd.get("free", 0) > 0 and tomb_only(M1), f"{r.status_code} {dd}")
+time.sleep(1.0)
+check("17.3 FFmpeg arrêté, aucun processus orphelin", export_ffmpeg(M1) == [], str(export_ffmpeg(M1)))
+stM = A._vexport_load_state(M1)
+check("17. métadonnées minimales : annulation + demande de suppression tracées", stM["cancelled"] and stM["items"] == []
+      and stM["clean_reason"] == "annulation")
+check("17.4 seuls les fichiers du batch supprimés (autre batch + autre utilisateur intacts)",
+      files(L1) == snapL1 and files(V2) == snapV2)
+r2 = c.post("/vexport_cancel", data={"batch_id": M1, "delete": "1"})
+check("17.9 double clic : 2e demande sans erreur", r2.status_code == 200 and r2.get_json().get("cleaned") is True)
+A._vexport_wake(); time.sleep(2.5)
+check("17.7 aucune reprise automatique (ordonnanceur réveillé)", tomb_only(M1) and status(c, M1).get("cleaned") is True
+      and current(c) != M1 and c.post("/vexport_start", data={"batch_id": M1}).status_code == 410
+      and c.post("/vexport_retry", data={"batch_id": M1}).status_code == 410)
+# 17.2 attente d'espace disque
+M2 = c.post("/vexport_create").get_json()["batch_id"]
+fill(c, M2, 3)
+A._disk_free_bytes = lambda path=None: 0
+start(c, M2); time.sleep(2.5)
+dM2 = status(c, M2)
+r = c.post("/vexport_cancel", data={"batch_id": M2, "delete": "1"})
+A._disk_free_bytes = real_free
+check("17.2 attente d'espace disque (0 terminée) → annulé et supprimé", dM2["disk_low"] and dM2["progress"]["done"] == 0
+      and r.status_code == 200 and r.get_json().get("cleaned") and tomb_only(M2), f"{r.status_code} {r.get_json()}")
+# 17.6 téléchargement actif
+M3 = c.post("/vexport_create").get_json()["batch_id"]
+fill(c, M3, 2); start(c, M3); wait(c, M3, settled)
+rs = c.get(f"/vexport_group_zip/{M3}/1", buffered=False)
+r = c.post("/vexport_cancel", data={"batch_id": M3, "delete": "1"})
+dd = r.get_json()
+check("17.6 téléchargement actif → suppression différée (202, message explicite)", r.status_code == 202
+      and dd.get("busy") == "downloading" and "téléchargement" in dd.get("message", ""), f"{r.status_code} {dd}")
+check("17.6 aucun fichier supprimé pendant l'envoi", (EXP / M3 / "zips" / "Batch_001.zip").exists())
+data = b"".join(rs.response); rs.close()
+check("17.6 téléchargement terminé intact", zipfile.ZipFile(io.BytesIO(data)).testzip() is None)
+deadline = time.time() + 30
+while time.time() < deadline and not tomb_only(M3):
+    time.sleep(0.3)
+check("17.6 fin du téléchargement → suppression terminée automatiquement (sans client)", tomb_only(M3), str(files(M3)))
+# envoi en cours (batch non lancé)
+M4 = c.post("/vexport_create").get_json()["batch_id"]
+fill(c, M4, 2)
+r = c.post("/vexport_cancel", data={"batch_id": M4, "delete": "1"})
+check("17. envoi en cours → annulé et supprimé", r.status_code == 200 and r.get_json().get("cleaned") and tomb_only(M4))
+
 # ══ Bilan ════════════════════════════════════════════════════════════════
 time.sleep(0.5)
 check("Aucun FFmpeg d'export résiduel", export_ffmpeg() == [], str(export_ffmpeg()))

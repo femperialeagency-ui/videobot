@@ -249,7 +249,53 @@ try {
   check("Libérer : export actif intact (ni annulé ni supprimé)", !state(bAct).cancelled && !state(bAct).cleaned
         && snapAct.every(f => fs.existsSync(path.join(EXPORT, bAct, f)) || state(bAct).items.some(it => `input/${it.in_name}` === f && it.status !== "pending")));
   check("Libérer : le batch supprimé n'est plus affiché", await page.evaluate(() => veBatchId === null) && await page.locator("#veProgressWrap").isHidden());
-  { const f = new FormData(); f.append("batch_id", bAct); await api("/vexport_cancel", f); }
+  { const f = new FormData(); f.append("batch_id", bAct); f.append("delete", "1"); await api("/vexport_cancel", f); }
+  check("API : export actif annulé et supprimé", tombOnly(bAct));
+
+  // ══ « 🗑️ Annuler et supprimer le batch » ═══════════════════════════
+  await page.setInputFiles("#veInput", [LONG, LONG, LONG, LONG]);
+  await page.click("#veBtn");
+  await page.waitForFunction(() => veLastStatus && veLastStatus.batch_id === veBatchId && veLastStatus.progress.processing >= 1, null, { timeout: 120000 });
+  const bDel = await page.evaluate(() => veBatchId);
+  check("Bouton rouge visible pendant l'encodage", await page.locator("#veDelBtn").isVisible()
+        && (await txt(page, "#veDelBtn")).includes("Annuler et supprimer le batch"));
+  await page.click("#veDelBtn");
+  await page.waitForSelector("#veModal", { state: "visible", timeout: 15000 });
+  check("Confirmation : texte exact", (await txt(page, "#veModalText")) === "Voulez-vous annuler ce traitement et supprimer définitivement ses fichiers ? Les vidéos et ZIP non téléchargés seront perdus.",
+        await txt(page, "#veModalText"));
+  check("Confirmation : « Conserver le traitement » / « Annuler et supprimer »",
+        JSON.stringify(await page.locator("#veModalActions button").allInnerTexts()) === JSON.stringify(["Conserver le traitement", "Annuler et supprimer"]));
+  await modalBtn(page, "Conserver le traitement").click();
+  await sleep(800);
+  check("« Conserver le traitement » : rien annulé ni supprimé", !state(bDel).cancelled && !state(bDel).cleaned && await page.locator("#veDelBtn").isVisible());
+  await page.click("#veDelBtn");
+  await page.waitForSelector("#veModal", { state: "visible", timeout: 15000 });
+  await modalBtn(page, "Annuler et supprimer").click();
+  await page.waitForFunction(() => /Batch annulé et supprimé/.test(document.getElementById("veCleanNote").innerText), null, { timeout: 60000 });
+  check("Annuler et supprimer : fichiers supprimés, espace récupéré affiché", tombOnly(bDel)
+        && /Batch annulé et supprimé · .+ libérés · .+ disponibles/.test(await txt(page, "#veCleanNote")), await txt(page, "#veCleanNote"));
+  await sleep(1000);
+  check("Annuler et supprimer : aucun FFmpeg orphelin", exportFfmpeg(bDel).length === 0, exportFfmpeg(bDel).join("\n"));
+  check("Interface réinitialisée (plus de vidéos ni de ZIP affichés)", await page.evaluate(() => veBatchId === null)
+        && await page.locator("#veProgressWrap").isHidden() && (await txt(page, "#veResultsList")) === "" && (await txt(page, "#veArchList")) === "");
+  check("Nouvel import immédiatement possible", await page.locator("#veBtn").isEnabled());
+  await page.reload(); await page.evaluate(() => switchTab("optimizer"));
+  await sleep(1500);
+  check("Actualisation : le batch supprimé ne revient pas", await page.evaluate(() => veBatchId === null) && state(bDel).cleaned === true);
+  // Pendant l'envoi
+  await page.setInputFiles("#veInput", Array(40).fill(MEDIUM));
+  await page.click("#veBtn");
+  await page.waitForFunction(() => { const m = /^(\d+) \//.exec(document.getElementById("veProgressStatus").innerText);
+    return document.getElementById("veProgressTitle").innerText.includes("Envoi") && m && +m[1] >= 3; }, null, { timeout: 60000 });
+  const bUp = await page.evaluate(() => veBatchId);
+  check("Bouton rouge visible pendant l'envoi", await page.locator("#veDelBtn").isVisible());
+  await page.click("#veDelBtn");
+  await page.waitForSelector("#veModal", { state: "visible", timeout: 15000 });
+  await modalBtn(page, "Annuler et supprimer").click();
+  await page.waitForFunction(() => /Batch annulé et supprimé/.test(document.getElementById("veCleanNote").innerText), null, { timeout: 60000 });
+  await sleep(1500);
+  check("Pendant l'envoi : envoi arrêté, batch supprimé, jamais lancé", tombOnly(bUp) && state(bUp).started === false
+        && await page.evaluate(() => veBatchId === null) && await page.locator("#veErr").isHidden());
 
   // ══ Mobile 390 px ═══════════════════════════════════════════════════
   const m = await newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });

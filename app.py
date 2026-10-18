@@ -8580,6 +8580,10 @@ def _vexport_worker_loop():
     while True:
         did = False
         try:
+            _vexport_finish_deletions()                  # « Annuler et supprimer » en attente
+        except Exception:
+            pass
+        try:
             FFMPEG_GATE.yield_to_interactive()           # une requête attend ? elle passe d'abord
             did = _vexport_run_next()
         except Exception as e:
@@ -9546,6 +9550,7 @@ def vexport_status(batch_id):
                         "progress": prog, "items": items, "group_size": VEXPORT_GROUP_SIZE,
                         "groups": groups, "archives_settled": settled, "all_zips_ready": all_ready,
                         "cancelled": bool(st.get("cancelled")), "cleaned": False,
+                        "delete_pending": bool(st.get("delete_requested")),
                         "saved_confirmed": bool(st.get("saved_confirmed")),
                         "downloads": {g: int((v or {}).get("n") or 0) for g, v in (st.get("downloads") or {}).items()}})
     except Exception as e:
@@ -9737,12 +9742,15 @@ def vexport_cancel():
         bid = st["batch_id"]
         uid = int(request.current_user["id"])
         only_unstarted = str(data.get("only_unstarted") or "") == "1"
+        delete = str(data.get("delete") or "") == "1"
         with _vexport_state_lock(bid):
             st = _vexport_load_state(bid)
             if not st or st.get("cleaning") or st.get("cleaned"):
-                return jsonify({"ok": True, "cancelled": True, "cleaned": True})
+                return jsonify({"ok": True, "cancelled": True, "cleaned": True,
+                                "freed": int((st or {}).get("freed_bytes") or 0), "free": _disk_free_bytes(EXPORT_DIR)})
             if only_unstarted and st.get("started"):
                 return jsonify({"ok": True, "cancelled": False, "started": True})
+            changed = False
             if not st.get("cancelled"):
                 st["cancelled"] = True
                 st["cancelled_at"] = time.time()
@@ -9750,20 +9758,80 @@ def vexport_cancel():
                 for it in st.get("items") or []:
                     if it.get("status") == "pending":
                         it.update(status="error", error=_VEXPORT_CANCEL_MSG, progress=0)
+                changed = True
+                _vexport_log(f"cancel batch={bid[:8]} user={uid} started={bool(st.get('started'))} delete={delete}")
+            if delete and not st.get("delete_requested"):
+                st["delete_requested"] = time.time()    # définitif : suppression terminée même après redémarrage
+                changed = True
+            if changed:
                 _vexport_save_state(st)
-                _vexport_log(f"cancel batch={bid[:8]} user={uid} started={bool(st.get('started'))}")
-            try: (_vexport_dir(bid) / ".cancel").touch()
-            except Exception: pass
+            try:
+                (_vexport_dir(bid) / ".cancel").touch()
+                if delete:
+                    (_vexport_dir(bid) / ".delete").touch()
+            except Exception:
+                pass
             started = bool(st.get("started"))
+        _VEXPORT_ZIP_WAKE.set()
+        _VEXPORT_WAKE.set()
+        if delete:
+            r = _vexport_cancel_delete(bid, uid)
+            if r.get("cleaned"):
+                return jsonify({"ok": True, "cancelled": True, "cleaned": True,
+                                "freed": int((_vexport_load_state(bid) or {}).get("freed_bytes") or 0),
+                                "free": _disk_free_bytes(EXPORT_DIR)})
+            if r.get("busy"):
+                msg = ("Un téléchargement de ce batch est en cours : ses fichiers seront supprimés automatiquement "
+                       "dès la fin du téléchargement." if r["busy"] == "downloading"
+                       else "Arrêt du traitement en cours : suppression automatique dès qu'il est terminé.")
+                return jsonify({"ok": True, "cancelled": True, "cleaned": False, "pending": True,
+                                "busy": r["busy"], "message": msg}), 202
+            return jsonify({"error": "Suppression impossible pour le moment."}), 409
         cleaned = False
         if not started:
             with _vexport_flock(_VEXPORT_CLEAN_LOCK):
                 cleaned = bool(_vexport_clean_batch(bid, user_id=uid, reason="envoi_annule").get("cleaned"))
-        _VEXPORT_ZIP_WAKE.set()
-        _VEXPORT_WAKE.set()
         return jsonify({"ok": True, "cancelled": True, "cleaned": cleaned})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+def _vexport_cancel_delete(bid: str, uid: int, wait_s: float = 20.0) -> dict:
+    """Suppression d'un batch annulé par son propriétaire (fonction centrale) :
+    attend brièvement l'arrêt réel de FFmpeg / de la création de ZIP, jamais
+    un téléchargement en cours (la suppression se fera à sa fin)."""
+    deadline = time.time() + wait_s
+    while True:
+        with _vexport_flock(_VEXPORT_CLEAN_LOCK):
+            r = _vexport_clean_batch(bid, user_id=uid, confirmed=True, reason="annulation")
+        if r.get("cleaned") or not r.get("busy") or r["busy"] == "downloading" or time.time() >= deadline:
+            return r
+        time.sleep(0.3)
+
+
+_VEXPORT_DEL_SWEEP = {"t": 0.0}
+
+
+def _vexport_finish_deletions(force: bool = False) -> None:
+    """Termine les « Annuler et supprimer » en attente (téléchargement qui
+    finit, redémarrage, onglet fermé) : marqueur .delete + demande enregistrée
+    dans l'état par le propriétaire. Jamais pendant un traitement actif."""
+    if not force and time.time() - _VEXPORT_DEL_SWEEP["t"] < 5:
+        return
+    _VEXPORT_DEL_SWEEP["t"] = time.time()
+    try:
+        dirs = [d for d in EXPORT_DIR.iterdir() if d.is_dir() and _vexport_safe_id(d.name) and (d / ".delete").exists()]
+    except Exception:
+        return
+    for d in dirs:
+        st = _vexport_load_state(d.name)
+        if not st or st.get("user_id") is None or st.get("cleaned") or not st.get("delete_requested"):
+            continue
+        try:
+            with _vexport_flock(_VEXPORT_CLEAN_LOCK):
+                _vexport_clean_batch(d.name, system=True, reason="annulation")
+        except Exception as e:
+            _vexport_log(f"delete sweep error batch={d.name[:8]}: {e!r}")
 
 
 @app.route("/vexport_storage", methods=["GET"])

@@ -1270,6 +1270,9 @@ body {
   background:rgba(255,255,255,.04); margin-bottom:6px; cursor:pointer; }
 .ve-free-row input { margin-top:2px; accent-color:var(--accent); flex:none; }
 .ve-free-row.locked { cursor:default; opacity:.65; }
+.zip-btn.ve-del-btn { background:rgba(229,72,77,.12) !important; color:#ff6b6b !important; border:1px solid rgba(229,72,77,.55) !important; box-shadow:none !important; }
+.zip-btn.ve-del-btn:disabled { opacity:.6; cursor:wait; }
+.primary-btn.ve-danger-btn { background:#e5484d !important; border-color:#e5484d !important; color:#fff !important; box-shadow:none !important; }
 .mt-section-title { margin:22px 0 10px; font-weight:700; font-size:.95rem; display:flex; align-items:baseline; gap:8px; }
 .mt-section-title span { font-weight:500; font-size:.78rem; color:var(--muted); }
 .r-render-opts { display:flex; flex-direction:column; gap:8px; padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:var(--surface-2); }
@@ -2415,6 +2418,7 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 <div id="veSummary" style="display:none;font-size:.85rem;margin:8px 0;"></div>
 <div id="veNote" style="display:none;font-size:.8rem;color:var(--muted);margin:6px 0;"></div>
 <button class="zip-btn" id="veRetryBtn" onclick="retryVideoExport()" style="display:none;margin:6px 8px 10px 0;">🔁 Relancer les vidéos en erreur</button>
+<button class="zip-btn ve-del-btn" id="veDelBtn" onclick="veCancelDelete()" style="display:none;margin:6px 8px 10px 0;">🗑️ Annuler et supprimer le batch</button>
 <div id="veArchives" style="display:none;margin:12px 0 10px;">
 <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
 <div style="font-weight:700;font-size:.9rem;">Archives disponibles</div>
@@ -5325,6 +5329,7 @@ async function veCurrentBatch() {
 const veSleep = ms => new Promise(r => setTimeout(r, ms));
 function veFmtBytes(b) {
   b = +b || 0;
+  if (!b) return "0 Mo";
   return b >= 1e9 ? (b / 1e9).toFixed(1).replace(".", ",") + " Go" : Math.max(1, Math.round(b / 1e6)) + " Mo";
 }
 function veSetCleanNote(txt) {
@@ -5344,6 +5349,7 @@ function veClearCleaned(msg) {
   document.getElementById("veResultsList").innerHTML = "";
   document.getElementById("veSummary").style.display = "none";
   const sb = document.getElementById("veSaveBox"); if (sb) sb.style.display = "none";
+  ["veDelBtn", "veRetryBtn", "veNote"].forEach(x => { const e = document.getElementById(x); if (e) e.style.display = "none"; });
   document.getElementById("veBtn").disabled = (veFiles.length === 0 || veFiles.length > VE_MAX);
   if (msg) veSetCleanNote(msg);
 }
@@ -5368,6 +5374,49 @@ async function veResume(fallback) {
     if (d.progress.finished) veFinish(d);
     if (!(d.progress.finished && d.archives_settled !== false)) vePollLoop();
   } catch (e) { /* silencieux : reprise best-effort */ }
+}
+
+// « Annuler et supprimer le batch » : annulation DÉFINITIVE (mécanisme
+// /vexport_cancel existant) puis suppression par la fonction centrale de
+// nettoyage. Le serveur attend l'arrêt réel de FFmpeg / des ZIP et ne
+// supprime jamais un fichier en cours de téléchargement (suppression
+// automatique à la fin du téléchargement).
+let veAbortUpload = false, veUploading = false, veDeleting = false;
+async function veCancelDelete() {
+  if (!veBatchId || veDeleting) return;
+  const id = veBatchId;
+  const choice = await veAsk("Annuler et supprimer",
+    "Voulez-vous annuler ce traitement et supprimer définitivement ses fichiers ? Les vidéos et ZIP non téléchargés seront perdus.", "",
+    [{ label: "Conserver le traitement", value: "keep" }, { label: "Annuler et supprimer", value: "delete", primary: true, danger: true }]);
+  if (choice !== "delete" || veBatchId !== id || veDeleting) return;
+  veDeleting = true;
+  if (veUploading) veAbortUpload = true;               // l'envoi en cours s'arrête
+  const btn = document.getElementById("veDelBtn");
+  const err = document.getElementById("veErr");
+  err.style.display = "none";
+  btn.disabled = true; btn.textContent = "⏳ Annulation et suppression…";
+  try {
+    const deadline = Date.now() + 15 * 60000;
+    let d = {};
+    for (;;) {
+      const f = new FormData(); f.append("batch_id", id); f.append("delete", "1");
+      const r = await fetch("/vexport_cancel", { method: "POST", body: f });
+      try { d = await r.json(); } catch (e) { d = {}; }
+      if (d.cleaned) break;
+      if (!r.ok) throw new Error(d.error || ("Erreur " + r.status));
+      veSetCleanNote("⏳ " + (d.message || "Arrêt du traitement…"));
+      if (Date.now() > deadline) throw new Error("Annulation enregistrée : les fichiers seront supprimés automatiquement dès que possible.");
+      await veSleep(2000);
+    }
+    try { if (sessionStorage.getItem("ve_uploading") === id) sessionStorage.removeItem("ve_uploading"); } catch (e) {}
+    if (veBatchId === id) veClearCleaned();
+    veSetCleanNote(`🗑️ Batch annulé et supprimé · ${veFmtBytes(d.freed)} libérés` + (d.free != null ? ` · ${veFmtBytes(d.free)} disponibles` : ""));
+  } catch (e) {
+    err.textContent = "⚠️ " + e.message; err.style.display = "block";
+  } finally {
+    veDeleting = false; veUploading = false;
+    btn.disabled = false; btn.textContent = "🗑️ Annuler et supprimer le batch";
+  }
 }
 
 // ── Administrateur : « Libérer de l'espace » ── anciens batchs supprimables
@@ -5453,7 +5502,7 @@ function veAsk(title, text, details, buttons) {
     buttons.forEach(b => {
       const el = document.createElement("button");
       el.type = "button";
-      el.className = b.primary ? "primary-btn" : "v-ghost-btn";
+      el.className = b.primary ? "primary-btn" + (b.danger ? " ve-danger-btn" : "") : "v-ghost-btn";
       el.textContent = b.label;
       el.dataset.value = b.value;
       el.onclick = () => { m.style.display = "none"; resolve(b.value); };
@@ -5553,6 +5602,7 @@ async function runVideoExport() {
   document.getElementById("veResultsList").innerHTML = "";
   const sbx = document.getElementById("veSaveBox"); if (sbx) sbx.style.display = "none";
   veSaveArmed = false;
+  veAbortUpload = false;
   veBatchId = cd.batch_id;
   veSetCleanNote(cd.cleaned && cd.cleaned.batches
     ? `🧹 Ancien batch nettoyé · ${veFmtBytes(cd.cleaned.freed)} libérés` : "");
@@ -5562,7 +5612,10 @@ async function runVideoExport() {
     try { sessionStorage.setItem("ve_uploading", veBatchId); } catch (e) {}
     // 2) upload fichier par fichier (jamais une seule requête géante)
     let up = 0, upErr = 0;
+    veUploading = true;
+    document.getElementById("veDelBtn").style.display = "inline-flex";
     for (let i = 0; i < veFiles.length; i++) {
+      if (veAbortUpload) return;                       // « Annuler et supprimer » pendant l'envoi
       document.getElementById("veProgressTitle").textContent = "⬆️ Envoi des vidéos…";
       document.getElementById("veProgressStatus").textContent = `${i + 1} / ${veFiles.length}`;
       document.getElementById("veGlobalFill").style.width = Math.round((i + 1) / veFiles.length * 100) + "%";
@@ -5575,6 +5628,8 @@ async function runVideoExport() {
         if (d.error) upErr++; else up++;
       } catch (e) { upErr++; }
     }
+    veUploading = false;
+    if (veAbortUpload) return;
     if (up === 0) throw new Error("Aucune vidéo valide n'a pu être envoyée." + (upErr ? " (" + upErr + " rejetée·s)" : ""));
     // 3) démarrer le traitement serveur (tâche de fond)
     document.getElementById("veProgressTitle").textContent = "⚙️ Traitement…";
@@ -5585,6 +5640,8 @@ async function runVideoExport() {
     document.getElementById("veGlobalFill").style.width = "0%";
     vePollLoop();
   } catch (e) {
+    veUploading = false;
+    if (veAbortUpload) return;                         // envoi interrompu volontairement
     err.textContent = "⚠️ " + e.message; err.style.display = "block";
     document.getElementById("veProgressTitle").textContent = "❌ Erreur";
     btn.disabled = false;
@@ -5601,8 +5658,9 @@ async function vePollLoop() {
   const note = document.getElementById("veNote");
   while (veBatchId) {
     let d;
+    const pid = veBatchId;
     try {
-      const r = await fetch("/vexport_status/" + encodeURIComponent(veBatchId));
+      const r = await fetch("/vexport_status/" + encodeURIComponent(pid));
       // Session perdue (redémarrage serveur sans SECRET_KEY…) : le serveur
       // renvoie la page de login, pas du JSON → le dire au lieu de rester à 0 %.
       if (r.redirected || !(r.headers.get("content-type") || "").includes("json")) {
@@ -5619,6 +5677,7 @@ async function vePollLoop() {
       }
       if (d.error) throw new Error(d.error);
     } catch (e) { await new Promise(r => setTimeout(r, 3000)); continue; }
+    if (pid !== veBatchId) continue;                   // batch supprimé / remplacé entre-temps
     if (d.cleaned) { veClearCleaned(); break; }
     if (!d.started) { await new Promise(r => setTimeout(r, 2000)); continue; }   // envoi en cours
     veApplyStatus(d);
@@ -5655,6 +5714,8 @@ function veApplyStatus(d) {
   } else {
     note.style.display = "none";
   }
+  const del = document.getElementById("veDelBtn");
+  if (del && !veDeleting) del.style.display = (!d.cancelled && !(p.finished && d.archives_settled !== false)) ? "inline-flex" : "none";
   const rb = document.getElementById("veRetryBtn");
   const canRetry = d.paused || (p.finished && d.retryable > 0);
   rb.style.display = canRetry ? "inline-flex" : "none";

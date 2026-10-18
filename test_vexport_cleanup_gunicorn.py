@@ -187,11 +187,41 @@ while code != 200 and time.time() < deadline:
 check("5. téléchargement terminé → nettoyage automatique", code == 200 and tomb_only(N1), f"{code} {d}")
 N2 = d["batch_id"]
 
+# ══ 12. « Annuler et supprimer » : 2 workers, double clic simultané ═════
+X = s.post(base + "/vexport_create").json()["batch_id"]
+fill_start(s, base, X, [big] * 3)
+deadline = time.time() + 120
+while time.time() < deadline and not any(it["status"] == "processing" for it in (state(X) or {}).get("items", [])):
+    time.sleep(0.05)
+dels = []
+def cdel():
+    r = requests.post(base + "/vexport_cancel", data={"batch_id": X, "delete": "1"}, cookies=ck, timeout=90)
+    dels.append((r.status_code, r.json()))
+ths = [threading.Thread(target=cdel) for _ in range(2)]
+[t.start() for t in ths]; [t.join() for t in ths]
+check("12. double clic sur 2 workers : 2 réponses OK, batch supprimé", [c for c, _ in dels] == [200, 200]
+      and all(d.get("cleaned") for _, d in dels) and tomb_only(X), str(dels))
+time.sleep(1.0)
+left = [l for l in subprocess.run(["ps", "-A", "-o", "command="], capture_output=True, text=True).stdout.splitlines()
+        if l.startswith("ffmpeg ") and os.path.join(EXPORT, X) in l]
+check("12. FFmpeg arrêté (autre worker possible), aucun orphelin", left == [], str(left))
+time.sleep(3)
+check("12. aucune reprise automatique", tomb_only(X) and (state(X) or {}).get("cancelled") is True)
+
 # ══ 11. Redémarrage pendant un nettoyage ════════════════════════════════
 fill_start(s, base, N2, [tiny] * 2)
 wait_settled(s, base, N2)
 s.post(base + "/vexport_mark_saved", data={"batch_id": N2})
+# Batch annulé dont la suppression était encore en attente (ex. téléchargement
+# en cours) au moment du crash.
+Y = s.post(base + "/vexport_create").json()["batch_id"]
+fill_start(s, base, Y, [tiny] * 2)
+wait_settled(s, base, Y)
+assert s.post(base + "/vexport_cancel", data={"batch_id": Y}).json().get("cancelled")
 stop_server(proc)
+stY = state(Y); stY["delete_requested"] = time.time()
+json.dump(stY, open(os.path.join(EXPORT, Y, "state.json"), "w"))
+open(os.path.join(EXPORT, Y, ".delete"), "w").close()
 st = state(N2)
 st["cleaning"] = {"at": time.time(), "reason": "test_restart", "auth": "saved", "bytes": 1, "pid": 0}
 json.dump(st, open(os.path.join(EXPORT, N2, "state.json"), "w"))
@@ -203,6 +233,11 @@ deadline = time.time() + 60
 while time.time() < deadline and not tomb_only(N2):
     time.sleep(0.2)
 check("11. redémarrage : nettoyage terminé automatiquement (aucun client)", tomb_only(N2), str(files(N2)))
+deadline = time.time() + 30
+while time.time() < deadline and not tomb_only(Y):
+    time.sleep(0.2)
+check("12. redémarrage : « Annuler et supprimer » en attente terminé, batch jamais repris", tomb_only(Y)
+      and state(Y).get("cancelled") is True, str(files(Y)))
 s = login(base)
 d = s.get(f"{base}/vexport_status/{N2}").json()
 check("11. statut après reprise : batch nettoyé", d.get("cleaned") is True and "items" not in d)
