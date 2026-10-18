@@ -9793,9 +9793,30 @@ def vexport_storage():
             state = "non lancé"
         else:
             state = "terminé"
-        rows.append({"batch_id": d.name, "user_id": (st or {}).get("user_id"), "certain": certain,
-                     "state": state, "busy": _vexport_busy_reasons(st) if certain and not st.get("cleaned") else [],
+        busy = _vexport_busy_reasons(st) if certain and not st.get("cleaned") and not st.get("cleaning") else []
+        if certain:
+            eligible = not st.get("cleaned") and not busy
+        else:                                             # incertain : seulement si inchangé depuis 10 min
+            newest = 0.0
+            for root, _dirs, fs in os.walk(str(d)):
+                for f in fs + [""]:
+                    try: newest = max(newest, os.lstat(os.path.join(root, f)).st_mtime)
+                    except OSError: pass
+            eligible = time.time() - newest >= 600
+        prog = _vexport_progress(st) if certain and st.get("items") else {}
+        zips = (st or {}).get("zips") or {}
+        dls = (st or {}).get("downloads") or {}
+        ready = [g for g, z in zips.items() if (z or {}).get("status") == "ready"]
+        owner = ""
+        if certain:
+            try: owner = (get_user_by_id(int(st["user_id"])) or {})["email"]
+            except Exception: owner = ""
+        rows.append({"batch_id": d.name, "user_id": (st or {}).get("user_id"), "owner": owner, "certain": certain,
+                     "state": state, "busy": busy, "eligible": bool(eligible and size > 0),
                      "bytes": size, "updated": (st or {}).get("updated") or d.stat().st_mtime,
+                     "created": (st or {}).get("created"), "total": len((st or {}).get("items") or []),
+                     "done": prog.get("done", 0), "zips_ready": len(ready),
+                     "zips_downloaded": sum(1 for g in ready if int((dls.get(g) or {}).get("n") or 0) > 0),
                      "saved_confirmed": bool((st or {}).get("saved_confirmed"))})
     rows.sort(key=lambda r: r["updated"] or 0)
     try:
@@ -9826,7 +9847,9 @@ def vexport_storage_clean():
             if not r.get("cleaned"):
                 return jsonify({"error": _VEXPORT_BUSY_MSG.get(r.get("busy"), "Nettoyage impossible pour le moment."),
                                 "busy": r.get("busy", "")}), 409
-            return jsonify({"ok": True, "freed": int(r.get("freed") or 0)})
+            _vexport_wake()                               # l'export en attente d'espace reprend tout de suite
+            return jsonify({"ok": True, "freed": int(r.get("freed") or 0),
+                            "free": _disk_free_bytes(EXPORT_DIR)})
         newest = 0.0
         for root, _dirs, files in os.walk(str(_vexport_dir(bid))):
             for f in files + [""]:
@@ -9840,7 +9863,8 @@ def vexport_storage_clean():
     _vexport_clean_log({"t": time.time(), "batch_id": bid, "user_id": None, "reason": "admin_incertain",
                         "auth": "admin", "freed_bytes": size})
     _vexport_log(f"cleanup batch={bid[:8]} reason=admin_incertain freed={size / 1e9:.2f}GB")
-    return jsonify({"ok": True, "freed": size})
+    _vexport_wake()
+    return jsonify({"ok": True, "freed": size, "free": _disk_free_bytes(EXPORT_DIR)})
 
 
 # Ordonnanceur lancé dès l'import (worker Gunicorn) : reprend automatiquement

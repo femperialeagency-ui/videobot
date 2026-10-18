@@ -405,6 +405,30 @@ wait(c, K1, lambda x: x["progress"]["finished"] and x["archives_settled"], timeo
 code, d = create(c, confirm=[K1])
 check("15. annulation puis nettoyage confirmé", code == 200 and tomb_only(K1))
 
+# ══ 16. Prod : disque plein, batch actif bloqué à 0 → « Libérer de l'espace » ══
+L1 = d["batch_id"]
+fill(c, L1, 3)
+sizeU2 = A._vexport_dir_size(U2)                       # ancien batch terminé (autre utilisateur, ZIP non sauvegardés)
+A._disk_free_bytes = lambda path=None: 0 if not (A._vexport_load_state(U2) or {}).get("cleaned") else real_free()
+start(c, L1)
+time.sleep(2.5)
+dL = status(c, L1)
+check("16. disque plein : batch actif en attente, 0 terminée", dL["disk_low"] is True and dL["progress"]["done"] == 0
+      and dL["progress"]["pending"] == 3, str(dL["progress"]))
+rows = {b["batch_id"]: b for b in c.get("/vexport_storage").get_json()["batches"]}
+check("16. inventaire : ancien batch éligible, taille + propriétaire", rows[U2]["eligible"] is True
+      and rows[U2]["bytes"] == sizeU2 and rows[U2]["owner"] == "user2-clean@local.test" and rows[U2]["zips_ready"] == 1, str(rows.get(U2)))
+check("16. inventaire : batch actif protégé (non éligible)", rows[L1]["eligible"] is False and "queued" in rows[L1]["busy"], str(rows.get(L1)))
+snapL = files(L1)
+r = c.post("/vexport_storage_clean", json={"batch_id": L1, "confirm": 1})
+check("16. suppression du batch actif refusée (409), fichiers intacts", r.status_code == 409 and files(L1) == snapL)
+r = c.post("/vexport_storage_clean", json={"batch_id": U2, "confirm": 1}).get_json()
+check("16. ancien batch sélectionné supprimé, espace libre renvoyé", r.get("ok") and r["freed"] == sizeU2 and r.get("free", 0) > 0
+      and tomb_only(U2), str(r))
+dL = wait(c, L1, settled, timeout=120)
+check("16. espace libéré → le batch actif reprend et se termine", dL["progress"]["done"] == 3 and dL["all_zips_ready"], str(dL["progress"]))
+A._disk_free_bytes = real_free
+
 # ══ Bilan ════════════════════════════════════════════════════════════════
 time.sleep(0.5)
 check("Aucun FFmpeg d'export résiduel", export_ffmpeg() == [], str(export_ffmpeg()))

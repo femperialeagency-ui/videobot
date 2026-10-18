@@ -219,6 +219,38 @@ try {
         && await page.locator("#veBtn").isEnabled() && await page.locator("#veModal").isHidden());
   await page.unroute("**/vexport_create");
 
+  // ══ Admin : « Libérer de l'espace » (ancien batch + export actif protégé) ══
+  await page.setInputFiles("#veInput", [S1, S2]);
+  await page.click("#veBtn");
+  await waitSettled(page);
+  const bOld = await page.evaluate(() => veBatchId);
+  const ck = (await page.context().cookies()).map(x => `${x.name}=${x.value}`).join("; ");
+  const api = async (p, fd) => (await fetch(BASE + p, { method: "POST", headers: { Cookie: ck }, body: fd })).json();
+  const bAct = (await api("/vexport_create", new FormData())).batch_id;     // export actif (autre onglet / API)
+  for (let i = 0; i < 3; i++) { const f = new FormData(); f.append("batch_id", bAct); f.append("file", new Blob([fs.readFileSync(LONG)]), `l${i}.mp4`); await api("/vexport_upload", f); }
+  { const f = new FormData(); f.append("batch_id", bAct); await api("/vexport_start", f); }
+  const snapAct = files(bAct).filter(f => f.startsWith("input/"));
+  check("Admin : bouton « Libérer de l'espace » visible", await page.locator("#veFreeBtn").isVisible());
+  await page.click("#veFreeBtn");
+  await page.waitForSelector("#veModal", { state: "visible", timeout: 15000 });
+  const det = await txt(page, "#veModalDetails");
+  check("Libérer : espace libre affiché, ancien batch listé avec sa taille", det.includes("Espace libre") && det.includes("2 / 2 vidéos exportées")
+        && await page.locator(`#veModalDetails input[value="${bOld}"]`).count() === 1, det);
+  check("Libérer : ZIP non sauvegardés non cochés par défaut", !(await page.locator(`#veModalDetails input[value="${bOld}"]`).isChecked()));
+  check("Libérer : export actif protégé, non sélectionnable", det.includes("protégé") && await page.locator(`#veModalDetails input[value="${bAct}"]`).count() === 0, det);
+  await page.locator(`#veModalDetails input[value="${bOld}"]`).check();
+  await modalBtn(page, "Supprimer la sélection").click();
+  await page.waitForFunction(() => document.getElementById("veModalTitle").innerText === "Confirmer la suppression", null, { timeout: 15000 });
+  check("Libérer : confirmation explicite (ZIP non sauvegardés signalés)", (await txt(page, "#veModalText")).includes("non confirmés comme sauvegardés"));
+  check("Libérer : rien supprimé avant confirmation", !state(bOld).cleaned);
+  await modalBtn(page, "Supprimer").click();
+  await page.waitForFunction(() => /libérés/.test(document.getElementById("veCleanNote").innerText), null, { timeout: 30000 });
+  check("Libérer : batch sélectionné supprimé, espace affiché", tombOnly(bOld) && /libérés · .+ disponibles/.test(await txt(page, "#veCleanNote")), await txt(page, "#veCleanNote"));
+  check("Libérer : export actif intact (ni annulé ni supprimé)", !state(bAct).cancelled && !state(bAct).cleaned
+        && snapAct.every(f => fs.existsSync(path.join(EXPORT, bAct, f)) || state(bAct).items.some(it => `input/${it.in_name}` === f && it.status !== "pending")));
+  check("Libérer : le batch supprimé n'est plus affiché", await page.evaluate(() => veBatchId === null) && await page.locator("#veProgressWrap").isHidden());
+  { const f = new FormData(); f.append("batch_id", bAct); await api("/vexport_cancel", f); }
+
   // ══ Mobile 390 px ═══════════════════════════════════════════════════
   const m = await newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   m.evaluate(() => veAsk("Nouveau batch", "Le lancement d'un nouveau batch supprimera les fichiers de votre précédent export. Avez-vous sauvegardé vos ZIP ?",

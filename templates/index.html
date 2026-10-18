@@ -1266,6 +1266,10 @@ body {
 .ve-modal-row { font-size:.78rem; color:var(--muted); padding:7px 10px; border-radius:8px; background:rgba(255,255,255,.04); margin-bottom:6px; }
 .ve-modal-box .r-modal-actions { flex-wrap:wrap; }
 .ve-modal-box .r-modal-actions .primary-btn { width:auto; margin:0; }
+.ve-free-row { display:flex; gap:8px; align-items:flex-start; font-size:.78rem; line-height:1.45; padding:7px 10px; border-radius:8px;
+  background:rgba(255,255,255,.04); margin-bottom:6px; cursor:pointer; }
+.ve-free-row input { margin-top:2px; accent-color:var(--accent); flex:none; }
+.ve-free-row.locked { cursor:default; opacity:.65; }
 .mt-section-title { margin:22px 0 10px; font-weight:700; font-size:.95rem; display:flex; align-items:baseline; gap:8px; }
 .mt-section-title span { font-weight:500; font-size:.78rem; color:var(--muted); }
 .r-render-opts { display:flex; flex-direction:column; gap:8px; padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:var(--surface-2); }
@@ -2381,6 +2385,9 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 </div>
 <div id="veLimitErr" style="display:none;color:var(--error);font-size:.82rem;margin-top:8px;"></div>
 <div id="veCleanNote" class="ve-clean-note" style="display:none;"></div>
+{% if current_user and current_user.role == 'admin' %}
+<button type="button" id="veFreeBtn" class="v-ghost-btn" onclick="veFreeSpace()" style="margin-top:10px;">🧹 Libérer de l'espace</button>
+{% endif %}
 
 <button id="veBtn" class="primary-btn" style="margin-top:16px;" onclick="runVideoTools()" disabled>Lancer le réexport</button>
 <div id="optVdProgress" style="display:none;font-size:.85rem;color:var(--muted);margin-top:14px;">⏳ Optimisation en cours… (peut prendre plusieurs minutes selon la durée)</div>
@@ -5363,6 +5370,77 @@ async function veResume(fallback) {
   } catch (e) { /* silencieux : reprise best-effort */ }
 }
 
+// ── Administrateur : « Libérer de l'espace » ── anciens batchs supprimables
+// (jamais un export en cours ni un téléchargement actif : refusé côté
+// serveur), sélection explicite, confirmation, puis le traitement en attente
+// d'espace reprend automatiquement.
+function veFreeDesc(b) {
+  const s = n => (n > 1 ? "s" : "");
+  if (!b.certain) return "Ancien dossier (état incertain)";
+  const when = b.created ? new Date(b.created * 1000).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+  const parts = [(b.owner || "Utilisateur " + b.user_id) + (when ? " · " + when : ""), `${b.done} / ${b.total} vidéo${s(b.total)} exportée${s(b.done)}`];
+  if (b.zips_ready) parts.push(`${b.zips_downloaded} / ${b.zips_ready} ZIP téléchargé${s(b.zips_downloaded)}`);
+  parts.push(b.saved_confirmed ? "sauvegarde confirmée" : (b.done ? "ZIP non confirmés comme sauvegardés" : "aucune vidéo exportée"));
+  return parts.join(" · ");
+}
+
+async function veFreeSpace() {
+  const btn = document.getElementById("veFreeBtn");
+  const err = document.getElementById("veErr");
+  err.style.display = "none";
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch("/vexport_storage");
+    const d = await r.json();
+    const rows = (d.batches || []).filter(b => b.state !== "nettoyé" && b.bytes > 0);
+    const elig = rows.filter(b => b.eligible);
+    const prot = rows.filter(b => !b.eligible);
+    const disk = d.disk || {};
+    const head = `<div class="ve-modal-row">Espace libre : <b>${veFmtBytes(disk.free)}</b> sur ${veFmtBytes(disk.total)} · Batch Video Export : ${veFmtBytes(d.exports_bytes)}</div>`;
+    const protHtml = prot.map(b => `<div class="ve-free-row locked">🔒 <span>${escapeHtml(veFreeDesc(b))} · ${veFmtBytes(b.bytes)} — en cours d'utilisation, protégé</span></div>`).join("");
+    if (!elig.length) {
+      await veAsk("Libérer de l'espace", "Aucun ancien batch ne peut être supprimé pour le moment.", head + protHtml, [{ label: "Fermer", value: "no", primary: true }]);
+      return;
+    }
+    const list = elig.map(b => {
+      const unsaved = b.certain && !b.saved_confirmed && b.done > 0;
+      return `<label class="ve-free-row"><input type="checkbox" value="${escapeHtml(b.batch_id)}" data-bytes="${b.bytes}" data-unsaved="${unsaved ? 1 : 0}"${unsaved ? "" : " checked"}>`
+        + `<span>${escapeHtml(veFreeDesc(b))} · <b>${veFmtBytes(b.bytes)}</b></span></label>`;
+    }).join("");
+    const choice = await veAsk("Libérer de l'espace", "Sélectionnez les anciens batchs à supprimer. Les exports en cours et les téléchargements actifs sont protégés.",
+      head + list + protHtml, [{ label: "Annuler", value: "no" }, { label: "Supprimer la sélection", value: "yes", primary: true }]);
+    if (choice !== "yes") return;
+    const picked = [...document.querySelectorAll("#veModalDetails input[type=checkbox]:checked")]
+      .map(i => ({ id: i.value, bytes: +i.dataset.bytes || 0, unsaved: i.dataset.unsaved === "1" }));
+    if (!picked.length) return;
+    const total = picked.reduce((t, p) => t + p.bytes, 0);
+    const unsaved = picked.filter(p => p.unsaved).length;
+    const ok = await veAsk("Confirmer la suppression",
+      `Supprimer définitivement ${picked.length} batch${picked.length > 1 ? "s" : ""} (${veFmtBytes(total)}) ?`
+      + (unsaved ? ` ${unsaved} contien${unsaved > 1 ? "nent" : "t"} des ZIP non confirmés comme sauvegardés : ils seront perdus.` : ""),
+      "", [{ label: "Annuler", value: "no" }, { label: "Supprimer", value: "yes", primary: true }]);
+    if (ok !== "yes") return;
+    let freed = 0, free = null;
+    const fails = [];
+    for (const p of picked) {
+      const rr = await fetch("/vexport_storage_clean", { method: "POST", headers: { "Content-Type": "application/json" },
+                                                         body: JSON.stringify({ batch_id: p.id, confirm: 1 }) });
+      let dd = {};
+      try { dd = await rr.json(); } catch (e) {}
+      if (rr.ok && dd.ok) { freed += dd.freed || 0; if (dd.free != null) free = dd.free; }
+      else fails.push(dd.error || ("erreur " + rr.status));
+    }
+    if (veBatchId && picked.some(p => p.id === veBatchId)) veClearCleaned(); else veRecheck();
+    veSetCleanNote(`🧹 ${veFmtBytes(freed)} libérés` + (free != null ? ` · ${veFmtBytes(free)} disponibles` : "")
+      + ". Un export en attente d'espace reprend automatiquement.");
+    if (fails.length) { err.textContent = "⚠️ " + fails.join(" · "); err.style.display = "block"; }
+  } catch (e) {
+    err.textContent = "⚠️ " + e.message; err.style.display = "block";
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // Fenêtre de confirmation ViralScale (Promise → valeur du bouton choisi).
 function veAsk(title, text, details, buttons) {
   return new Promise(resolve => {
@@ -5568,7 +5646,8 @@ function veApplyStatus(d) {
     note.textContent = "⏸️ " + (d.pause_reason || "Export en pause.");
     note.style.display = "block";
   } else if (!p.finished && d.disk_low) {
-    note.textContent = "⚠️ Espace disque serveur presque plein : l'export reprendra automatiquement dès que de l'espace sera libéré.";
+    note.textContent = "⚠️ Espace disque serveur presque plein : l'export reprendra automatiquement dès que de l'espace sera libéré."
+      + (document.getElementById("veFreeBtn") ? " Administrateur : « Libérer de l'espace »." : "");
     note.style.display = "block";
   } else if (!p.finished && d.waiting_other) {
     note.textContent = "Un autre export est en cours sur le serveur (1 vidéo encodée à la fois) : le tien démarre juste après.";
