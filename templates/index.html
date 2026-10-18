@@ -2352,6 +2352,8 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 </div>
 <div class="batch-progress" style="height:8px;background:rgba(255,255,255,.08);border-radius:6px;overflow:hidden;margin-bottom:6px;"><div id="veGlobalFill" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--accent2,#a855f7));transition:width .3s;"></div></div>
 <div id="veSummary" style="display:none;font-size:.85rem;margin:8px 0;"></div>
+<div id="veNote" style="display:none;font-size:.8rem;color:var(--muted);margin:6px 0;"></div>
+<button class="zip-btn" id="veRetryBtn" onclick="retryVideoExport()" style="display:none;margin:6px 8px 10px 0;">🔁 Relancer les vidéos en erreur</button>
 <button class="zip-btn" id="veZipBtn" onclick="downloadVideoExportZip()" style="display:none;margin:6px 0 10px;"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span> Télécharger toutes les vidéos (.zip)</button>
 <div id="veResultsList"></div>
 </div>
@@ -5126,6 +5128,8 @@ async function runVideoExport() {
   document.getElementById("veProgressWrap").style.display = "block";
   document.getElementById("veZipBtn").style.display = "none";
   document.getElementById("veSummary").style.display = "none";
+  document.getElementById("veNote").style.display = "none";
+  document.getElementById("veRetryBtn").style.display = "none";
   document.getElementById("veResultsList").innerHTML = "";
   try {
     // 1) créer le batch
@@ -5167,11 +5171,25 @@ async function runVideoExport() {
 async function vePollLoop() {
   if (vePolling) return;
   vePolling = true;
-  while (true) {
+  const note = document.getElementById("veNote");
+  while (veBatchId) {
     let d;
     try {
       const r = await fetch("/vexport_status/" + encodeURIComponent(veBatchId));
+      // Session perdue (redémarrage serveur sans SECRET_KEY…) : le serveur
+      // renvoie la page de login, pas du JSON → le dire au lieu de rester à 0 %.
+      if (r.redirected || !(r.headers.get("content-type") || "").includes("json")) {
+        note.innerHTML = "⚠️ Session expirée : reconnecte-toi puis rouvre cette page. L'export continue côté serveur.";
+        note.style.display = "block";
+        break;
+      }
       d = await r.json();
+      if (r.status === 404 || r.status === 403) {
+        note.textContent = "⚠️ " + (d.error || "Batch introuvable");
+        note.style.display = "block";
+        localStorage.removeItem("ve_batch_id");
+        break;
+      }
       if (d.error) throw new Error(d.error);
     } catch (e) { await new Promise(r => setTimeout(r, 3000)); continue; }
     veApplyStatus(d);
@@ -5184,17 +5202,57 @@ async function vePollLoop() {
 function veApplyStatus(d) {
   const p = d.progress;
   const doneN = p.done + p.error;
-  document.getElementById("veProgressTitle").textContent = p.finished ? "✅ Export terminé" : "⚙️ Traitement…";
-  document.getElementById("veProgressStatus").textContent = `${doneN} / ${p.total} vidéos terminées · ${p.total ? Math.round(doneN / p.total * 100) : 0}%`;
-  document.getElementById("veGlobalFill").style.width = (p.total ? Math.round(doneN / p.total * 100) : 0) + "%";
+  // % global = vidéos finies + avancement réel (FFmpeg) de la vidéo en cours.
+  const pct = (typeof p.percent === "number") ? p.percent : (p.total ? doneN / p.total * 100 : 0);
+  let title = p.finished ? "✅ Export terminé" : "⚙️ Traitement…";
+  if (!p.finished && d.paused) title = "⏸️ Export en pause";
+  else if (!p.finished && d.waiting_other) title = "⏳ En file d'attente…";
+  document.getElementById("veProgressTitle").textContent = title;
+  document.getElementById("veProgressStatus").textContent = `${doneN} / ${p.total} vidéos terminées · ${Math.floor(pct)}%`;
+  document.getElementById("veGlobalFill").style.width = Math.min(100, pct) + "%";
+  const note = document.getElementById("veNote");
+  if (!p.finished && d.paused) {
+    note.textContent = "⏸️ " + (d.pause_reason || "Export en pause.");
+    note.style.display = "block";
+  } else if (!p.finished && d.waiting_other) {
+    note.textContent = "Un autre export est en cours sur le serveur (1 vidéo encodée à la fois) : le tien démarre juste après.";
+    note.style.display = "block";
+  } else {
+    note.style.display = "none";
+  }
+  const rb = document.getElementById("veRetryBtn");
+  const canRetry = d.paused || (p.finished && d.retryable > 0);
+  rb.style.display = canRetry ? "inline-flex" : "none";
+  rb.textContent = d.paused ? "▶️ Reprendre l'export" : `🔁 Relancer les vidéos en erreur (${d.retryable})`;
   veRenderList(d.items);
 }
 
+async function retryVideoExport() {
+  if (!veBatchId) return;
+  const err = document.getElementById("veErr");
+  err.style.display = "none";
+  try {
+    const fd = new FormData(); fd.append("batch_id", veBatchId);
+    const r = await fetch("/vexport_retry", { method: "POST", body: fd });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    localStorage.setItem("ve_batch_id", veBatchId);
+    document.getElementById("veRetryBtn").style.display = "none";
+    document.getElementById("veSummary").style.display = "none";
+    document.getElementById("veBtn").disabled = true;
+    vePollLoop();
+  } catch (e) {
+    err.textContent = "⚠️ " + e.message; err.style.display = "block";
+  }
+}
+
 function veRenderList(items) {
-  const icon = { pending: "⏳ En attente", processing: "⚙️ Traitement", done: "✅ Terminé", error: "❌ Erreur" };
+  const icon = { pending: "⏳ En attente", processing: "⚙️ En cours", done: "✅ Terminée", error: "❌ Erreur" };
   const color = { pending: "var(--muted)", processing: "var(--accent2,#a855f7)", done: "var(--success)", error: "var(--error)" };
   document.getElementById("veResultsList").innerHTML = items.map((it, i) => {
-    const st = icon[it.status] || it.status;
+    let st = icon[it.status] || it.status;
+    if (it.status === "processing") st += ` · ${Math.floor(it.pct || 0)}%`;
+    if (it.status === "pending" && it.interrupted) st += " (reprise après interruption)";
     const stxt = it.status === "error" && it.error ? (st + " — " + escapeHtml(it.error.slice(0, 80))) : st;
     const dl = (it.status === "done")
       ? `<a class="dl-link" href="/vexport_file/${encodeURIComponent(veBatchId)}/${encodeURIComponent(it.out_name)}" title="Télécharger" download>⬇️</a>`
