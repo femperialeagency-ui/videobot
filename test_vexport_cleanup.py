@@ -127,8 +127,8 @@ r = mark_saved(c, A1)
 check("1. « J'ai sauvegardé mes ZIP » persisté", r.status_code == 200 and status(c, A1)["saved_confirmed"] is True
       and A._vexport_load_state(A1)["saved_confirmed"] is True)
 beforeA = files(A1)
-check("1. fichiers présents avant nettoyage (vidéos + ZIP)",
-      sum(f.startswith("output/") and f.endswith(".mp4") for f in beforeA) == 3 and "zips/Batch_001.zip" in beforeA, str(beforeA))
+check("1. fichiers présents avant nettoyage (ZIP contenant les 3 vidéos)",
+      "zips/Batch_001.zip" in beforeA and len(zipfile.ZipFile(EXP / A1 / "zips" / "Batch_001.zip").namelist()) == 3, str(beforeA))
 code, d = create(c)
 check("1. nouveau batch : ancien nettoyé SANS confirmation", code == 200 and d["cleaned"]["batches"] == 1
       and d["cleaned"]["freed"] > 0, f"{code} {d}")
@@ -181,9 +181,11 @@ check("4. une confirmation ne permet PAS de supprimer un export actif", code == 
 def lost_files(bid, snap):
     """Fichiers disparus, hors effets normaux de l'encodage (source supprimée
     après succès, .part / log FFmpeg temporaires)."""
-    done_in = {it["in_name"] for it in A._vexport_load_state(bid)["items"] if it["status"] == "done"}
-    return [f for f in snap if not (EXP / bid / f).exists() and not f.endswith((".part", ".log"))
-            and not (f.startswith("input/") and f[6:] in done_in)]
+    st = A._vexport_load_state(bid)
+    done_in = {it["in_name"] for it in st["items"] if it["status"] == "done"}
+    packed = {it["out_name"] for it in st["items"] if it.get("packed")}     # MP4 archivé : supprimé normalement
+    return [f for f in snap if not (EXP / bid / f).exists() and not f.endswith((".part", ".log", ".tail"))
+            and not (f.startswith("input/") and f[6:] in done_in) and not (f.startswith("output/") and f[7:] in packed)]
 check("4. aucun fichier de l'export actif supprimé", lost_files(C1, snapC) == [], str(lost_files(C1, snapC)))
 check("9. un autre utilisateur ne peut pas annuler", c2.post("/vexport_cancel", data={"batch_id": C1}).status_code == 403)
 r = c.post("/vexport_cancel", data={"batch_id": C1}).get_json()

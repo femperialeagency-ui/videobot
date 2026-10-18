@@ -225,8 +225,9 @@ open(os.path.join(EXPORT, Y, ".delete"), "w").close()
 st = state(N2)
 st["cleaning"] = {"at": time.time(), "reason": "test_restart", "auth": "saved", "bytes": 1, "pid": 0}
 json.dump(st, open(os.path.join(EXPORT, N2, "state.json"), "w"))
-outs = [f for f in files(N2) if f.startswith("output/")]
-os.remove(os.path.join(EXPORT, N2, outs[0]))           # suppression partielle avant le « crash »
+for nm in ("junk_a.bin", "junk_b.bin"):                 # fichiers du batch, dont un déjà supprimé avant le « crash »
+    open(os.path.join(EXPORT, N2, "output", nm), "wb").write(b"x" * 1000)
+os.remove(os.path.join(EXPORT, N2, "output", "junk_a.bin"))
 check("11. état simulé : nettoyage interrompu, fichiers restants", not tomb_only(N2) and len(files(N2)) > 3)
 proc, base, port = start_server(1)                      # options du Dockerfile (1 worker)
 deadline = time.time() + 60

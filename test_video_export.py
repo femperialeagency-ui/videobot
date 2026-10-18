@@ -112,6 +112,29 @@ class FfmpegSampler:
 
 
 tmp = tempfile.mkdtemp(prefix="vexport_src_")
+
+
+def exported(bid, name):
+    """Vidéo exportée : MP4 encore sur disque, sinon lue dans son archive
+    (stockage tournant : le MP4 intermédiaire est supprimé une fois archivé)."""
+    p = A.EXPORT_DIR / bid / "output" / name
+    if p.exists():
+        return p
+    for zp in sorted((A.EXPORT_DIR / bid / "zips").glob("Batch_*.zip")):
+        with zipfile.ZipFile(zp) as z:
+            if name in z.namelist():
+                dst = os.path.join(tmp, f"x_{bid[:6]}_{name}")
+                open(dst, "wb").write(z.read(name))
+                return dst
+    return p
+
+
+def exported_names(bid):
+    names = {p.name for p in (A.EXPORT_DIR / bid / "output").glob("*.mp4")}
+    for zp in (A.EXPORT_DIR / bid / "zips").glob("Batch_*.zip"):
+        with zipfile.ZipFile(zp) as z:
+            names |= set(z.namelist())
+    return names
 c = A.app.test_client()
 with c.session_transaction() as s: s["user_id"] = 1
 A.create_user("user2-test@local.test", "user2-test-password")
@@ -194,11 +217,12 @@ expect_dims = {
     "cine_24fps.mov": (1280, 720), "impair.mp4": (1078, 1918),
     "rotation_iphone.mov": (1080, 1920),
 }
-outs = sorted(out_dir.glob("*.mp4"))
-check("C. 11 fichiers de sortie sur disque", len(outs) == 11, f"n={len(outs)}")
+wait_settled(c, bid)
+outs = sorted(exported_names(bid))
+check("C. 11 fichiers de sortie (archivés ou sur disque)", len(outs) == 11, f"n={len(outs)}")
 for it in final["items"]:
     if it["status"] != "done": continue
-    p = out_dir / it["out_name"]
+    p = exported(bid, it["out_name"])
     m = ffprobe(p); vs = vstream(m); a = astream(m)
     sm = ffprobe(src_of[it["name"]]); svs = vstream(sm)
     nm = it["name"]
@@ -219,14 +243,14 @@ for it in final["items"]:
     else:
         check(f"C. [{nm}] audio AAC présent", a is not None and a.get("codec_name") == "aac",
               str(a and a.get("codec_name")))
-    blob = p.read_bytes()
+    blob = open(p, "rb").read()
     check(f"C. [{nm}] vrai réencodage x264 (crf={A.VEXPORT_CRF}, preset appliqué)",
           f"crf={A.VEXPORT_CRF}.0".encode() in blob and b"x264" in blob)
-rot_out = out_dir / next(it["out_name"] for it in final["items"] if it["name"] == "rotation_iphone.mov")
+rot_out = exported(bid, next(it["out_name"] for it in final["items"] if it["name"] == "rotation_iphone.mov"))
 rvs = vstream(ffprobe(rot_out))
 check("C. rotation iPhone appliquée une seule fois (pas de métadonnée résiduelle)",
       not any("rotation" in json.dumps(sd) for sd in (rvs.get("side_data_list") or [])), str(rvs.get("side_data_list")))
-vert_out = out_dir / next(it["out_name"] for it in final["items"] if it["name"] == "vertical.mp4")
+vert_out = exported(bid, next(it["out_name"] for it in final["items"] if it["name"] == "vertical.mp4"))
 s_v = ssim(vert_out, src_of["vertical.mp4"])
 check("C. aucune modification visuelle volontaire (SSIM ≥ 0,97 vs source)", s_v >= 0.97, f"SSIM={s_v}")
 same = [it["out_name"] for it in final["items"] if it["name"] == "meme_nom.mp4"]
@@ -265,7 +289,7 @@ check("D. jamais de fichier final partiel (écrit en .part, validé, puis renomm
 one = next(it for it in final["items"] if it["status"] == "done")
 r = c.get(f"/vexport_file/{bid}/{one['out_name']}")
 check("E. téléchargement individuel : 200 + octets identiques au disque",
-      r.status_code == 200 and r.data == (out_dir / one["out_name"]).read_bytes(), f"status={r.status_code}")
+      r.status_code == 200 and r.data == open(exported(bid, one["out_name"]), "rb").read(), f"status={r.status_code}")
 r.close()                                              # téléchargement terminé (sinon : « en cours » pour le serveur)
 r_trav =c.get(f"/vexport_file/{bid}/..%2Fstate.json")
 check("E. traversée de chemin refusée", r_trav.status_code in (400, 404), f"status={r_trav.status_code}")
@@ -311,8 +335,10 @@ check("I. sortie tronquée détectée → Erreur (pas « Terminée »)",
 check("I. échec FFmpeg → Erreur avec message", by["corrompue_apres.mp4"]["status"] == "error"
       and by["corrompue_apres.mp4"]["error"], str(by["corrompue_apres.mp4"]))
 check("I. un échec ne bloque pas le batch (vidéo valide terminée)", by["valide.mp4"]["status"] == "done")
+wait_settled(c, bidI)
 check("I. aucune sortie partielle laissée pour les échecs",
-      sorted(p.name for p in (A.EXPORT_DIR / bidI / "output").iterdir()) == [by["valide.mp4"]["out_name"]],
+      {p.name for p in (A.EXPORT_DIR / bidI / "output").iterdir()} <= {by["valide.mp4"]["out_name"]}
+      and exported_names(bidI) == {by["valide.mp4"]["out_name"]},
       str(list((A.EXPORT_DIR / bidI / "output").iterdir())))
 check("I. sources en erreur conservées (relance possible)", fI["retryable"] == 2, str(fI["retryable"]))
 rr = c.post("/vexport_retry", data={"batch_id": bidI}).get_json()
@@ -373,7 +399,7 @@ check("K. statut expose la pause + raison", dP["paused"] is True and dP["pause_r
 check("K. « Reprendre » : retry sort de pause", c.post("/vexport_retry", data={"batch_id": bP}).get_json().get("ok") is True)
 fP = wait_finished(c, bP)
 check("K. après reprise : batch terminé sans double traitement",
-      fP and fP["progress"]["done"] == 2 and len(list((A.EXPORT_DIR / bP / "output").glob("*.mp4"))) == 2,
+      fP and fP["progress"]["done"] == 2 and wait_settled(c, bP) and len(exported_names(bP)) == 2,
       str(fP and fP["progress"]))
 check("K. vidéo reprise : 2 tentatives comptées", A._vexport_load_state(bP)["items"][0]["attempts"] == 2,
       str(A._vexport_load_state(bP)["items"][0].get("attempts")))
@@ -455,7 +481,8 @@ if os.environ.get("VEXPORT_TEST_SKIP_500") != "1":
 # ══ M. Nettoyage ══════════════════════════════════════════════════════
 in_left = list((A.EXPORT_DIR / bid / "input").iterdir())
 check("M. sources supprimées après encodage réussi", in_left == [], str(in_left))
-check("M. résultats conservés après traitement", len(list(out_dir.glob("*.mp4"))) == 11)
+check("M. résultats conservés après traitement (dans l'archive)", len(exported_names(bid)) == 11
+      and not list(out_dir.glob("*.mp4")))
 leftovers = [p for p in A.EXPORT_DIR.rglob("*") if p.name.endswith((".part", ".tmp", ".log"))]
 check("M. aucun .part / .tmp / log FFmpeg résiduel", leftovers == [], str(leftovers))
 with A._vexport_flock(A._VEXPORT_GLOBAL_LOCK), A._vexport_flock(A._VEXPORT_ZIP_LOCK):   # encodeur et créateur de ZIP à l'arrêt

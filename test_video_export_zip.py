@@ -168,8 +168,10 @@ for n in (1, 2, 99, 100, 101, 235, 500):
         b235 = bid
         it0 = st["items"][150]
         r = c.get(f"/vexport_file/{bid}/{it0['out_name']}")
-        check("26. téléchargement individuel toujours fonctionnel",
-              r.status_code == 200 and r.data == (A.EXPORT_DIR / bid / "output" / it0["out_name"]).read_bytes())
+        with zipfile.ZipFile(A._vexport_zip_path(bid, 1)) as zz:          # MP4 archivé dans le ZIP 2
+            ref = zz.read(it0["out_name"])
+        check("26. téléchargement individuel toujours fonctionnel (vidéo lue dans son archive)",
+              r.status_code == 200 and r.data == ref)
         r.close()
     if n == 2:
         b2 = bid
@@ -226,26 +228,33 @@ with A._vexport_flock(A._VEXPORT_ZIP_LOCK):           # créateur de ZIP à l'ar
         st = A._vexport_load_state(b2); st["zips"]["0"] = saved; A._vexport_save_state(st)
 
 # ══ 16. ZIP corrompu détecté ═══════════════════════════════════════════
+# Stockage tournant : une fois l'archive finalisée et vérifiée, c'est la SEULE
+# copie (MP4 intermédiaires et sources supprimés) → une archive abîmée n'est
+# jamais servie et ses vidéos sont signalées en erreur (pas de boucle).
 zp = A.EXPORT_DIR / b2 / "zips" / "Batch_001.zip"
+builds_before = zstate(b2, 0).get("builds")
 data = zp.read_bytes()
 zp.write_bytes(data[: len(data) // 2])                # tronqué
 r = c.get(f"/vexport_group_zip/{b2}/1")
 check("16. ZIP tronqué détecté au téléchargement (409, pas servi)", r.status_code == 409, str(r.status_code))
 A._VEXPORT_ZIP_WAKE.set()
 d16 = wait_settled(c, b2, timeout=60)
-names, code = zip_names(c, b2, 1)
-check("16. ZIP reconstruit automatiquement puis valide", code == 200 and names and len(names) == 2)
-data = zp.read_bytes()
-zp.write_bytes(data[:-22] + b"\x00" * 22)             # répertoire central abîmé, même taille
-A._VEXPORT_ZIP_CHECKED.discard(b2)                    # = contrôle effectué au redémarrage
+check("16. archive perdue : vidéos signalées en erreur, plus de lien de téléchargement",
+      d16["groups"][0]["zip"]["url"] == "" and all(it["status"] == "error" and "Archive endommagée" in it["error"]
+                                                   for it in d16["items"]) and not zp.exists(), str(d16["items"][:1]))
+check("16. aucune boucle de reconstruction", zstate(b2, 0).get("builds") == builds_before)
+zp3 = A.EXPORT_DIR / b235 / "zips" / "Batch_003.zip"
+data = zp3.read_bytes()
+zp3.write_bytes(data[:-22] + b"\x00" * 22)            # répertoire central abîmé, même taille
+A._VEXPORT_ZIP_CHECKED.discard(b235)                  # = contrôle effectué au redémarrage
 A._VEXPORT_ZIP_WAKE.set()
 deadline = time.time() + 60
-while time.time() < deadline and zstate(b2, 0).get("builds", 0) < 3:
+while time.time() < deadline and zstate(b235, 2).get("status") == "ready":
     time.sleep(0.2)
-wait_settled(c, b2, timeout=60)
-names, code = zip_names(c, b2, 1)
-check("16. ZIP abîmé (taille inchangée) détecté au démarrage et reconstruit",
-      zstate(b2, 0).get("builds") == 3 and code == 200 and names and len(names) == 2, str(zstate(b2, 0)))
+d16b = wait_settled(c, b235, timeout=60)
+check("16. ZIP abîmé (taille inchangée) détecté au démarrage : groupe 3 en erreur, groupes 1–2 intacts",
+      d16b["groups"][2]["zip"]["url"] == "" and d16b["groups"][2]["error"] == 35
+      and zip_names(c, b235, 1)[1] == 200 and zip_names(c, b235, 2)[1] == 200, str(d16b["groups"][2]))
 
 # ══ 19–20. Utilisateurs simultanés + isolation ═════════════════════════
 res = {}
@@ -311,9 +320,10 @@ A._vexport_wake()
 dDe2 = wait_settled(c, bD2, timeout=60)
 check("22. espace libéré → encodages repris et ZIP créé", dDe2["progress"]["done"] == 4 and dDe2["all_zips_ready"])
 # c) ENOSPC en pleine écriture du ZIP
-real_write = A._vexport_write_zip
-def failing_write(part, out_dir, members):
-    with open(part, "wb") as f:
+real_write = A._vexport_part_append
+def failing_write(batch_id, g, z_part, src, name):
+    A._vexport_part_path(batch_id, g).parent.mkdir(parents=True, exist_ok=True)
+    with open(A._vexport_part_path(batch_id, g), "ab") as f:   # ajout partiel puis disque plein
         f.write(b"PK\x03\x04" + b"\x00" * 4096)
     raise OSError(errno.ENOSPC, "No space left on device")
 with A._vexport_flock(A._VEXPORT_ZIP_LOCK):
@@ -322,7 +332,7 @@ with A._vexport_flock(A._VEXPORT_ZIP_LOCK):
     deadline = time.time() + 60
     while time.time() < deadline and not status(c, bD3)["progress"]["finished"]:
         time.sleep(0.2)
-    A._vexport_write_zip = failing_write
+    A._vexport_part_append = failing_write
 A._VEXPORT_ZIP_WAKE.set()
 deadline = time.time() + 30
 while time.time() < deadline and zstate(bD3, 0).get("status") != "no_space":
@@ -330,7 +340,7 @@ while time.time() < deadline and zstate(bD3, 0).get("status") != "no_space":
 check("21. ENOSPC pendant l'écriture → no_space, .part supprimé, rien servi",
       zstate(bD3, 0).get("status") == "no_space" and not list((A.EXPORT_DIR / bD3 / "zips").glob("*"))
       and c.get(f"/vexport_group_zip/{bD3}/1").status_code == 409, str(zstate(bD3, 0)))
-A._vexport_write_zip = real_write
+A._vexport_part_append = real_write
 A._VEXPORT_ZIP_WAKE.set()
 wait_settled(c, bD3, timeout=60)
 names, code = zip_names(c, bD3, 1)

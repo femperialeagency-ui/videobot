@@ -177,7 +177,8 @@ check("2. vidéo interrompue : 2 tentatives, 1 interruption, Terminée",
       x2["status"] == "done" and x2.get("attempts") == 2 and x2.get("interrupted") == 1, str(x2))
 check("2. interruption comptée au niveau du batch, pas de pause", st.get("interruptions", 0) >= 1 and not st.get("paused"))
 outs = sorted(os.listdir(os.path.join(EXPORT, bid, "output")))
-check("2. aucun doublon ni fichier partiel en sortie", outs == sorted(x["out_name"] for x in st["items"]), str(outs))
+check("2. aucun doublon ni fichier partiel en sortie (MP4 archivés supprimés au fil de l'eau)",
+      set(outs) <= {x["out_name"] for x in st["items"]} and not any(o.endswith(".part") for o in outs), str(outs))
 check("2. sources supprimées après succès", os.listdir(os.path.join(EXPORT, bid, "input")) == [])
 logs = "".join(open(l).read() for l in LOGS)
 dones = re.findall(rf"batch={bid[:8]} idx=(\d+) done", logs)
@@ -243,8 +244,9 @@ os.killpg(proc5.pid, signal.SIGKILL)
 time.sleep(0.5)
 check("4. kill -9 pendant l'écriture du ZIP (.part partiel présent)", caught and os.path.exists(part),
       f"part={os.path.exists(part) and os.path.getsize(part)}")
-check("4. après le crash : ZIP « building », aucun ZIP final exposé",
-      state(big)["zips"]["0"]["status"] == "building" and not os.path.exists(part[:-5]))
+z_crash = state(big)["zips"]["0"]
+check("4. après le crash : archivage marqué en cours, aucun ZIP final exposé",
+      (z_crash.get("busy") or z_crash.get("status") == "building") and not os.path.exists(part[:-5]), str(z_crash))
 proc6, base6 = start_server(1)
 wpid = [p for p in gunicorn_pids(proc6) if p != proc6.pid][0]
 rss_peak = 0
@@ -255,7 +257,7 @@ while time.time() < deadline and (state(big).get("zips") or {}).get("0", {}).get
     time.sleep(0.05)
 z = state(big)["zips"]["0"]
 check("4. création ZIP interrompue reprise automatiquement (aucun poll client)", z["status"] == "ready", str(z))
-check("4. une seule reprise : 2 créations au total (1 interrompue + 1 complète)", z.get("builds") == 2, str(z.get("builds")))
+check("4. ajout interrompu annulé puis archive finalisée une seule fois", z.get("builds") == 1, str(z.get("builds")))
 check("4. .part interrompu supprimé, ZIP final unique", not os.path.exists(part)
       and os.listdir(os.path.join(jd, "zips")) == ["Batch_001.zip"])
 with zipfile.ZipFile(part[:-5]) as zf:

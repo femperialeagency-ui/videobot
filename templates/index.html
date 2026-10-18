@@ -5445,7 +5445,11 @@ async function veFreeSpace() {
     const elig = rows.filter(b => b.eligible);
     const prot = rows.filter(b => !b.eligible);
     const disk = d.disk || {};
-    const head = `<div class="ve-modal-row">Espace libre : <b>${veFmtBytes(disk.free)}</b> sur ${veFmtBytes(disk.total)} · Batch Video Export : ${veFmtBytes(d.exports_bytes)}</div>`;
+    const usage = (d.usage || []).map(u => `<div>${escapeHtml(u.label)} : <b>${veFmtBytes(u.bytes)}</b>`
+      + ((u.detail || []).filter(x => x.bytes >= 1e6).length ? ` <span style="opacity:.8">(${u.detail.filter(x => x.bytes >= 1e6).map(x => escapeHtml(x.name) + " " + veFmtBytes(x.bytes)).join(", ")})</span>` : "")
+      + `</div>`).join("");
+    const head = `<div class="ve-modal-row">Espace libre : <b>${veFmtBytes(disk.free)}</b> sur ${veFmtBytes(disk.total)} · utilisé : ${veFmtBytes(disk.used)}`
+      + (usage ? `<div style="margin-top:6px;line-height:1.55;">${usage}</div>` : "") + `</div>`;
     const protHtml = prot.map(b => `<div class="ve-free-row locked">🔒 <span>${escapeHtml(veFreeDesc(b))} · ${veFmtBytes(b.bytes)} — en cours d'utilisation, protégé</span></div>`).join("");
     if (!elig.length) {
       await veAsk("Libérer de l'espace", "Aucun ancien batch ne peut être supprimé pour le moment.", head + protHtml, [{ label: "Fermer", value: "no", primary: true }]);
@@ -5526,6 +5530,7 @@ async function veCreateBatch(confirmIds) {
   fd.append("clean_previous", "1");
   fd.append("expected_count", String(veFiles.length));
   fd.append("expected_bytes", String(veFiles.reduce((t, f) => t + (f.size || 0), 0)));
+  fd.append("expected_max", String(veFiles.reduce((m, f) => Math.max(m, f.size || 0), 0)));
   if (confirmIds.length) fd.append("confirm_ids", confirmIds.join(","));
   const r = await fetch("/vexport_create", { method: "POST", body: fd });
   try { return await r.json(); } catch (e) { return { error: "Réponse inattendue du serveur (" + r.status + ")" }; }
