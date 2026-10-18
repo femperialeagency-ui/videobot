@@ -9,7 +9,8 @@ Lance Gunicorn avec les options du Dockerfile, démarre un batch, puis :
   2. tue TOUT (Gunicorn + FFmpeg, comme l'OOM Render) puis redémarre :
      la vidéo interrompue est détectée, reprise, aucune vidéo encodée deux
      fois, statut + ZIP OK après redémarrage (« Aucun fichier valide ») ;
-  3. 2 workers Gunicorn + 2 utilisateurs en parallèle : 1 seul FFmpeg.
+  3. 2 workers Gunicorn + 2 utilisateurs en parallèle : 1 seul FFmpeg ;
+  4. kill -9 PENDANT la création d'un ZIP : reprise, aucun ZIP partiel servi.
 
 Usage : python3 test_video_export_restart.py   (gunicorn + requests requis)
 """
@@ -184,7 +185,10 @@ check("2. aucune vidéo encodée deux fois avec succès", len(dones) == len(set(
 # Le client (même cookie : SECRET_KEY stable) retrouve son batch après redémarrage.
 d = s1.get(base3 + f"/vexport_status/{bid}").json()
 check("2. statut après redémarrage : terminé, 100 %", d["progress"]["finished"] and d["progress"]["percent"] == 100, str(d["progress"]))
-rz = s1.get(base3 + f"/vexport_zip/{bid}")
+st = wait_disk(bid, lambda st: (st.get("zips") or {}).get("0", {}).get("status") == "ready", 60)
+check("2. ZIP du groupe créé automatiquement après redémarrage (1 seule création)",
+      st["zips"]["0"]["status"] == "ready" and st["zips"]["0"]["builds"] == 1, str(st.get("zips")))
+rz = s1.get(base3 + f"/vexport_group_zip/{bid}/1")
 names = zipfile.ZipFile(io.BytesIO(rz.content)).namelist() if rz.status_code == 200 else []
 check("2. ZIP après redémarrage : 4 vidéos (pas de « Aucun fichier valide »)", len(names) == 4, f"{rz.status_code} {rz.text[:120] if rz.status_code != 200 else ''}")
 s1.close()                                           # keep-alive ouvert = 30 s de grâce Gunicorn
@@ -211,7 +215,60 @@ check("3. les 2 batchs (2 utilisateurs) terminés", all(fin.get(n, {}).get("prog
 check("3. isolation inter-workers : u2 ne voit pas le batch de u1",
       u2.get(base4 + f"/vexport_status/{res['u1']}").status_code == 403)
 u1.close(); u2.close()
+time.sleep(1.0)
+check("3. ZIP déjà valide retrouvé après redémarrage, jamais recréé", state(bid)["zips"]["0"]["builds"] == 1
+      and state(bid)["zips"]["0"]["status"] == "ready", str(state(bid).get("zips")))
 os.killpg(proc4.pid, signal.SIGTERM); proc4.wait(timeout=45)
+
+# ══ 4. kill -9 PENDANT la création d'un ZIP (archive de ~1,2 Go) ══════
+big = A.uuid.uuid4().hex
+jd = os.path.join(EXPORT, big)
+os.makedirs(os.path.join(jd, "input")); os.makedirs(os.path.join(jd, "output"))
+items = []
+for i in range(2):
+    with open(os.path.join(jd, "output", f"gros{i}.mp4"), "wb") as f:
+        for _ in range(600):
+            f.write(os.urandom(1 << 20))
+    items.append({"idx": i, "orig_name": f"gros{i}.mp4", "in_name": f"{i:04d}.mp4", "out_name": f"gros{i}.mp4",
+                  "status": "done", "error": "", "in_size": 0, "out_size": 600 << 20, "attempts": 1})
+json.dump({"batch_id": big, "user_id": 1, "created": time.time(), "updated": time.time(), "started": True,
+           "items": items}, open(os.path.join(jd, "state.json"), "w"))
+part = os.path.join(jd, "zips", "Batch_001.zip.part")
+proc5, base5 = start_server(1)
+deadline = time.time() + 60
+while time.time() < deadline and not (os.path.exists(part) and os.path.getsize(part) > (150 << 20)):
+    time.sleep(0.02)
+caught = os.path.exists(part) and os.path.getsize(part) > (150 << 20)
+os.killpg(proc5.pid, signal.SIGKILL)
+time.sleep(0.5)
+check("4. kill -9 pendant l'écriture du ZIP (.part partiel présent)", caught and os.path.exists(part),
+      f"part={os.path.exists(part) and os.path.getsize(part)}")
+check("4. après le crash : ZIP « building », aucun ZIP final exposé",
+      state(big)["zips"]["0"]["status"] == "building" and not os.path.exists(part[:-5]))
+proc6, base6 = start_server(1)
+wpid = [p for p in gunicorn_pids(proc6) if p != proc6.pid][0]
+rss_peak = 0
+deadline = time.time() + 240
+while time.time() < deadline and (state(big).get("zips") or {}).get("0", {}).get("status") != "ready":
+    out = subprocess.run(["ps", "-o", "rss=", "-p", str(wpid)], capture_output=True, text=True).stdout.strip()
+    rss_peak = max(rss_peak, int(out or 0))
+    time.sleep(0.05)
+z = state(big)["zips"]["0"]
+check("4. création ZIP interrompue reprise automatiquement (aucun poll client)", z["status"] == "ready", str(z))
+check("4. une seule reprise : 2 créations au total (1 interrompue + 1 complète)", z.get("builds") == 2, str(z.get("builds")))
+check("4. .part interrompu supprimé, ZIP final unique", not os.path.exists(part)
+      and os.listdir(os.path.join(jd, "zips")) == ["Batch_001.zip"])
+with zipfile.ZipFile(part[:-5]) as zf:
+    check("4. ZIP reconstruit intègre (CRC des 1,2 Go) et complet", zf.testzip() is None
+          and [(i.filename, i.file_size) for i in zf.infolist()] == [("gros0.mp4", 600 << 20), ("gros1.mp4", 600 << 20)])
+print(f"   ℹ️  RSS max du worker Gunicorn pendant la création d'un ZIP de 1,2 Go : {rss_peak / 1024:.0f} Mo")
+check("4. mémoire bornée pendant la création du ZIP (worker < 300 Mo)", 0 < rss_peak < 300 * 1024, f"{rss_peak} Ko")
+s6 = login(base6, ADMIN)
+h = s6.head(base6 + f"/vexport_group_zip/{big}/1")
+check("4. ZIP téléchargeable après reprise", h.status_code == 200 and int(h.headers.get("Content-Length", 0)) == z["size"])
+check("4. autre utilisateur : 403 sur ce ZIP", login(base6, USER2).head(base6 + f"/vexport_group_zip/{big}/1").status_code == 403)
+s6.close()
+os.killpg(proc6.pid, signal.SIGTERM); proc6.wait(timeout=45)
 
 sampler.stop_ev.set(); sampler.join(timeout=2)
 time.sleep(0.5)

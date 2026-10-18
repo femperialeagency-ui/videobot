@@ -7687,11 +7687,18 @@ def reels_mix_cleanup():
 # après 3 interruptions (anti boucle de crash). Rien n'est perdu : la source
 # n'est supprimée qu'après un encodage validé.
 #
+# V2 — ZIP PROGRESSIFS : les vidéos du batch sont regroupées par 100 ; chaque
+# groupe entièrement final reçoit automatiquement son archive Batch_00N.zip
+# (thread et verrou dédiés, écrite en .part, vérifiée, renommée), disponible
+# pendant que les encodages des groupes suivants continuent.
+#
 # NE touche à AUCUNE autre fonctionnalité (Caption Renderer, OCR, Reels,
 # Variations, Optimizer, auth, crédits IA, analytics). Ne falsifie ni ne
 # supprime aucune info de provenance / C2PA : simple réexport standard.
 # ══════════════════════════════════════════════════════════════════
+import errno
 import fcntl
+import hashlib
 import math
 import sys as _vx_sys
 from contextlib import contextmanager
@@ -7725,6 +7732,13 @@ VEXPORT_MAX_INTERRUPTIONS = 3                         # au-delà : batch en paus
 VEXPORT_RETENTION_HOURS = float(_vexport_env_int("VEXPORT_RETENTION_HOURS", 6, 1, 24 * 14))
 VEXPORT_MIN_FREE_CREATE = 800_000_000                 # < 0,8 Go libres → pas de nouveau batch
 VEXPORT_MIN_FREE_UPLOAD = 300_000_000                 # < 0,3 Go libres → upload refusé proprement
+VEXPORT_MIN_FREE_ENCODE = 300_000_000                 # < 0,3 Go (+ taille source) → encodage mis en attente
+# ZIP progressifs (V2) : 1 archive par groupe de 100 vidéos, créée dès que le
+# groupe est entièrement final (terminées + erreurs définitives).
+VEXPORT_GROUP_SIZE    = 100
+VEXPORT_ZIP_MARGIN    = 200_000_000                   # marge libre exigée en plus de la taille du ZIP
+_VEXPORT_IO_CHUNK     = 1 << 20                       # copie par blocs de 1 Mo (mémoire bornée)
+_VEXPORT_IO_FLUSH     = 32 << 20                      # fsync + purge du cache disque tous les 32 Mo
 
 
 def _vexport_cpu_quota() -> float:
@@ -7771,7 +7785,10 @@ _VEXPORT_LIVE_PATH   = EXPORT_DIR / ".current.json"   # progression de l'encodag
 _VEXPORT_REG_LOCK    = threading.Lock()               # protège _VEXPORT_LOCKS
 _VEXPORT_LOCKS       = {}                             # batch_id -> threading.Lock
 _VEXPORT_WAKE        = threading.Event()              # réveille l'ordonnanceur (start / retry)
-_VEXPORT_WORKER      = {"pid": None, "thread": None}
+_VEXPORT_WORKER      = {"pid": None, "thread": None, "zip_thread": None}
+_VEXPORT_ZIP_LOCK    = EXPORT_DIR / ".zip.lock"      # 1 création de ZIP max pour toute l'instance
+_VEXPORT_ZIP_WAKE    = threading.Event()              # réveille le créateur de ZIP (vidéo finie, relance)
+_VEXPORT_ZIP_CHECKED = set()                          # batchs dont les ZIP ont été revérifiés depuis le démarrage
 _VEXPORT_WORKER_LOCK = threading.Lock()
 
 
@@ -7896,9 +7913,14 @@ def _vexport_clear_live() -> None:
 
 
 def _vexport_is_active(st: dict) -> bool:
-    """Batch lancé, non en pause, avec du travail restant (en file ou en cours)."""
-    return bool(st and st.get("started") and not st.get("paused")
-                and any(it.get("status") in ("pending", "processing") for it in st.get("items", [])))
+    """Batch lancé, non en pause, avec du travail restant : vidéo en file ou en
+    cours, ou archive ZIP encore à créer (en attente, en cours, disque plein)."""
+    if not (st and st.get("started")):
+        return False
+    if not st.get("paused") and any(it.get("status") in ("pending", "processing") for it in st.get("items", [])):
+        return True
+    return any((z or {}).get("status") in ("pending", "building", "no_space", "error")
+               for z in (st.get("zips") or {}).values())
 
 
 def _cleanup_stale_vexport(max_age_hours: float = None):
@@ -8113,10 +8135,18 @@ def _vexport_claim_next():
             for it in sorted(st["items"], key=lambda x: x["idx"]):
                 if it.get("status") != "pending":
                     continue
-                if not (in_dir / it["in_name"]).exists():
+                src = in_dir / it["in_name"]
+                if not src.exists():
                     it.update(status="error", error="Fichier source introuvable sur le serveur")
                     changed = True
                     continue
+                free = _disk_free_bytes(EXPORT_DIR)
+                if free is not None and free < VEXPORT_MIN_FREE_ENCODE + src.stat().st_size:
+                    # Disque presque plein : on n'encode pas (pas d'échec en cascade,
+                    # rien n'est supprimé) ; reprise auto dès que l'espace revient.
+                    if changed:
+                        _vexport_save_state(st)
+                    return None
                 now = time.time()
                 it.update(status="processing", error="", progress=0, t_start=now,
                           attempts=int(it.get("attempts") or 0) + 1)
@@ -8221,6 +8251,11 @@ def _vexport_encode(batch_id: str, item: dict, lock_fd: int) -> None:
                           out_size=os.path.getsize(final) if os.path.exists(final) else 0)
                 try: os.path.exists(path_in) and os.remove(path_in)   # source supprimée APRÈS succès validé
                 except Exception: pass
+            elif "No space left" in err or "Errno 28" in err:
+                # Disque plein : pas un défaut de la vidéo → remise en file sans
+                # consommer de tentative (reprise quand l'espace revient).
+                it.update(status="pending", error="", progress=0,
+                          attempts=max(0, int(it.get("attempts") or 1) - 1))
             elif transient and int(it.get("attempts") or 0) < VEXPORT_MAX_ATTEMPTS:
                 it.update(status="pending", error="", progress=0,
                           interrupted=int(it.get("interrupted") or 0) + 1)
@@ -8228,6 +8263,7 @@ def _vexport_encode(batch_id: str, item: dict, lock_fd: int) -> None:
                 it.update(status="error", error=err, progress=0)
             _vexport_save_state(st)
     _vexport_clear_live()
+    _VEXPORT_ZIP_WAKE.set()                           # un groupe vient peut-être d'être complété
     _vexport_log(f"batch={batch_id[:8]} idx={idx} {'done' if not err else 'error'} "
                  f"{enc_s}s threads={VEXPORT_FFMPEG_THREADS}" + (f" err={err[:120]!r}" if err else ""))
     gc.collect()
@@ -8260,24 +8296,302 @@ def _vexport_worker_loop():
             _VEXPORT_WAKE.clear()
 
 
+# ── ZIP progressifs (V2) ──────────────────────────────────────────
+# Un seul batch logique ; ses vidéos sont regroupées par 100 selon leur ordre
+# d'import (groupe 1 = vidéos 1–100, …). Dès qu'un groupe est entièrement
+# final, un thread dédié (distinct de l'encodeur : FFmpeg n'est jamais
+# interrompu) écrit son ZIP sur disque en « Batch_00N.zip.part », par blocs de
+# 1 Mo (mémoire bornée, cache disque purgé), le relit entièrement (CRC + liste
+# attendue), puis le renomme atomiquement. Un verrou flock dédié limite la
+# création à UN ZIP à la fois pour toute l'instance. Le contenu attendu est
+# résumé par une signature : si une relance ajoute une vidéo, l'archive est
+# reconstruite ; un ZIP valide n'est jamais recréé inutilement.
+
+def _vexport_n_groups(st: dict) -> int:
+    return math.ceil(len(st.get("items", [])) / VEXPORT_GROUP_SIZE)
+
+
+def _vexport_zip_name(g: int) -> str:
+    return f"Batch_{g + 1:03d}.zip"
+
+
+def _vexport_zip_path(batch_id: str, g: int) -> Path:
+    return _vexport_dir(batch_id) / "zips" / _vexport_zip_name(g)
+
+
+def _vexport_group_items(st: dict, g: int) -> list:
+    items = sorted(st.get("items", []), key=lambda x: x["idx"])
+    return items[g * VEXPORT_GROUP_SIZE:(g + 1) * VEXPORT_GROUP_SIZE]
+
+
+def _vexport_group_plan(st: dict, g: int):
+    """(final, membres, signature) : membres = [(out_name, taille)] des vidéos
+    terminées du groupe dont le fichier existe, dans l'ordre d'import."""
+    its = _vexport_group_items(st, g)
+    final = bool(its) and all(it.get("status") in ("done", "error") for it in its)
+    out_dir = _vexport_dir(st["batch_id"]) / "output"
+    members = []
+    for it in its:
+        if it.get("status") == "done":
+            try:
+                members.append((it["out_name"], (out_dir / it["out_name"]).stat().st_size))
+            except OSError:
+                pass
+    sig = hashlib.sha1(json.dumps(members).encode()).hexdigest()[:16]
+    return final, members, sig
+
+
+def _vexport_drop_cache(fd: int) -> None:
+    """Purge le cache disque d'un fichier (Linux) : la copie de centaines de Mo
+    ne gonfle pas la mémoire comptée par le conteneur."""
+    if hasattr(os, "posix_fadvise"):
+        try: os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+        except Exception: pass
+
+
+def _vexport_write_zip(part: str, out_dir: Path, members: list) -> None:
+    """ZIP_STORED (aucune recompression : faible CPU) écrit progressivement."""
+    with open(part, "wb") as raw:
+        with zipfile.ZipFile(raw, "w", zipfile.ZIP_STORED, allowZip64=True) as zf:
+            pending = 0
+            for name, _size in members:
+                src = out_dir / name
+                zi = zipfile.ZipInfo.from_file(str(src), arcname=name)
+                zi.compress_type = zipfile.ZIP_STORED
+                with open(src, "rb") as fsrc, zf.open(zi, "w") as dst:
+                    while True:
+                        buf = fsrc.read(_VEXPORT_IO_CHUNK)
+                        if not buf:
+                            break
+                        dst.write(buf)
+                        pending += len(buf)
+                        if pending >= _VEXPORT_IO_FLUSH:
+                            raw.flush(); os.fsync(raw.fileno())
+                            _vexport_drop_cache(raw.fileno()); _vexport_drop_cache(fsrc.fileno())
+                            pending = 0
+                    _vexport_drop_cache(fsrc.fileno())
+        raw.flush(); os.fsync(raw.fileno()); _vexport_drop_cache(raw.fileno())
+
+
+def _vexport_verify_zip(path: str, members: list):
+    """Relecture COMPLÈTE : liste et tailles attendues + CRC de chaque fichier
+    (ZipExtFile lève BadZipFile si un CRC ne correspond pas)."""
+    try:
+        with open(path, "rb") as raw, zipfile.ZipFile(raw) as zf:
+            got = [(i.filename, i.file_size) for i in zf.infolist()]
+            if got != [(n, s) for n, s in members]:
+                return False, "contenu de l'archive inattendu"
+            pending = 0
+            for info in zf.infolist():
+                with zf.open(info) as f:
+                    while True:
+                        b = f.read(_VEXPORT_IO_CHUNK)
+                        if not b:
+                            break
+                        pending += len(b)
+                        if pending >= _VEXPORT_IO_FLUSH:
+                            _vexport_drop_cache(raw.fileno()); pending = 0
+            _vexport_drop_cache(raw.fileno())
+        return True, ""
+    except Exception as e:
+        return False, f"archive invalide ({e})"[:200]
+
+
+def _vexport_zip_quick_ok(path: Path, z: dict) -> bool:
+    """Contrôle rapide d'un ZIP « prêt » (au téléchargement / redémarrage) :
+    taille enregistrée + répertoire central lisible avec le bon nombre de
+    fichiers. Détecte un fichier tronqué, écrasé ou disparu."""
+    try:
+        if path.stat().st_size != int(z.get("size") or -1):
+            return False
+        with zipfile.ZipFile(str(path)) as zf:
+            return len(zf.infolist()) == int(z.get("count") or -1)
+    except Exception:
+        return False
+
+
+def _vexport_zip_prepare(batch_id: str):
+    """(Tenant le verrou ZIP.) Récupère les créations interrompues, détecte
+    les archives invalides et choisit le prochain groupe à archiver.
+    Retourne (groupe, membres, signature) ou None."""
+    with _vexport_state_lock(batch_id):
+        st = _vexport_load_state(batch_id)
+        if not st or not st.get("started"):
+            return None
+        zips = st.setdefault("zips", {})
+        changed = False
+        boot_check = batch_id not in _VEXPORT_ZIP_CHECKED
+        _VEXPORT_ZIP_CHECKED.add(batch_id)
+        job = None
+        for g in range(_vexport_n_groups(st)):
+            z = zips.setdefault(str(g), {"status": "waiting"})
+            zp = _vexport_zip_path(batch_id, g)
+            part = Path(str(zp) + ".part")
+            if z.get("status") == "building":            # personne ne crée de ZIP → orphelin (crash)
+                try: part.unlink(missing_ok=True)
+                except Exception: pass
+                z.update(status="pending", message="")
+                changed = True
+                _vexport_log(f"zip recover batch={batch_id[:8]} group={g + 1} (création interrompue)")
+            if z.get("status") == "ready" and boot_check and not _vexport_zip_quick_ok(zp, z):
+                z.update(status="pending", message="Archive invalide détectée — reconstruction automatique.")
+                changed = True
+            if job:
+                continue
+            final, members, sig = _vexport_group_plan(st, g)
+            if not final:
+                continue                                  # un ZIP déjà prêt reste téléchargeable
+            if not members:
+                if z.get("status") != "empty":
+                    z.update(status="empty", count=0, message=""); changed = True
+                continue
+            if z.get("status") == "ready" and z.get("sig") == sig:
+                continue                                  # valide : jamais recréé inutilement
+            if z.get("status") == "error" and time.time() < float(z.get("retry_at") or 0):
+                continue
+            need = sum(s for _, s in members) + VEXPORT_ZIP_MARGIN
+            free = _disk_free_bytes(EXPORT_DIR)
+            if free is not None and free < need:
+                if z.get("status") != "no_space":
+                    z.update(status="no_space",
+                             message=(f"Espace disque serveur insuffisant pour créer l'archive "
+                                      f"({need / 1e9:.2f} Go nécessaires, {free / 1e9:.2f} Go libres). "
+                                      f"Création automatique dès que de l'espace se libère."))
+                    changed = True
+                continue
+            z.update(status="building", message="", sig_target=sig, builds=int(z.get("builds") or 0) + 1)
+            changed = True
+            job = (g, members, sig)
+        if changed:
+            _vexport_save_state(st)
+        return job
+
+
+def _vexport_zip_build(batch_id: str, g: int, members: list, sig: str) -> None:
+    out_dir = _vexport_dir(batch_id) / "output"
+    zp = _vexport_zip_path(batch_id, g)
+    part = str(zp) + ".part"
+    err, no_space, t0 = None, False, time.time()
+    try:
+        zp.parent.mkdir(parents=True, exist_ok=True)
+        _vexport_write_zip(part, out_dir, members)
+        ok, why = _vexport_verify_zip(part, members)
+        if not ok:
+            err = why
+    except OSError as e:
+        err = str(e)[:200]
+        no_space = e.errno == errno.ENOSPC
+    except Exception as e:
+        err = str(e)[:200] or "erreur inconnue"
+    with _vexport_state_lock(batch_id):
+        st = _vexport_load_state(batch_id)
+        if not st:
+            try: os.remove(part)
+            except Exception: pass
+            return
+        z = st.setdefault("zips", {}).setdefault(str(g), {})
+        if err:
+            try: os.remove(part)
+            except Exception: pass
+            if no_space:
+                z.update(status="no_space", message="Espace disque insuffisant pendant la création de "
+                                                    "l'archive. Nouvel essai automatique dès que de l'espace se libère.")
+            else:
+                n_err = int(z.get("zip_errors") or 0) + 1
+                z.update(status="error", zip_errors=n_err, retry_at=time.time() + min(600, 60 * n_err),
+                         message=f"Création de l'archive impossible ({err}). Nouvel essai automatique.")
+        elif _vexport_group_plan(st, g)[2] != sig:
+            try: os.remove(part)                          # contenu modifié pendant la création
+            except Exception: pass
+            z.update(status="pending", message="")
+        else:
+            os.replace(part, str(zp))                     # visible seulement une fois complet et vérifié
+            z.update(status="ready", sig=sig, file=_vexport_zip_name(g), size=zp.stat().st_size,
+                     count=len(members), built_at=time.time(), message="", zip_errors=0)
+        _vexport_save_state(st)
+    _vexport_log(f"zip batch={batch_id[:8]} group={g + 1} files={len(members)} "
+                 f"{'ok' if not err else 'error'} {time.time() - t0:.2f}s" + (f" err={err!r}" if err else ""))
+
+
+def _vexport_zip_run_once() -> bool:
+    with _vexport_flock(_VEXPORT_ZIP_LOCK):
+        try:
+            names = [d.name for d in EXPORT_DIR.iterdir() if d.is_dir() and _vexport_safe_id(d.name)]
+        except Exception:
+            names = []
+        for bid in names:
+            job = _vexport_zip_prepare(bid)
+            if job:
+                _vexport_zip_build(bid, *job)
+                return True
+    return False
+
+
+def _vexport_zip_worker_loop():
+    if _vx_sys.platform.startswith("linux"):              # priorité basse pour CE thread : FFmpeg passe d'abord
+        try: os.setpriority(os.PRIO_PROCESS, threading.get_native_id(), 10)
+        except Exception: pass
+    while True:
+        did = False
+        try:
+            did = _vexport_zip_run_once()
+        except Exception as e:
+            _vexport_log(f"zip worker error: {e!r}")
+            time.sleep(2)
+        if not did:
+            _VEXPORT_ZIP_WAKE.wait(timeout=15)
+            _VEXPORT_ZIP_WAKE.clear()
+
+
 def _vexport_ensure_worker():
-    """Un seul thread ordonnanceur par process (redémarré si le process a
-    été forké ou si le thread est mort). Lancé dès l'import : la reprise après
-    redémarrage n'attend pas qu'un utilisateur rouvre la page."""
+    """Un thread d'encodage + un thread de création ZIP par process
+    (redémarrés si le process a été forké ou si un thread est mort). Lancés
+    dès l'import : la reprise après redémarrage n'attend pas qu'un
+    utilisateur rouvre la page."""
     if os.environ.get("VEXPORT_WORKER", "1") == "0":
         return
     with _VEXPORT_WORKER_LOCK:
-        t = _VEXPORT_WORKER["thread"]
-        if t is not None and t.is_alive() and _VEXPORT_WORKER["pid"] == os.getpid():
-            return
-        t = threading.Thread(target=_vexport_worker_loop, name="vexport-worker", daemon=True)
-        _VEXPORT_WORKER.update(pid=os.getpid(), thread=t)
-        t.start()
+        same_pid = _VEXPORT_WORKER["pid"] == os.getpid()
+        for key, target, name in (("thread", _vexport_worker_loop, "vexport-worker"),
+                                  ("zip_thread", _vexport_zip_worker_loop, "vexport-zip")):
+            t = _VEXPORT_WORKER[key]
+            if t is not None and t.is_alive() and same_pid:
+                continue
+            t = threading.Thread(target=target, name=name, daemon=True)
+            _VEXPORT_WORKER[key] = t
+            t.start()
+        _VEXPORT_WORKER["pid"] = os.getpid()
 
 
 def _vexport_wake():
     _vexport_ensure_worker()
     _VEXPORT_WAKE.set()
+    _VEXPORT_ZIP_WAKE.set()
+
+
+def _vexport_groups_view(st: dict) -> list:
+    """Vue des groupes pour l'interface (sans accès disque)."""
+    bid = st["batch_id"]
+    zips = st.get("zips") or {}
+    out = []
+    for g in range(_vexport_n_groups(st)):
+        its = _vexport_group_items(st, g)
+        done = sum(1 for it in its if it["status"] == "done")
+        err = sum(1 for it in its if it["status"] == "error")
+        proc = sum(1 for it in its if it["status"] == "processing")
+        final = (done + err) == len(its)
+        z = zips.get(str(g)) or {}
+        zs = z.get("status") or "waiting"
+        if final and zs == "waiting":
+            zs = "pending"                                # le créateur de ZIP va le prendre
+        out.append({"n": g + 1, "first": g * VEXPORT_GROUP_SIZE + 1, "last": g * VEXPORT_GROUP_SIZE + len(its),
+                    "total": len(its), "done": done, "error": err, "processing": proc, "final": final,
+                    "zip": {"status": zs, "name": _vexport_zip_name(g),
+                            "url": f"/vexport_group_zip/{bid}/{g + 1}" if zs == "ready" else "",
+                            "size": int(z.get("size") or 0) if zs == "ready" else 0,
+                            "count": int(z.get("count") or 0) if zs == "ready" else 0,
+                            "message": z.get("message") or ""}})
+    return out
 
 
 def _vexport_progress(st: dict, pcts: dict = None) -> dict:
@@ -8436,10 +8750,17 @@ def vexport_status(batch_id):
         waiting_other = bool(st.get("started") and not prog["finished"] and not st.get("paused")
                              and prog["processing"] == 0 and live_fresh
                              and live.get("batch_id") not in (None, bid))
+        groups = _vexport_groups_view(st)
+        settled = bool(groups) and all(g["final"] and g["zip"]["status"] in ("ready", "empty") for g in groups)
+        all_ready = settled and any(g["zip"]["status"] == "ready" for g in groups)
+        free = _disk_free_bytes(EXPORT_DIR)
+        disk_low = bool(st.get("started") and not prog["finished"] and prog["pending"] > 0
+                        and free is not None and free < VEXPORT_MIN_FREE_ENCODE + 50_000_000)
         return jsonify({"batch_id": bid, "started": bool(st.get("started")),
                         "paused": bool(st.get("paused")), "pause_reason": st.get("pause_reason", ""),
-                        "waiting_other": waiting_other, "retryable": retryable,
-                        "progress": prog, "items": items})
+                        "waiting_other": waiting_other, "retryable": retryable, "disk_low": disk_low,
+                        "progress": prog, "items": items, "group_size": VEXPORT_GROUP_SIZE,
+                        "groups": groups, "archives_settled": settled, "all_zips_ready": all_ready})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -8463,6 +8784,9 @@ def vexport_retry():
                 if it["status"] == "error" and (in_dir / it["in_name"]).exists():
                     it.update(status="pending", error="", attempts=0, progress=0)
                     n += 1
+            for z in (st.get("zips") or {}).values():     # ZIP en échec : nouvel essai immédiat
+                if z.get("status") == "error":
+                    z.update(status="pending", retry_at=0, zip_errors=0, message="")
             st["paused"] = False
             st["pause_reason"] = ""
             st["interruptions"] = 0
@@ -8489,58 +8813,56 @@ def vexport_file(batch_id, filename):
     return send_file(str(path), as_attachment=True, download_name=filename, mimetype="video/mp4")
 
 
-@app.route("/vexport_zip/<batch_id>", methods=["GET"])
-def vexport_zip(batch_id):
-    """ZIP À PLAT de toutes les vidéos RÉUSSIES. ZIP_STORED (pas de
-    recompression → rapide, faible CPU) écrit sur le disque persistant puis
-    streamé : jamais tout en RAM. Supprimé après envoi (les vidéos restent)."""
+def _vexport_serve_group_zip(st: dict, g: int):
+    """Sert l'archive d'un groupe UNIQUEMENT si elle est prête et intacte.
+    Le chemin est construit côté serveur (jamais à partir de l'URL) : aucun
+    « .part » ni fichier arbitraire ne peut être servi."""
+    bid = st["batch_id"]
+    if g < 0 or g >= _vexport_n_groups(st):
+        return jsonify({"error": "Archive introuvable"}), 404
+    z = (st.get("zips") or {}).get(str(g)) or {}
+    if z.get("status") != "ready":
+        return jsonify({"error": "Archive pas encore disponible"}), 409
+    zp = _vexport_zip_path(bid, g)
+    if not _vexport_zip_quick_ok(zp, z):
+        with _vexport_state_lock(bid):                    # corrompue / disparue → reconstruction auto
+            st2 = _vexport_load_state(bid)
+            if st2:
+                z2 = (st2.get("zips") or {}).get(str(g))
+                if z2 and z2.get("status") == "ready":
+                    z2.update(status="pending", message="Archive invalide détectée — reconstruction automatique.")
+                    _vexport_save_state(st2)
+        _VEXPORT_ZIP_WAKE.set()
+        return jsonify({"error": "Archive invalide détectée : reconstruction en cours, réessaie dans un instant."}), 409
+    # Le fichier est ouvert par send_file : une reconstruction ultérieure le
+    # remplace par renommage atomique sans couper ce téléchargement.
+    return send_file(str(zp), as_attachment=True, download_name=_vexport_zip_name(g),
+                     mimetype="application/zip")
+
+
+@app.route("/vexport_group_zip/<batch_id>/<int:n>", methods=["GET"])
+def vexport_group_zip(batch_id, n):
+    """Télécharge l'archive du groupe n (1 = vidéos 1–100, …) d'un batch."""
     st, err = _vexport_owner_state(batch_id)
     if err:
         return err
-    bid = st["batch_id"]
-    out_dir = _vexport_dir(bid) / "output"
-    done = [it for it in st["items"] if it["status"] == "done"]
-    if not done:
-        return jsonify({"error": "Aucune vidéo terminée à télécharger"}), 400
-    need = sum(int(it.get("out_size") or 0) for it in done) + 100_000_000
-    free = _disk_free_bytes(EXPORT_DIR)
-    if free is not None and free < need:
-        return jsonify({"error": f"Espace disque serveur insuffisant pour générer le ZIP "
-                                 f"({need / 1e9:.1f} Go nécessaires). Télécharge les vidéos "
-                                 f"individuellement ou réessaie plus tard."}), 507
-    zip_path = str(EXPORT_DIR / f"_zip_{bid}_{uuid.uuid4().hex}.zip")
-    used = set()
-    n = 0
-    try:
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED, allowZip64=True) as zf:
-            for it in done:
-                p = out_dir / it["out_name"]
-                if not p.exists():
-                    continue
-                arc = it["out_name"]
-                stem, ext = (arc.rsplit(".", 1) + ["mp4"])[:2]
-                m = 2
-                while arc in used:
-                    arc = f"{stem}_{m}.{ext}"; m += 1
-                used.add(arc)
-                zf.write(str(p), arc)
-                n += 1
-        if n == 0:
-            try: os.remove(zip_path)
-            except Exception: pass
-            return jsonify({"error": "Aucun fichier valide"}), 400
+    return _vexport_serve_group_zip(st, n - 1)
 
-        @after_this_request
-        def _rm(resp):
-            try: os.path.exists(zip_path) and os.remove(zip_path)
-            except Exception: pass
-            return resp
-        return send_file(zip_path, as_attachment=True,
-                         download_name="video_exports.zip", mimetype="application/zip")
-    except Exception as e:
-        try: os.path.exists(zip_path) and os.remove(zip_path)
-        except Exception: pass
-        return jsonify({"error": str(e)}), 500
+
+@app.route("/vexport_zip/<batch_id>", methods=["GET"])
+def vexport_zip(batch_id):
+    """Compat V1 : plus de ZIP géant construit à la demande (doublait le
+    disque). Batch d'un seul groupe → son archive ; sinon → archives par
+    groupe (« Archives disponibles »)."""
+    st, err = _vexport_owner_state(batch_id)
+    if err:
+        return err
+    n = _vexport_n_groups(st)
+    if n == 1:
+        return _vexport_serve_group_zip(st, 0)
+    return jsonify({"error": f"Ce batch est découpé en {n} archives de {VEXPORT_GROUP_SIZE} vidéos : "
+                             f"télécharge-les depuis « Archives disponibles ».",
+                    "groups": n}), 409
 
 
 @app.route("/vexport_cleanup", methods=["POST"])

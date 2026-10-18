@@ -76,6 +76,16 @@ def wait_finished(cl, bid, timeout=240, step=0.5):
         time.sleep(step)
     return None
 
+def wait_settled(cl, bid, timeout=240, step=0.3):
+    """Attend que toutes les vidéos ET toutes les archives ZIP soient finales."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        st = cl.get(f"/vexport_status/{bid}").get_json()
+        if st and st.get("progress", {}).get("finished") and st.get("archives_settled"):
+            return st
+        time.sleep(step)
+    return None
+
 def ssim(dist, ref):
     r = subprocess.run(["ffmpeg", "-nostdin", "-i", str(dist), "-i", str(ref), "-lavfi",
                         "[0:v]setpts=PTS-STARTPTS[d];[1:v]setpts=PTS-STARTPTS[r];[d][r]ssim", "-f", "null", "-"],
@@ -236,8 +246,9 @@ while time.time() < deadline:
     statuses.append(it0["status"])
     if it0["status"] == "processing":
         seen_pct.append(it0["pct"])
-        if (out_dirD / it0["out_name"]).exists():
-            early_done = True          # le nom final ne doit exister qu'après validation
+        fpath = out_dirD / it0["out_name"]
+        if fpath.exists() and not A._vexport_validate_output(str(fpath), 10.0)[0]:
+            early_done = True          # sous son nom final, le fichier doit TOUJOURS être complet et validé
     glob.append(d["progress"]["percent"])
     if d["progress"]["finished"]:
         break
@@ -248,7 +259,7 @@ check("D. % global jamais décroissant", all(b >= a for a, b in zip(glob, glob[1
 check("D. % global = 100 à la fin", glob and glob[-1] == 100, str(glob[-3:]))
 order = [s for i, s in enumerate(statuses) if i == 0 or statuses[i - 1] != s]
 check("D. statuts En attente → En cours → Terminée", order[-2:] == ["processing", "done"] and "error" not in order, str(order))
-check("D. fichier final absent tant que non validé (écrit en .part)", not early_done)
+check("D. jamais de fichier final partiel (écrit en .part, validé, puis renommé)", not early_done)
 
 # ══ E. Téléchargement individuel ══════════════════════════════════════
 one = next(it for it in final["items"] if it["status"] == "done")
@@ -259,10 +270,16 @@ r_trav = c.get(f"/vexport_file/{bid}/..%2Fstate.json")
 check("E. traversée de chemin refusée", r_trav.status_code in (400, 404), f"status={r_trav.status_code}")
 check("E. fichier non terminé / inconnu refusé (404)", c.get(f"/vexport_file/{bid}/inconnu.mp4").status_code == 404)
 
-# ══ F. ZIP ════════════════════════════════════════════════════════════
-rz = c.get(f"/vexport_zip/{bid}")
+# ══ F. ZIP (archive de groupe : 11 vidéos → 1 seul ZIP) ════════════════
+sF = wait_settled(c, bid)
+check("F. archive du groupe créée automatiquement", sF and sF["groups"][0]["zip"]["status"] == "ready",
+      str(sF and sF["groups"]))
+rz = c.get(f"/vexport_group_zip/{bid}/1")
 check("F. ZIP : 200", rz.status_code == 200)
 zp = os.path.join(tmp, "out.zip"); open(zp, "wb").write(rz.data); rz.close()
+rz_alias = c.get(f"/vexport_zip/{bid}")
+check("F. ancienne URL /vexport_zip (1 groupe) → même archive", rz_alias.status_code == 200
+      and rz_alias.data == open(zp, "rb").read()); rz_alias.close()
 with zipfile.ZipFile(zp) as z:
     names = z.namelist()
     check("F. ZIP intègre (CRC)", z.testzip() is None)
@@ -270,7 +287,9 @@ with zipfile.ZipFile(zp) as z:
           and all(i.compress_type == zipfile.ZIP_STORED for i in z.infolist()))
 check("F. ZIP : contient les 11 réussies", len(names) == 11, str(len(names)))
 check("F. ZIP : noms uniques", len(set(names)) == len(names))
-check("F. ZIP temporaire supprimé du disque après envoi", not list(A.EXPORT_DIR.glob("_zip_*")))
+check("F. aucun ZIP temporaire (.part) ni ZIP géant", not list(A.EXPORT_DIR.rglob("*.part"))
+      and not list(A.EXPORT_DIR.glob("_zip_*")))
+check("F. archive conservée sur disque après téléchargement", (A.EXPORT_DIR / bid / "zips" / "Batch_001.zip").exists())
 
 # ══ I. Échecs FFmpeg ══════════════════════════════════════════════════
 pT = os.path.join(tmp, "tronquee_src.mp4"); mkvid(pT, 1080, 1920, dur=6.0, noise=True, extra=["-movflags", "+faststart"])
@@ -420,10 +439,15 @@ if os.environ.get("VEXPORT_TEST_SKIP_500") != "1":
     f500 = wait_finished(c, bid500, timeout=900, step=2)
     t_all = time.time() - t0
     check("G. 500 vidéos traitées (0 erreur)", f500 and f500["progress"]["done"] == 500, str(f500 and f500["progress"]))
-    rz5 = c.get(f"/vexport_zip/{bid500}")
-    zp5 = os.path.join(tmp, "out500.zip"); open(zp5, "wb").write(rz5.data); rz5.close()
-    with zipfile.ZipFile(zp5) as z5:
-        check("G. ZIP de 500 vidéos (noms uniques)", len(set(z5.namelist())) == 500, str(len(z5.namelist())))
+    s500 = wait_settled(c, bid500)
+    names5 = []
+    for gi in range(1, 6):
+        rz5 = c.get(f"/vexport_group_zip/{bid500}/{gi}")
+        if rz5.status_code == 200:
+            with zipfile.ZipFile(io.BytesIO(rz5.data)) as z5:
+                names5 += z5.namelist()
+        rz5.close()
+    check("G. 5 archives de 100 vidéos (500 noms uniques)", len(names5) == 500 and len(set(names5)) == 500, str(len(names5)))
     print(f"   ⏱️  500 vidéos : upload {t_up:.0f} s, total upload+encodage {t_all:.0f} s")
     c.post("/vexport_cleanup", json={"batch_id": bid500})
 
@@ -433,7 +457,7 @@ check("M. sources supprimées après encodage réussi", in_left == [], str(in_le
 check("M. résultats conservés après traitement", len(list(out_dir.glob("*.mp4"))) == 11)
 leftovers = [p for p in A.EXPORT_DIR.rglob("*") if p.name.endswith((".part", ".tmp", ".log"))]
 check("M. aucun .part / .tmp / log FFmpeg résiduel", leftovers == [], str(leftovers))
-with A._vexport_flock(A._VEXPORT_GLOBAL_LOCK):     # l'ordonnanceur ne touche à rien pendant le test
+with A._vexport_flock(A._VEXPORT_GLOBAL_LOCK), A._vexport_flock(A._VEXPORT_ZIP_LOCK):   # encodeur et créateur de ZIP à l'arrêt
     old_done = craft_batch([("done", 1)], started=True)
     old_queued = craft_batch([("pending", 0)], started=True)
     for b in (old_done, old_queued):

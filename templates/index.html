@@ -2354,7 +2354,14 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 <div id="veSummary" style="display:none;font-size:.85rem;margin:8px 0;"></div>
 <div id="veNote" style="display:none;font-size:.8rem;color:var(--muted);margin:6px 0;"></div>
 <button class="zip-btn" id="veRetryBtn" onclick="retryVideoExport()" style="display:none;margin:6px 8px 10px 0;">🔁 Relancer les vidéos en erreur</button>
-<button class="zip-btn" id="veZipBtn" onclick="downloadVideoExportZip()" style="display:none;margin:6px 0 10px;"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span> Télécharger toutes les vidéos (.zip)</button>
+<div id="veArchives" style="display:none;margin:12px 0 10px;">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+<div style="font-weight:700;font-size:.9rem;">Archives disponibles</div>
+<button class="zip-btn" id="veZipBtn" onclick="veDownloadAll()" disabled style="margin:0;opacity:.5;cursor:not-allowed;">📦 Tout télécharger</button>
+</div>
+<div id="veArchList"></div>
+<div id="veAllNote" style="display:none;font-size:.78rem;color:var(--muted);margin-top:6px;"></div>
+</div>
 <div id="veResultsList"></div>
 </div>
 <div id="veErr" style="display:none;color:var(--error);font-size:.82rem;margin-top:12px;"></div>
@@ -5085,6 +5092,8 @@ const VE_EXT = [".mp4", ".mov", ".m4v", ".avi", ".mkv"];
 let veFiles = [];
 let veBatchId = null;
 let vePolling = false;
+let veLastStatus = null;   // dernier statut reçu (archives)
+let veDlQueue = null;      // « Tout télécharger » guidé (mobile)
 
 (function initVideoExport() {
   const inp = document.getElementById("veInput");
@@ -5114,8 +5123,8 @@ async function veResume() {
     document.getElementById("veProgressWrap").style.display = "block";
     document.getElementById("veBtn").disabled = true;
     veApplyStatus(d);
-    if (!d.progress.finished) vePollLoop();
-    else veFinish(d);
+    if (d.progress.finished) veFinish(d);
+    if (!(d.progress.finished && d.archives_settled !== false)) vePollLoop();
   } catch (e) { /* silencieux : reprise best-effort */ }
 }
 
@@ -5126,7 +5135,9 @@ async function runVideoExport() {
   err.style.display = "none";
   btn.disabled = true;
   document.getElementById("veProgressWrap").style.display = "block";
-  document.getElementById("veZipBtn").style.display = "none";
+  document.getElementById("veArchives").style.display = "none";
+  document.getElementById("veAllNote").style.display = "none";
+  veDlQueue = null;
   document.getElementById("veSummary").style.display = "none";
   document.getElementById("veNote").style.display = "none";
   document.getElementById("veRetryBtn").style.display = "none";
@@ -5193,7 +5204,9 @@ async function vePollLoop() {
       if (d.error) throw new Error(d.error);
     } catch (e) { await new Promise(r => setTimeout(r, 3000)); continue; }
     veApplyStatus(d);
-    if (d.progress.finished) { veFinish(d); break; }
+    if (d.progress.finished) veFinish(d);
+    // On continue tant que des archives restent à créer (ZIP du dernier groupe…).
+    if (d.progress.finished && d.archives_settled !== false) break;
     await new Promise(r => setTimeout(r, 2000));
   }
   vePolling = false;
@@ -5214,6 +5227,9 @@ function veApplyStatus(d) {
   if (!p.finished && d.paused) {
     note.textContent = "⏸️ " + (d.pause_reason || "Export en pause.");
     note.style.display = "block";
+  } else if (!p.finished && d.disk_low) {
+    note.textContent = "⚠️ Espace disque serveur presque plein : l'export reprendra automatiquement dès que de l'espace sera libéré.";
+    note.style.display = "block";
   } else if (!p.finished && d.waiting_other) {
     note.textContent = "Un autre export est en cours sur le serveur (1 vidéo encodée à la fois) : le tien démarre juste après.";
     note.style.display = "block";
@@ -5224,6 +5240,8 @@ function veApplyStatus(d) {
   const canRetry = d.paused || (p.finished && d.retryable > 0);
   rb.style.display = canRetry ? "inline-flex" : "none";
   rb.textContent = d.paused ? "▶️ Reprendre l'export" : `🔁 Relancer les vidéos en erreur (${d.retryable})`;
+  veLastStatus = d;
+  veRenderArchives(d);
   veRenderList(d.items);
 }
 
@@ -5266,17 +5284,117 @@ function veFinish(d) {
   const sum = document.getElementById("veSummary");
   sum.style.display = "block";
   sum.innerHTML = `<b style="color:var(--success)">${p.done} réussie${p.done > 1 ? "s" : ""}</b>` + (p.error ? ` · <b style="color:var(--error)">${p.error} erreur${p.error > 1 ? "s" : ""}</b>` : "");
-  const zb = document.getElementById("veZipBtn");
-  zb.style.display = p.done > 0 ? "inline-flex" : "none";
-  zb.textContent = "📦 Télécharger toutes les vidéos (" + p.done + ") en .zip";
   const btn = document.getElementById("veBtn");
   btn.disabled = false;
-  localStorage.removeItem("ve_batch_id");   // batch fini : plus besoin de reprise
+  if (d.archives_settled !== false) localStorage.removeItem("ve_batch_id");   // tout est prêt : plus besoin de reprise
 }
 
-function downloadVideoExportZip() {
-  if (!veBatchId) return;
-  window.location.href = "/vexport_zip/" + encodeURIComponent(veBatchId);
+// ── Archives progressives (V2) : 1 ZIP par groupe de 100 vidéos, disponible
+// dès que le groupe est fini, pendant que les encodages continuent. ──
+function veRenderArchives(d) {
+  const wrap = document.getElementById("veArchives");
+  const groups = d.groups || [];
+  if (!groups.length) { wrap.style.display = "none"; return; }
+  wrap.style.display = "block";
+  const s = n => (n > 1 ? "s" : "");
+  document.getElementById("veArchList").innerHTML = groups.map(g => {
+    const z = g.zip || {};
+    const fin = g.done + g.error;
+    let st = "En attente", col = "var(--muted)";
+    if (!g.final) {
+      if (fin + g.processing > 0) { st = "En cours"; col = "var(--accent2,#a855f7)"; }
+    } else if (z.status === "ready") { st = "Terminé"; col = "var(--success)"; }
+    else if (z.status === "empty") { st = "Aucune vidéo exportée"; col = "var(--error)"; }
+    else if (z.status === "no_space") { st = "Espace disque insuffisant"; col = "var(--error)"; }
+    else if (z.status === "error") { st = "Erreur de création"; col = "var(--error)"; }
+    else { st = "Création du ZIP…"; col = "var(--accent2,#a855f7)"; }
+    const sub = (g.final || g.error)
+      ? `${g.done} vidéo${s(g.done)} exportée${s(g.done)}` + (g.error ? ` — ${g.error} erreur${s(g.error)}` : "")
+      : `Vidéos ${g.first} à ${g.last}`;
+    const msg = z.message ? `<div style="font-size:.74rem;color:var(--error);margin-top:2px;">${escapeHtml(z.message)}</div>` : "";
+    const dl = (z.status === "ready" && z.url)
+      ? `<a class="zip-btn" href="${z.url}" download="${escapeHtml(z.name)}" style="margin:0;padding:6px 12px;font-size:.8rem;text-decoration:none;white-space:nowrap;">⬇️ Télécharger</a>`
+      : "";
+    return `<div class="ve-arch-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:8px 10px;margin-bottom:6px;border-radius:8px;background:rgba(255,255,255,.04);">`
+      + `<div style="min-width:0;flex:1 1 170px;"><b>ZIP ${g.n}</b> <span style="color:var(--muted);font-size:.8rem;">· ${fin} / ${g.total}</span> <span style="color:${col};font-size:.8rem;font-weight:600;">· ${st}</span>`
+      + `<div style="font-size:.76rem;color:var(--muted);">${sub}</div>${msg}</div>${dl}</div>`;
+  }).join("");
+  const all = document.getElementById("veZipBtn");
+  if (!veDlQueue) {
+    const ok = !!d.all_zips_ready;
+    all.disabled = !ok;
+    all.style.opacity = ok ? "1" : ".5";
+    all.style.cursor = ok ? "pointer" : "not-allowed";
+    all.title = ok ? "" : "Disponible quand toutes les archives sont prêtes";
+    all.textContent = "📦 Tout télécharger";
+  }
+}
+
+function veIsMobile() {
+  const ua = navigator.userAgent || "";
+  return /iPhone|iPad|iPod|Android/i.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1);
+}
+
+function veTriggerDownload(z) {
+  const a = document.createElement("a");
+  a.href = z.url; a.download = z.name || ""; a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => a.remove(), 2000);
+}
+
+async function veCheckZip(z) {
+  try {
+    const r = await fetch(z.url, { method: "HEAD" });
+    if (r.redirected) return "Session expirée : reconnecte-toi.";
+    return r.ok ? "" : `${z.name} indisponible pour le moment (code ${r.status}).`;
+  } catch (e) { return `${z.name} : connexion impossible.`; }
+}
+
+// « Tout télécharger » : télécharge les ZIP EXISTANTS (aucun ZIP géant).
+// Ordinateur : lancements espacés + message clair si le navigateur demande
+// l'autorisation. Mobile : mode guidé, 1 appui = 1 archive (jamais bloqué).
+async function veDownloadAll() {
+  const btn = document.getElementById("veZipBtn");
+  const note = document.getElementById("veAllNote");
+  const show = html => { note.innerHTML = html; note.style.display = "block"; };
+  if (veDlQueue) {
+    const q = veDlQueue;
+    veTriggerDownload(q.list[q.i]);                   // synchrone : reste dans le geste utilisateur
+    q.i++;
+    if (q.i < q.list.length) {
+      btn.textContent = `⬇️ Télécharger ZIP ${q.list[q.i].n} (${q.i + 1} / ${q.list.length})`;
+    } else {
+      veDlQueue = null;
+      btn.textContent = "📦 Tout télécharger";
+      show(`✅ ${q.list.length} archives lancées. En cas d'échec, utilise le bouton « Télécharger » de l'archive concernée.`);
+    }
+    return;
+  }
+  const st = veLastStatus || {};
+  const zips = (st.groups || []).filter(g => g.zip && g.zip.status === "ready").map(g => Object.assign({ n: g.n }, g.zip));
+  if (!zips.length || !st.all_zips_ready) return;
+  if (zips.length > 1 && veIsMobile()) {
+    veDlQueue = { list: zips, i: 0 };
+    show(`Sur mobile, le navigateur n'autorise qu'un téléchargement par appui : touche ce bouton pour chacune des ${zips.length} archives (ou utilise les boutons « Télécharger »).`);
+    return veDownloadAll();
+  }
+  btn.disabled = true;
+  const errs = [];
+  let launched = 0;
+  for (let i = 0; i < zips.length; i++) {
+    const e = await veCheckZip(zips[i]);
+    if (e) { errs.push(e); continue; }
+    veTriggerDownload(zips[i]);
+    launched++;
+    show(`⬇️ ${launched} / ${zips.length} téléchargement${zips.length > 1 ? "s" : ""} lancé${launched > 1 ? "s" : ""}…`);
+    if (i < zips.length - 1) await new Promise(r => setTimeout(r, 1500));
+  }
+  let html = `✅ ${launched} archive${launched > 1 ? "s" : ""} lancée${launched > 1 ? "s" : ""}.`;
+  if (zips.length > 1) html += " Si ton navigateur demande l'autorisation de télécharger plusieurs fichiers, accepte-la. Sinon, télécharge chaque archive avec son bouton « Télécharger ».";
+  if (errs.length) html += "<br>⚠️ " + errs.map(escapeHtml).join("<br>⚠️ ");
+  show(html);
+  btn.disabled = false;
 }
 
 // ═══════════ WORKSPACE BATCH — présentation UNIQUEMENT (lecture seule).
