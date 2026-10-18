@@ -43,6 +43,55 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", "/tmp"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 USERS_DB_PATH = DATA_DIR / "videobot_users.db"
 
+# ── Ressources FFmpeg COMMUNES (2 Go de RAM sur Render) ───────────
+# Une seule porte pour TOUS les encodages lourds de l'instance : Batch Video
+# Export, Générateur (Simple + Batch), Studio Variations, Video Optimizer,
+# Reels Studio. Même verrou fichier que le Batch Video Export (généralisé),
+# threads FFmpeg explicites, attente bornée pour les requêtes HTTP (au plus 2
+# requêtes en attente : les autres threads restent libres pour les pages et la
+# progression). Les opérations légères (ffprobe, extraction d'images pour
+# l'OCR, conversions audio) restent indépendantes.
+from flask import g, has_request_context
+from production import (FFmpegGate, FFmpegBusy, FileLock, ffmpeg_cpu_quota, ffmpeg_mem_limit,
+                        ffmpeg_default_threads, limit_ffmpeg_threads)
+
+FFMPEG_THREADS = ffmpeg_default_threads()
+FFMPEG_GATE = FFmpegGate(DATA_DIR / "videobot_video_exports" / ".encode.lock",
+                         wait_s=float(os.environ.get("FFMPEG_GATE_WAIT", "150")), max_waiters=2)
+
+
+def ffmpeg_run(cmd, timeout=None, **kw):
+    """Lance un FFmpeg LOURD : threads limités + créneau de la porte commune
+    (le verrou est hérité par FFmpeg). Même contrat que subprocess.run."""
+    cmd = limit_ffmpeg_threads(cmd, FFMPEG_THREADS)
+    kw.setdefault("capture_output", True)
+    kw.setdefault("text", True)
+    try:
+        with FFMPEG_GATE.hold() as fd:
+            return subprocess.run(cmd, timeout=timeout, pass_fds=(fd,), **kw)
+    except FFmpegBusy:
+        if has_request_context():
+            g.ffmpeg_busy = True
+        raise
+
+
+@app.after_request
+def _ffmpeg_busy_status(resp):
+    """Requête échouée faute de créneau FFmpeg → 503 explicite (le front
+    réessaie automatiquement) au lieu d'une erreur générique."""
+    try:
+        failed = resp.status_code >= 400
+        if g.get("ffmpeg_busy") and not failed and resp.is_json:
+            # Plusieurs moteurs signalent l'échec d'un élément en HTTP 200 + « error ».
+            failed = bool((resp.get_json(silent=True) or {}).get("error"))
+        if g.get("ffmpeg_busy") and failed:
+            resp.status_code = 503
+            resp.headers["Retry-After"] = "5"
+            resp.headers["X-VS-Busy"] = "1"
+    except Exception:
+        pass
+    return resp
+
 # Constant-effort dummy hash, checked when an email isn't found, so a
 # login attempt against a nonexistent account takes the same time as
 # one against a real account — response timing can't be used to
@@ -4065,7 +4114,7 @@ def process():
                 ]
 
             try:
-                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+                proc = ffmpeg_run(cmd, timeout=180)
             except subprocess.TimeoutExpired:
                 log_usage_event(request.current_user, _usage_mode,
                                 source_seconds=_usage_source_seconds, output_seconds=None,
@@ -4850,7 +4899,7 @@ def batch_render():
                 ]
 
             try:
-                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+                proc = ffmpeg_run(cmd, timeout=180)
             except subprocess.TimeoutExpired:
                 log_usage_event(request.current_user, _usage_mode,
                                 source_seconds=_usage_source_seconds, output_seconds=None,
@@ -5029,8 +5078,10 @@ def _normalize_variation_source(raw_path: str, out_path: str, max_side: int = 19
            "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
            out_path, "-loglevel", "error"]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        proc = ffmpeg_run(cmd, timeout=180)
         return proc.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 0
+    except FFmpegBusy:
+        raise                                  # pas d'échec silencieux : 503 + nouvel essai
     except Exception:
         return False
 
@@ -5058,10 +5109,12 @@ def _cap_source_1080(path: str, max_side: int = 1920) -> bool:
            "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
            tmp, "-loglevel", "error"]
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        p = ffmpeg_run(cmd, timeout=180)
         if p.returncode == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0:
             os.replace(tmp, path)
             return True
+    except FFmpegBusy:
+        raise                                  # pas d'échec silencieux : 503 + nouvel essai
     except Exception:
         pass
     try:
@@ -5233,7 +5286,7 @@ def variation_run():
                                           app_source=_app_source, origin=_origin)
 
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+            proc = ffmpeg_run(cmd, timeout=180)
         except subprocess.TimeoutExpired:
             return jsonify({"error": "Timeout (>3 min)", "index": index, "filename": filename}), 200
         finally:
@@ -5586,7 +5639,7 @@ def variation_multi_run():
                                           app_source=_app_source, origin=_origin)
 
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+            proc = ffmpeg_run(cmd, timeout=180)
         except subprocess.TimeoutExpired:
             return jsonify({"error": "Timeout (>3 min)", "index": index, "filename": filename}), 200
         finally:
@@ -6519,22 +6572,7 @@ def optimize_video():
         out_name = f"{base}_optim{out_ext}"
         path_out = out_dir / out_name
 
-        # Compression slider → CRF (per codec). Higher slider = higher CRF
-        # = smaller file. preset fast = reasonable speed on Render's 0.5 vCPU.
-        if codec == "h264":
-            crf = round(18 + comp / 100 * 22)        # 18 … 40
-            vcmd = ["-c:v", "libx264", "-crf", str(crf), "-preset", "fast",
-                    "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
-                    "-movflags", "+faststart"]
-        elif codec == "h265":
-            crf = round(22 + comp / 100 * 23)        # 22 … 45
-            vcmd = ["-c:v", "libx265", "-crf", str(crf), "-preset", "fast",
-                    "-pix_fmt", "yuv420p", "-tag:v", "hvc1", "-c:a", "aac",
-                    "-b:a", "128k", "-movflags", "+faststart"]
-        else:  # webm / VP9
-            crf = round(24 + comp / 100 * 26)        # 24 … 50
-            vcmd = ["-c:v", "libvpx-vp9", "-crf", str(crf), "-b:v", "0",
-                    "-c:a", "libopus", "-b:a", "128k"]
+        vcmd = _optim_codec_args(codec, comp)
 
         cmd = ["ffmpeg", "-y", "-i", str(path_in)] + vf + vcmd + ["-loglevel", "error", str(path_out)]
 
@@ -6550,7 +6588,7 @@ def optimize_video():
             holder = {}
             def _run():
                 try:
-                    holder["proc"] = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+                    holder["proc"] = ffmpeg_run(cmd, timeout=600)
                 except subprocess.TimeoutExpired:
                     holder["timeout"] = True
                 except Exception as _e:
@@ -6592,6 +6630,26 @@ def optimize_video():
         return resp
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+def _optim_codec_args(codec: str, comp: int) -> list:
+    """Réglages Video Optimizer (partagés avec le profil « optimisation » du
+    moteur Batch Video Export). Compression → CRF par codec : plus le curseur
+    est haut, plus le fichier est léger. preset fast."""
+    comp = max(0, min(100, int(comp)))
+    if codec == "h264":
+        crf = round(18 + comp / 100 * 22)        # 18 … 40
+        return ["-c:v", "libx264", "-crf", str(crf), "-preset", "fast",
+                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
+                "-movflags", "+faststart"]
+    if codec == "h265":
+        crf = round(22 + comp / 100 * 23)        # 22 … 45
+        return ["-c:v", "libx265", "-crf", str(crf), "-preset", "fast",
+                "-pix_fmt", "yuv420p", "-tag:v", "hvc1", "-c:a", "aac",
+                "-b:a", "128k", "-movflags", "+faststart"]
+    crf = round(24 + comp / 100 * 26)            # webm / VP9 : 24 … 50
+    return ["-c:v", "libvpx-vp9", "-crf", str(crf), "-b:v", "0",
+            "-c:a", "libopus", "-b:a", "128k"]
 
 
 @app.route("/optimizer_file/<job_id>/<filename>")
@@ -6720,6 +6778,17 @@ def _migrate_reels_tables():
                     fontsize_pct REAL DEFAULT 0.05,
                     align        TEXT DEFAULT 'center',
                     created_at   TEXT
+                )""")
+            # Préréglages de RENDU (configuration complète réutilisable :
+            # captions, musiques, position, style, mode de génération).
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS reels_render_presets (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id     INTEGER,
+                    name        TEXT NOT NULL,
+                    config_json TEXT NOT NULL DEFAULT '{}',
+                    created_at  TEXT,
+                    updated_at  TEXT
                 )""")
             # Module 4 — dossiers/catégories pour captions & musiques.
             # Une seule table, discriminée par `kind` ('caption'|'music').
@@ -7372,6 +7441,215 @@ def reels_music_file(mid):
 
 
 # ── MODULE 5 — LOW-COST RENDERER (no OCR, no Vision) ──────────────
+_REELS_POS_DEFAULTS = {"cx_pct": 0.5, "cy_pct": 0.78, "width_pct": 0.86, "fontsize_pct": 0.05, "align": "center"}
+_REELS_GEN_MODES = ("one_to_one", "all_x_all", "same_caption")
+
+
+def _reels_full_pos(raw):
+    """Position complète (toutes les clés) ou None."""
+    if not isinstance(raw, dict):
+        return None
+    p = _reels_sanitize_pos(raw)
+    return {k: p.get(k, v) for k, v in _REELS_POS_DEFAULTS.items()} if p else None
+
+
+def _reels_parse_pos_override(raw):
+    if not raw:
+        return None
+    try:
+        return _reels_full_pos(json.loads(raw) if isinstance(raw, str) else raw)
+    except Exception:
+        return None
+
+
+def _reels_caption_blocks(crow, segs, dur, pos_override=None):
+    """[(bloc, début, fin)] d'une caption de la bibliothèque : position de la
+    caption (Module 1), surcharges par segment, ou position imposée par un
+    préréglage de rendu. Utilisé par le rendu final ET par l'aperçu."""
+    _cx = _reels_col(crow, "cx_pct", 0.5) or 0.5
+    _cy = _reels_col(crow, "cy_pct", 0.78) or 0.78
+    _wp = _reels_col(crow, "width_pct", 0.86) or 0.86
+    _fp = _reels_col(crow, "fontsize_pct", 0.05) or 0.05
+    _al = _reels_col(crow, "align", "center") or "center"
+    out = []
+    for s in segs:
+        text = (s.get("text") or "").strip()
+        if not text:
+            continue
+        st = s.get("start_time")
+        en = s.get("end_time")
+        st = 0.0 if st is None else max(0.0, float(st))
+        en = (dur if dur > 0 else st + 3.0) if en is None else float(en)
+        if en <= st:
+            en = st + max(0.5, 2.0)
+        if pos_override:
+            block = dict(pos_override, text=text)
+        else:
+            # Per-segment override (Module segments) → falls back per-key
+            # to the caption's global position when a key is absent.
+            block = {"text": text,
+                     "cx_pct": s.get("cx_pct", _cx), "cy_pct": s.get("cy_pct", _cy),
+                     "fontsize_pct": s.get("fontsize_pct", _fp), "width_pct": s.get("width_pct", _wp),
+                     "align": s.get("align", _al)}
+        out.append((block, round(st, 3), round(en, 3)))
+    return out
+
+
+def _reels_sanitize_render_config(raw):
+    """Préréglage de rendu → configuration propre et bornée."""
+    raw = raw if isinstance(raw, dict) else {}
+
+    def _ids(v):
+        if not isinstance(v, list):
+            return []
+        out = []
+        for x in v[:500]:
+            try:
+                i = int(x)
+            except Exception:
+                continue
+            if i > 0 and i not in out:
+                out.append(i)
+        return out
+    gm = raw.get("gen_mode")
+    return {"caption_ids": _ids(raw.get("caption_ids")), "music_ids": _ids(raw.get("music_ids")),
+            "gen_mode": gm if gm in _REELS_GEN_MODES else "one_to_one",
+            "capcut_outline": bool(raw.get("capcut_outline", True)),
+            "position": _reels_full_pos(raw.get("position"))}
+
+
+def _reels_render_preset_row(row):
+    try:
+        cfg = json.loads(row["config_json"] or "{}")
+    except Exception:
+        cfg = {}
+    return {"id": row["id"], "name": row["name"], "config": _reels_sanitize_render_config(cfg),
+            "created_at": row["created_at"], "updated_at": row["updated_at"]}
+
+
+@app.route("/reels_render_preset_list", methods=["GET"])
+def reels_render_preset_list():
+    try:
+        uid = _reels_uid()
+        with _users_db() as conn:
+            rows = conn.execute("SELECT * FROM reels_render_presets WHERE user_id IS ? ORDER BY name COLLATE NOCASE, id",
+                                (uid,)).fetchall()
+        return jsonify({"presets": [_reels_render_preset_row(r) for r in rows]})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_render_preset_save", methods=["POST"])
+def reels_render_preset_save():
+    """Crée un préréglage (ou remplace la configuration d'un préréglage
+    existant de l'utilisateur si `id` est fourni)."""
+    try:
+        data = request.get_json(force=True) or {}
+        name = (data.get("name") or "").strip()[:80]
+        cfg = _reels_sanitize_render_config(data.get("config"))
+        uid = _reels_uid()
+        now = _reels_now()
+        with _users_db() as conn:
+            pid = int(data.get("id") or 0)
+            if pid:
+                row = conn.execute("SELECT * FROM reels_render_presets WHERE id=? AND user_id IS ?", (pid, uid)).fetchone()
+                if not row:
+                    return jsonify({"error": "Préréglage introuvable"}), 404
+                conn.execute("UPDATE reels_render_presets SET name=?, config_json=?, updated_at=? WHERE id=? AND user_id IS ?",
+                             (name or row["name"], json.dumps(cfg), now, pid, uid))
+            else:
+                if not name:
+                    return jsonify({"error": "Donne un nom au préréglage."}), 400
+                pid = conn.execute("INSERT INTO reels_render_presets (user_id, name, config_json, created_at, updated_at) "
+                                   "VALUES (?,?,?,?,?)", (uid, name, json.dumps(cfg), now, now)).lastrowid
+            row = conn.execute("SELECT * FROM reels_render_presets WHERE id=?", (pid,)).fetchone()
+        return jsonify({"preset": _reels_render_preset_row(row)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_render_preset_rename", methods=["POST"])
+def reels_render_preset_rename():
+    try:
+        data = request.get_json(force=True) or {}
+        pid = int(data.get("id") or 0)
+        name = (data.get("name") or "").strip()[:80]
+        if not name:
+            return jsonify({"error": "Nom vide"}), 400
+        uid = _reels_uid()
+        with _users_db() as conn:
+            cur = conn.execute("UPDATE reels_render_presets SET name=?, updated_at=? WHERE id=? AND user_id IS ?",
+                               (name, _reels_now(), pid, uid))
+            if cur.rowcount == 0:
+                return jsonify({"error": "Préréglage introuvable"}), 404
+            row = conn.execute("SELECT * FROM reels_render_presets WHERE id=?", (pid,)).fetchone()
+        return jsonify({"preset": _reels_render_preset_row(row)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_render_preset_delete", methods=["POST"])
+def reels_render_preset_delete():
+    try:
+        data = request.get_json(force=True) or {}
+        uid = _reels_uid()
+        with _users_db() as conn:
+            cur = conn.execute("DELETE FROM reels_render_presets WHERE id=? AND user_id IS ?",
+                               (int(data.get("id") or 0), uid))
+        if cur.rowcount == 0:
+            return jsonify({"error": "Préréglage introuvable"}), 404
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/reels_preview_overlays", methods=["POST"])
+def reels_preview_overlays():
+    """Aperçu du RENDU sans génération : les calques de caption sont produits
+    par le moteur de rendu réel (render_text_overlay : police, contour,
+    position, retours à la ligne) à une taille d'aperçu, et renvoyés en PNG
+    avec leurs horaires. Le navigateur les superpose à la vidéo et joue la
+    musique : aucun encodage FFmpeg, aucun fichier conservé."""
+    pngs = []
+    try:
+        data = request.get_json(force=True) or {}
+        uid = _reels_uid()
+        try:
+            w, h = int(data.get("width") or 1080), int(data.get("height") or 1920)
+        except Exception:
+            w, h = 1080, 1920
+        w, h = max(16, min(w, 8192)), max(16, min(h, 8192))
+        k = min(1.0, 960.0 / max(w, h))                   # aperçu ≤ 960 px : léger, même mise en page
+        pw, ph = max(16, int(round(w * k / 2)) * 2), max(16, int(round(h * k / 2)) * 2)
+        try:
+            dur = max(0.0, float(data.get("duration") or 0))
+        except Exception:
+            dur = 0.0
+        cid = int(data.get("caption_id") or 0)
+        with _users_db() as conn:
+            crow = conn.execute("SELECT * FROM reels_captions WHERE id=? AND user_id IS ?", (cid, uid)).fetchone()
+        if not crow:
+            return jsonify({"error": "Caption introuvable"}), 404
+        try:
+            segs = json.loads(crow["segments_json"])
+        except Exception:
+            segs = []
+        outline = data.get("capcut_outline", True) not in (False, 0, "0", "false", "off")
+        out = []
+        for block, st, en in _reels_caption_blocks(crow, segs, dur, _reels_full_pos(data.get("position")))[:40]:
+            png = render_text_overlay([block], pw, ph, pw, ph, capcut_outline=outline)
+            pngs.append(png)
+            with open(png, "rb") as fh:
+                out.append({"start": st, "end": en, "png": "data:image/png;base64," + base64.b64encode(fh.read()).decode()})
+        return jsonify({"width": pw, "height": ph, "segments": out, "caption": crow["name"]})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        for p in pngs:
+            try: Path(p).unlink(missing_ok=True)
+            except Exception: pass
+
+
 def _build_reels_mix_cmd(reel_path, music_path, overlay_specs, path_out):
     """ffmpeg: reel video (input 0) + optional music audio + N timed caption
     overlays. Video = reel with overlays; audio = music if provided, else the
@@ -7478,6 +7756,9 @@ def reels_mix_run():
 
         uid = _reels_uid()
         capcut_outline = (request.form.get("capcut_outline", "1") or "1").strip().lower() not in ("0", "false", "off", "no")
+        # Position imposée par un préréglage de rendu (optionnelle) : remplace
+        # la position de la caption et de ses segments pour CE rendu.
+        pos_override = _reels_parse_pos_override(request.form.get("pos_override"))
 
         # ── Resolve music (library) ──
         music_path = None
@@ -7509,31 +7790,10 @@ def reels_mix_run():
                     segs = []
                 wa, ha = get_video_dims(reel_path)
                 dur = _get_video_duration_seconds(reel_path) or 0.0
-                # Saved visual position (Module 1) — falls back to sensible defaults.
-                _cx = _reels_col(crow, "cx_pct", 0.5) or 0.5
-                _cy = _reels_col(crow, "cy_pct", 0.78) or 0.78
-                _wp = _reels_col(crow, "width_pct", 0.86) or 0.86
-                _fp = _reels_col(crow, "fontsize_pct", 0.05) or 0.05
-                _al = _reels_col(crow, "align", "center") or "center"
-                for s in segs:
-                    text = (s.get("text") or "").strip()
-                    if not text:
-                        continue
-                    st = s.get("start_time")
-                    en = s.get("end_time")
-                    st = 0.0 if st is None else max(0.0, float(st))
-                    en = (dur if dur > 0 else st + 3.0) if en is None else float(en)
-                    if en <= st:
-                        en = st + max(0.5, 2.0)
-                    # Per-segment override (Module segments) → falls back per-key
-                    # to the caption's global position when a key is absent.
-                    block = {"text": text,
-                             "cx_pct": s.get("cx_pct", _cx), "cy_pct": s.get("cy_pct", _cy),
-                             "fontsize_pct": s.get("fontsize_pct", _fp), "width_pct": s.get("width_pct", _wp),
-                             "align": s.get("align", _al)}
+                for block, st, en in _reels_caption_blocks(crow, segs, dur, pos_override):
                     png = render_text_overlay([block], wa, ha, wa, ha, capcut_outline=capcut_outline)
                     _ov_paths.append(png)
-                    overlay_specs.append((png, round(st, 3), round(en, 3)))
+                    overlay_specs.append((png, st, en))
 
         # ── Output name + render ──
         base = _photo_sanitize_name(request.form.get("out_name") or f"reel_{index + 1:03d}")
@@ -7547,7 +7807,7 @@ def reels_mix_run():
 
         cmd = _build_reels_mix_cmd(reel_path, music_path, overlay_specs, path_out)
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            proc = ffmpeg_run(cmd, timeout=600)
         except subprocess.TimeoutExpired:
             return jsonify({"error": "Timeout (>10 min)", "index": index}), 200
         finally:
@@ -7741,45 +8001,15 @@ _VEXPORT_IO_CHUNK     = 1 << 20                       # copie par blocs de 1 Mo 
 _VEXPORT_IO_FLUSH     = 32 << 20                      # fsync + purge du cache disque tous les 32 Mo
 
 
-def _vexport_cpu_quota() -> float:
-    """CPU réellement alloués au CONTENEUR (quota cgroup v2/v1). os.cpu_count()
-    renvoie les cœurs de l'hôte, ce qui faisait exploser les threads FFmpeg."""
-    try:
-        q, p = open("/sys/fs/cgroup/cpu.max").read().split()[:2]
-        if q != "max" and int(p) > 0:
-            return int(q) / int(p)
-    except Exception:
-        pass
-    try:
-        q = int(open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").read())
-        p = int(open("/sys/fs/cgroup/cpu/cpu.cfs_period_us").read())
-        if q > 0 and p > 0:
-            return q / p
-    except Exception:
-        pass
-    try:
-        return float(len(os.sched_getaffinity(0)))
-    except Exception:
-        return float(os.cpu_count() or 1)
+# Détection CPU/mémoire et threads FFmpeg : implémentation COMMUNE (production.py),
+# mêmes règles qu'avant (2 à 4 threads selon le quota CPU réel, ≈ 260–370 Mo
+# de pic mesuré pour 2 threads). Surcharge : VEXPORT_FFMPEG_THREADS.
+_vexport_cpu_quota = ffmpeg_cpu_quota
+_vexport_mem_limit = ffmpeg_mem_limit
+VEXPORT_FFMPEG_THREADS = FFMPEG_THREADS
 
-
-def _vexport_mem_limit():
-    for p in ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
-        try:
-            v = open(p).read().strip()
-            if v and v != "max" and int(v) < (1 << 50):
-                return int(v)
-        except Exception:
-            pass
-    return None
-
-
-# Threads par encodage : 2 à 4 selon le quota CPU réel (≈ 260–370 Mo de pic
-# mesuré pour 2 threads, source 1080p à 4K). Surcharge : VEXPORT_FFMPEG_THREADS.
-VEXPORT_FFMPEG_THREADS = (_vexport_env_int("VEXPORT_FFMPEG_THREADS", 2, 1, 8)
-                          if os.environ.get("VEXPORT_FFMPEG_THREADS")
-                          else max(2, min(4, math.ceil(_vexport_cpu_quota()))))
-
+# Verrou d'encodage = celui de la porte FFmpeg commune (même fichier) : le
+# Batch Video Export et tous les autres outils se partagent UN créneau.
 _VEXPORT_GLOBAL_LOCK = EXPORT_DIR / ".encode.lock"    # 1 encodage max pour toute l'instance
 _VEXPORT_LIVE_PATH   = EXPORT_DIR / ".current.json"   # progression de l'encodage en cours
 _VEXPORT_REG_LOCK    = threading.Lock()               # protège _VEXPORT_LOCKS
@@ -7802,30 +8032,7 @@ _vexport_log(f"config pid={os.getpid()} cpu_quota={_vexport_cpu_quota():.2f} "
              f"concurrency=1 dir={EXPORT_DIR}")
 
 
-class _vexport_flock:
-    """Verrou exclusif flock() : exclusion entre threads ET entre process.
-    Libéré automatiquement par le noyau quand plus aucun process ne tient le
-    descripteur (crash, OOM, kill -9) → jamais de verrou fantôme."""
-
-    def __init__(self, path):
-        self.path = str(path)
-        self.fd = None
-
-    def __enter__(self):
-        self.fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o644)
-        try:
-            fcntl.flock(self.fd, fcntl.LOCK_EX)
-        except Exception:
-            os.close(self.fd); self.fd = None
-            raise
-        return self
-
-    def __exit__(self, *exc):
-        try:
-            fcntl.flock(self.fd, fcntl.LOCK_UN)
-        finally:
-            os.close(self.fd); self.fd = None
-        return False
+_vexport_flock = FileLock                             # verrou flock commun (production.py)
 
 
 def _vexport_safe_id(s: str) -> str:
@@ -8010,12 +8217,59 @@ _VEXPORT_SCALE = (
 ).format(t=VEXPORT_TARGET_SHORT)
 
 
-def _vexport_build_cmd(path_in: str, path_out: str, threads: int = None) -> list:
+_VEXPORT_OPT_CODECS = {"h264": "h264", "h265": "hevc", "webm": "vp9"}   # réglage → codec attendu en sortie
+
+
+def _vexport_sanitize_profile(form) -> dict:
+    """Profil d'un batch : « standard » (réexport stabilisé, par défaut) ou
+    « optimize » (réglages Video Optimizer : résolution, codec, compression)."""
+    if (form.get("mode") or "standard").strip().lower() != "optimize":
+        return {"kind": "standard"}
+    codec = (form.get("codec") or "h264").strip().lower()
+    if codec not in _VEXPORT_OPT_CODECS:
+        codec = "h264"
+    try:
+        comp = max(0, min(100, int(float(form.get("compression", "0")))))
+    except Exception:
+        comp = 0
+    res = (form.get("resolution") or "original").strip().lower()
+    if res not in OPTIM_RES_MAP:
+        res = "original"
+    return {"kind": "optimize", "codec": codec, "compression": comp, "resolution": res}
+
+
+def _vexport_is_optimize(profile) -> bool:
+    return bool(profile) and profile.get("kind") == "optimize"
+
+
+def _vexport_out_ext(profile) -> str:
+    return ".webm" if _vexport_is_optimize(profile) and profile.get("codec") == "webm" else ".mp4"
+
+
+def _vexport_expected_codec(profile) -> str:
+    return _VEXPORT_OPT_CODECS.get(profile.get("codec"), "h264") if _vexport_is_optimize(profile) else "h264"
+
+
+def _vexport_build_cmd(path_in: str, path_out: str, threads: int = None, profile: dict = None) -> list:
     """VRAI réencodage : décode l'entrée → réencode libx264 (jamais -c copy).
     yuv420p + faststart + AAC. Threads EXPLICITES partout (décodeur, filtres,
     encodeur). Progression machine sur stdout (-progress pipe:1). Si la source
-    n'a pas d'audio, la sortie n'a simplement pas de piste audio."""
+    n'a pas d'audio, la sortie n'a simplement pas de piste audio.
+    Profil « optimize » : réglages codec/compression de Video Optimizer, mise
+    à l'échelle évaluée après auto-rotation, mêmes protections (threads,
+    progression, validation)."""
     th = str(threads or VEXPORT_FFMPEG_THREADS)
+    if _vexport_is_optimize(profile):
+        t = OPTIM_RES_MAP.get(profile.get("resolution"))
+        vf = (_VEXPORT_SCALE.replace(f"{VEXPORT_TARGET_SHORT}", str(t)) if t
+              else "scale=trunc(iw/2)*2:trunc(ih/2)*2")
+        vcmd = _optim_codec_args(profile.get("codec", "h264"), profile.get("compression", 0))
+        if profile.get("codec") == "h265":
+            vcmd += ["-x265-params", f"pools={th}:frame-threads=1"]
+        fmt = "webm" if profile.get("codec") == "webm" else "mp4"
+        return (["ffmpeg", "-hide_banner", "-nostdin", "-y", "-filter_threads", "1",
+                 "-threads", th, "-i", path_in, "-vf", vf] + vcmd
+                + ["-threads", th, "-f", fmt, "-progress", "pipe:1", "-nostats", "-loglevel", "error", path_out])
     return ["ffmpeg", "-hide_banner", "-nostdin", "-y",
             "-filter_threads", "1",
             "-threads", th, "-i", path_in,
@@ -8028,10 +8282,10 @@ def _vexport_build_cmd(path_in: str, path_out: str, threads: int = None) -> list
             path_out]
 
 
-def _vexport_validate_output(path: str, src_dur: float):
+def _vexport_validate_output(path: str, src_dur: float, codec: str = "h264"):
     """Une vidéo n'est « terminée » que si le fichier exporté est lisible :
-    flux H.264 présent, durée cohérente avec la source (détecte les sorties
-    tronquées). Retourne (ok, message_erreur)."""
+    flux vidéo attendu (H.264 par défaut) présent, durée cohérente avec la
+    source (détecte les sorties tronquées). Retourne (ok, message_erreur)."""
     try:
         size = os.path.getsize(path)
     except Exception:
@@ -8040,8 +8294,8 @@ def _vexport_validate_output(path: str, src_dur: float):
         return False, "Fichier exporté vide"
     meta = _vexport_ffprobe(path)
     vs = next((s for s in meta.get("streams", []) if s.get("codec_type") == "video"), None)
-    if not vs or vs.get("codec_name") != "h264" or int(vs.get("width") or 0) <= 0:
-        return False, "Fichier exporté invalide (aucun flux H.264 lisible)"
+    if not vs or vs.get("codec_name") != codec or int(vs.get("width") or 0) <= 0:
+        return False, f"Fichier exporté invalide (aucun flux {codec.upper()} lisible)"
     try:
         out_dur = float((meta.get("format") or {}).get("duration") or 0)
     except Exception:
@@ -8076,14 +8330,14 @@ def _vexport_recover_batch(batch_id: str) -> int:
             try: (out_dir / f".ffmpeg_{it['idx']}.log").unlink(missing_ok=True)
             except Exception: pass
             try:
-                if part.exists() and _vexport_validate_output(str(part), src_dur)[0]:
+                if part.exists() and _vexport_validate_output(str(part), src_dur, _vexport_expected_codec(st.get("profile")))[0]:
                     os.replace(str(part), str(final))  # encodage fini juste avant la coupure
                 else:
                     part.unlink(missing_ok=True)
             except Exception:
                 pass
             att = int(it.get("attempts") or 0)
-            if final.exists() and _vexport_validate_output(str(final), src_dur)[0]:
+            if final.exists() and _vexport_validate_output(str(final), src_dur, _vexport_expected_codec(st.get("profile")))[0]:
                 it.update(status="done", error="", progress=100, out_size=final.stat().st_size)
                 try: (in_dir / it["in_name"]).unlink(missing_ok=True)
                 except Exception: pass
@@ -8152,7 +8406,7 @@ def _vexport_claim_next():
                           attempts=int(it.get("attempts") or 0) + 1)
                 st["last_pick"] = now
                 _vexport_save_state(st)
-                return bid, dict(it)
+                return bid, dict(it, _profile=st.get("profile") or {"kind": "standard"})
             if changed:
                 _vexport_save_state(st)
     return None
@@ -8181,7 +8435,7 @@ def _vexport_encode(batch_id: str, item: dict, lock_fd: int) -> None:
         timed_out = threading.Event()
         try:
             with open(log_path, "wb") as logf:
-                proc = subprocess.Popen(_vexport_build_cmd(path_in, part),
+                proc = subprocess.Popen(_vexport_build_cmd(path_in, part, profile=item.get("_profile")),
                                         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                         stderr=logf, pass_fds=(lock_fd,))
 
@@ -8226,7 +8480,7 @@ def _vexport_encode(batch_id: str, item: dict, lock_fd: int) -> None:
                 else:
                     err = tail[-400:] or f"FFmpeg a échoué (code {rc})"
             else:
-                ok, why = _vexport_validate_output(part, src_dur)
+                ok, why = _vexport_validate_output(part, src_dur, _vexport_expected_codec(item.get("_profile")))
                 if not ok:
                     err = why
         except Exception as e:
@@ -8272,11 +8526,11 @@ def _vexport_encode(batch_id: str, item: dict, lock_fd: int) -> None:
 def _vexport_run_next() -> bool:
     """Prend le verrou global (bloquant), récupère les orphelins, encode UNE
     vidéo. Retourne False s'il n'y avait rien à faire."""
-    with _vexport_flock(_VEXPORT_GLOBAL_LOCK) as gl:
+    with FFMPEG_GATE.hold(blocking=True) as fd:
         claim = _vexport_claim_next()
         if not claim:
             return False
-        _vexport_encode(claim[0], claim[1], gl.fd)
+        _vexport_encode(claim[0], claim[1], fd)
         return True
 
 
@@ -8285,6 +8539,7 @@ def _vexport_worker_loop():
     while True:
         did = False
         try:
+            FFMPEG_GATE.yield_to_interactive()           # une requête attend ? elle passe d'abord
             did = _vexport_run_next()
         except Exception as e:
             _vexport_log(f"worker error: {e!r}")
@@ -8624,11 +8879,12 @@ def vexport_create():
         jdir = _vexport_dir(batch_id)
         (jdir / "input").mkdir(parents=True, exist_ok=True)
         (jdir / "output").mkdir(parents=True, exist_ok=True)
+        profile = _vexport_sanitize_profile(request.form)
         st = {"batch_id": batch_id, "user_id": int(request.current_user["id"]),
               "created": time.time(), "updated": time.time(),
-              "started": False, "items": []}
+              "started": False, "items": [], "profile": profile}
         _vexport_save_state(st)
-        return jsonify({"batch_id": batch_id, "max_files": VEXPORT_MAX_FILES})
+        return jsonify({"batch_id": batch_id, "max_files": VEXPORT_MAX_FILES, "profile": profile})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -8673,13 +8929,14 @@ def vexport_upload():
                 try: path_in.unlink(missing_ok=True)
                 except Exception: pass
                 return jsonify({"error": "Fichier vidéo invalide ou illisible"}), 400
-            # Nom de sortie = nom d'origine assaini + .mp4, unicité garantie.
+            # Nom de sortie = nom d'origine assaini + extension du profil, unicité garantie.
             base = os.path.splitext(_photo_sanitize_name(orig))[0] or f"video_{idx + 1:03d}"
-            out_name = f"{base}.mp4"
+            oext = _vexport_out_ext(st.get("profile"))
+            out_name = f"{base}{oext}"
             used = {it["out_name"] for it in st["items"]}
             k = 2
             while out_name in used:
-                out_name = f"{base}_{k}.mp4"; k += 1
+                out_name = f"{base}_{k}{oext}"; k += 1
             item = {"idx": idx, "orig_name": orig[:200], "in_name": in_name,
                     "out_name": out_name, "status": "pending", "error": "",
                     "in_size": path_in.stat().st_size, "out_size": 0,
@@ -8757,6 +9014,7 @@ def vexport_status(batch_id):
         disk_low = bool(st.get("started") and not prog["finished"] and prog["pending"] > 0
                         and free is not None and free < VEXPORT_MIN_FREE_ENCODE + 50_000_000)
         return jsonify({"batch_id": bid, "started": bool(st.get("started")),
+                        "profile": st.get("profile") or {"kind": "standard"},
                         "paused": bool(st.get("paused")), "pause_reason": st.get("pause_reason", ""),
                         "waiting_other": waiting_other, "retryable": retryable, "disk_low": disk_low,
                         "progress": prog, "items": items, "group_size": VEXPORT_GROUP_SIZE,
@@ -8810,7 +9068,8 @@ def vexport_file(batch_id, filename):
     path = _vexport_dir(st["batch_id"]) / "output" / filename
     if not path.exists():
         return jsonify({"error": "Fichier introuvable"}), 404
-    return send_file(str(path), as_attachment=True, download_name=filename, mimetype="video/mp4")
+    return send_file(str(path), as_attachment=True, download_name=filename,
+                     mimetype="video/webm" if filename.endswith(".webm") else "video/mp4")
 
 
 def _vexport_serve_group_zip(st: dict, g: int):

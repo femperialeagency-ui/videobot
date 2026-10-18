@@ -1226,6 +1226,57 @@ body {
 .r-radio-row { display:flex; gap:14px; flex-wrap:wrap; font-size:.78rem; }
 .r-chk { display:inline-flex; align-items:center; gap:6px; cursor:pointer; }
 @media (max-width:720px){ .r-edit-grid { grid-template-columns:1fr; } }
+
+/* ═══════════ ViralScale 2.0 — workflows simplifiés (mêmes variables de thème) ═══════════ */
+.ws-mode-fixed { cursor:default; border-color:var(--accent-border); background:var(--accent-soft); }
+.ws-mode-fixed b { display:block; }
+.ws-matrix-total { letter-spacing:-.01em; }
+.v-intro { font-size:.8rem; color:var(--muted); margin:-4px 0 12px; }
+.v-reco { display:inline-block; margin-left:6px; padding:1px 7px; border-radius:999px; font-size:.68rem; font-weight:700;
+  background:rgba(255,255,255,.16); color:#fff; vertical-align:1px; }
+.v-modeswitch label:not(:has(input:checked)) .v-reco { background:var(--accent-soft); color:var(--accent3); }
+.v-auto-box { border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; background:var(--surface-2); }
+.v-auto-title { font-weight:700; font-size:.86rem; margin-bottom:6px; }
+.v-auto-list { margin:0; padding-left:18px; font-size:.8rem; line-height:1.55; color:var(--text); }
+.v-auto-note { font-size:.75rem; color:var(--muted); margin-top:8px; }
+.v-presets-block { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+.v-sub-label { font-size:.8rem; font-weight:700; margin-bottom:6px; }
+.v-est-hi .v-est-value { color:var(--accent3); }
+.vt-modes { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; margin:14px 0 4px; }
+.vt-mode { display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border:1px solid var(--border); border-radius:12px;
+  cursor:pointer; transition:border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease); }
+.vt-mode:hover { border-color:var(--border-strong); }
+.vt-mode:has(input:checked) { border-color:var(--accent-border); background:var(--vs-gradient-soft); box-shadow:var(--shadow-glow); }
+.vt-mode input { margin-top:3px; accent-color:var(--accent); }
+.vt-mode b { display:block; font-size:.88rem; margin-bottom:2px; }
+.vt-mode em { display:block; font-style:normal; font-size:.76rem; color:var(--muted); line-height:1.45; }
+#vtOptParams { margin-top:6px; padding:4px 14px 14px; border:1px solid var(--border); border-radius:12px; background:var(--surface-2); }
+/* Archives (Batch Video Export V2) : .zip-btn est masqué par défaut (affiché par JS
+   ailleurs) → le bouton « Tout télécharger » et les liens d'archive doivent être visibles. */
+#veZipBtn, #veArchList .zip-btn { display:inline-flex; }
+.mt-section-title { margin:22px 0 10px; font-weight:700; font-size:.95rem; display:flex; align-items:baseline; gap:8px; }
+.mt-section-title span { font-weight:500; font-size:.78rem; color:var(--muted); }
+.r-render-opts { display:flex; flex-direction:column; gap:8px; padding:10px 12px; border:1px solid var(--border); border-radius:12px; background:var(--surface-2); }
+.r-ro-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.r-ro-lbl { font-size:.78rem; font-weight:700; color:var(--muted); min-width:128px; }
+.r-ro-row .r-tool-input { flex:1 1 200px; min-width:0; }
+.r-ro-msg { font-size:.74rem; color:var(--muted); line-height:1.45; }
+.r-pv-box { width:min(980px,96vw); }
+.r-pv-body { display:grid; grid-template-columns:minmax(0,1fr) 270px; gap:16px; align-items:start; }
+.r-pv-stage { position:relative; margin:0 auto; width:100%; max-height:72vh; aspect-ratio:9 / 16; max-width:calc(72vh * 9 / 16);
+  background:#000; border-radius:12px; overflow:hidden; }
+.r-pv-stage video { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; }
+.r-pv-stage img { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.r-pv-side { display:flex; flex-direction:column; gap:10px; }
+.r-pv-side select { width:100%; }
+.r-pv-badge { align-self:flex-start; padding:3px 10px; border-radius:999px; font-size:.72rem; font-weight:700; background:var(--accent-soft); color:var(--accent3); }
+.r-pv-hint { font-size:.74rem; color:var(--muted); line-height:1.45; }
+@media (max-width: 760px) {
+  .vt-modes { grid-template-columns:1fr; }
+  .r-pv-body { grid-template-columns:1fr; }
+  .r-pv-stage { max-height:60vh; max-width:calc(60vh * 9 / 16); }
+  .r-ro-lbl { min-width:0; width:100%; }
+}
 </style>
 </head>
 <body>
@@ -1774,9 +1825,10 @@ BATCH MODE
     <div class="ws-settings-3">
       <div class="ws-set-sec">
         <div class="ws-set-h" data-ico="🎛️">Mode de génération</div>
-        <label class="v-opt2"><input type="radio" name="bStrategy" value="matrix" checked onchange="onBatchStrategyChange()"> <span><b>Matrice (A × B)</b><em>toutes les combinaisons</em></span></label>
-        <label class="v-opt2"><input type="radio" name="bStrategy" value="pairing" onchange="onBatchStrategyChange()"> <span><b>Pairing / Shuffle</b><em>appariement 1-à-1</em></span></label>
-        <label class="v-opt2"><input type="radio" name="bStrategy" value="variations" onchange="onBatchStrategyChange()"> <span><b>Variations par A ⭐</b><em>N sorties par vidéo A</em></span></label>
+        <!-- Mode unique : Matrice A × B (sélection automatique). Les moteurs
+             Pairing / Variations par A restent disponibles côté serveur. -->
+        <input type="radio" name="bStrategy" value="matrix" checked hidden>
+        <div class="v-opt2 ws-mode-fixed"><span><b>Matrice A × B</b><em>chaque vidéo A est combinée avec chaque vidéo B</em></span></div>
       </div>
       <div class="ws-set-sec">
         <div class="ws-set-h" data-ico="🔍">Moteur OCR</div>
@@ -1796,23 +1848,6 @@ BATCH MODE
         <label class="v-opt2"><input type="radio" name="capcutOutlineB" value="1" checked> <span><b>Contour CapCut activé</b><em>liseré style CapCut</em></span></label>
         <label class="v-opt2"><input type="radio" name="capcutOutlineB" value="0"> <span><b>Contour désactivé</b><em>texte sans liseré</em></span></label>
       </div>
-    </div>
-    <div id="bVarOpts" style="display:none;margin-top:10px;align-items:center;gap:10px;flex-wrap:wrap;">
-      <span style="font-size:.82rem;font-weight:600;">Variations par vidéo A :</span>
-      <select id="bVarCount" onchange="updateComboPreview(); checkBatchReady();">
-        <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
-        <option value="5" selected>5</option><option value="10">10</option><option value="15">15</option><option value="20">20</option>
-      </select>
-      <span style="font-size:.74rem;color:var(--muted);">A × variations sorties · B distincts par A</span>
-    </div>
-    <div id="bPairingOpts" style="display:none;margin-top:10px;display:none;align-items:center;gap:10px;flex-wrap:wrap;">
-      <span style="font-size:.82rem;font-weight:600;">Appariement :</span>
-      <select id="bPairMode" onchange="updateComboPreview()">
-        <option value="random">Aléatoire sans répétition</option>
-        <option value="closest">Durée la plus proche</option>
-        <option value="bgea">Durée B ≥ A si possible</option>
-      </select>
-      <span style="font-size:.74rem;color:var(--muted);">min(A, B) sorties · jamais A × B</span>
     </div>
     <div id="bModeHelper" style="margin-top:10px;padding:10px 12px;border-radius:8px;background:rgba(124,92,255,0.07);border:1px solid var(--border);font-size:.8rem;line-height:1.5;"></div>
     <div id="bComboPreview" class="batch-combo-preview" style="margin-top:10px;"></div>
@@ -1871,7 +1906,7 @@ Upload ONE source video, generate N FFmpeg-only
 "technically different but visually similar" variants,
 download as ZIP. No Claude Vision, no captions.
 ══════════════════════════════════════════ -->
-<div id="variationTab" class="tab-content">
+<div id="variationTab" class="tab-content" hidden aria-hidden="true"><!-- Ancienne interface « 1 vidéo » : remplacée par l'interface unique (variationMultiTab). Conservée inactive : ses composants JS sont partagés. -->
 
 <!-- Upload -->
 <div class="card">
@@ -1990,6 +2025,7 @@ Vision, no captions, no Batch, no A+B→C.
 <!-- Upload (multi) -->
 <div class="card">
 <h2><span class="num">1</span> Vidéos sources <span style="font-weight:500;opacity:.7;font-size:.85rem">(1 à 300)</span></h2>
+<div class="v-intro">Une ou plusieurs vidéos : le même formulaire génère N variations <b>par vidéo</b>.</div>
 <div class="drop-zone upcard" id="vmZone" style="max-width:420px;margin:0 auto;">
 <input type="file" id="vmInput" accept="video/*" multiple />
 <span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="3.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.6"/><rect x="6.5" y="6.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.6"/><circle cx="11" cy="11" r="1" fill="currentColor"/></svg></span>
@@ -2021,19 +2057,23 @@ Vision, no captions, no Batch, no A+B→C.
 
 <div class="v-section-label"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.5 5.5 H14.5 M3.5 9 H14.5 M3.5 12.5 H14.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="5.5" r="1.5" fill="currentColor"/><circle cx="11.5" cy="9" r="1.5" fill="currentColor"/><circle cx="6" cy="12.5" r="1.5" fill="currentColor"/></svg></span> Contrôles de variation</div>
 <div class="v-modeswitch">
-<label><input type="radio" name="vmConfigMode" value="preset" checked> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 15 L11 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M14.5 2.6 L15 3.8 L16.2 4.3 L15 4.8 L14.5 6 L14 4.8 L12.8 4.3 L14 3.8 Z" fill="currentColor"/></svg></span> Mode Préréglages <span style="font-weight:500;opacity:.8">(débutant)</span></label>
-<label><input type="radio" name="vmConfigMode" value="advanced"> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3.4 a3 3 0 0 0-4 3.7 L4 11.2 a1.5 1.5 0 0 0 2.1 2.1 l4.1-4.1 a3 3 0 0 0 3.7-4 l-2 2-1.4-.4-.4-1.4 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span> Mode Avancé <span style="font-weight:500;opacity:.8">(16 réglages)</span></label>
+<label><input type="radio" name="vmConfigMode" value="preset" checked> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 15 L11 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M14.5 2.6 L15 3.8 L16.2 4.3 L15 4.8 L14.5 6 L14 4.8 L12.8 4.3 L14 3.8 Z" fill="currentColor"/></svg></span> Automatique <span class="v-reco">Recommandé</span></label>
+<label><input type="radio" name="vmConfigMode" value="advanced"> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3.4 a3 3 0 0 0-4 3.7 L4 11.2 a1.5 1.5 0 0 0 2.1 2.1 l4.1-4.1 a3 3 0 0 0 3.7-4 l-2 2-1.4-.4-.4-1.4 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span> Avancé <span style="font-weight:500;opacity:.8">(16 réglages)</span></label>
 </div>
 
-<!-- Preset panel -->
+<!-- Mode automatique : paramètres fixes (préréglage « légère » du moteur),
+     tirés de façon déterministe par vidéo et par variation. -->
 <div id="vmPresetPanel">
-<div style="font-size:0.84rem;font-weight:600;margin-bottom:8px;color:var(--text)">Intensité des variations</div>
-<div style="display:flex;gap:8px;flex-wrap:wrap;">
-<label class="v-opt"><input type="radio" name="vmStrength" value="light" checked> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="3" height="4" rx="1" fill="currentColor"/><rect x="7.5" y="7" width="3" height="8" rx="1" fill="currentColor" opacity=".22"/><rect x="12" y="3" width="3" height="12" rx="1" fill="currentColor" opacity=".22"/></svg></span> Légère</label>
-<label class="v-opt"><input type="radio" name="vmStrength" value="medium"> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="3" height="4" rx="1" fill="currentColor"/><rect x="7.5" y="7" width="3" height="8" rx="1" fill="currentColor"/><rect x="12" y="3" width="3" height="12" rx="1" fill="currentColor" opacity=".22"/></svg></span> Moyenne</label>
-<label class="v-opt"><input type="radio" name="vmStrength" value="strong"> <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="3" height="4" rx="1" fill="currentColor"/><rect x="7.5" y="7" width="3" height="8" rx="1" fill="currentColor"/><rect x="12" y="3" width="3" height="12" rx="1" fill="currentColor"/></svg></span> Forte</label>
+<input type="radio" name="vmStrength" value="light" checked hidden>
+<div class="v-auto-box">
+<div class="v-auto-title">Réglages automatiques</div>
+<ul class="v-auto-list">
+<li>Ajustements discrets : luminosité ±2 %, contraste et saturation ±3 %, zoom 0 à 3 %, recadrage ≤ 1 %, vitesse ±1 %.</li>
+<li>Orientation et proportions conservées, aucune rotation, audio resynchronisé avec la vidéo.</li>
+<li>Paramètres déterministes : une même variation d'une même source donne toujours le même résultat.</li>
+</ul>
+<div class="v-auto-note">Besoin d'un contrôle fin ? Passe en mode Avancé (16 réglages).</div>
 </div>
-<div style="font-size:0.78rem;color:var(--muted);margin-top:8px;">Légère = changements discrets (recommandé). Plus l'intensité augmente, plus les vidéos générées diffèrent visuellement de la source.</div>
 </div>
 
 <!-- Advanced panel -->
@@ -2041,16 +2081,19 @@ Vision, no captions, no Batch, no A+B→C.
 <div id="vmAdvBody"></div>
 </div>
 
-<div class="v-preset-row">
-<input type="text" id="vmPresetName" placeholder="Nom du préréglage (ex: Multi V1)" maxlength="80">
-<button type="button" class="v-ghost-btn" id="vmSavePresetBtn">💾 Sauvegarder</button>
-</div>
+<div class="v-presets-block">
+<div class="v-sub-label">Préréglages enregistrés</div>
 <div class="v-preset-row">
 <select id="vmPresetSelect"><option value="">— Charger un préréglage —</option></select>
 <button type="button" class="v-ghost-btn" id="vmLoadPresetBtn">📂 Charger</button>
 <button type="button" class="v-ghost-btn" id="vmDeletePresetBtn">🗑 Supprimer</button>
 </div>
+<div class="v-preset-row">
+<input type="text" id="vmPresetName" placeholder="Nom du préréglage (ex: Multi V1)" maxlength="80">
+<button type="button" class="v-ghost-btn" id="vmSavePresetBtn">💾 Sauvegarder les réglages avancés</button>
+</div>
 <div id="vmPresetMsg" style="font-size:0.78rem;color:var(--muted);margin-top:8px;"></div>
+</div>
 </div>
 
 <!-- Estimation -->
@@ -2059,14 +2102,12 @@ Vision, no captions, no Batch, no A+B→C.
 <div class="v-est-grid">
 <div class="v-est-item"><div class="v-est-label">Vidéos sources</div><div class="v-est-value" id="vmEstVideos">0</div></div>
 <div class="v-est-item"><div class="v-est-label">Variations / vidéo</div><div class="v-est-value" id="vmEstPer">5</div></div>
-<div class="v-est-item"><div class="v-est-label">Total variantes</div><div class="v-est-value" id="vmEstTotal">—</div></div>
+<div class="v-est-item v-est-hi"><div class="v-est-label">Total variantes</div><div class="v-est-value" id="vmEstTotal">—</div></div>
 <div class="v-est-item"><div class="v-est-label">Durée totale</div><div class="v-est-value" id="vmEstDuration">—</div></div>
 <div class="v-est-item"><div class="v-est-label">Temps estimé</div><div class="v-est-value" id="vmEstTime">—</div></div>
 <div class="v-est-item"><div class="v-est-label">Coût estimé</div><div class="v-est-value" id="vmEstCost">—</div></div>
-<div class="v-est-item"><div class="v-est-label">Score d'unicité</div><div class="v-est-value" id="vmEstUniqueness">—</div></div>
-<div class="v-est-item"><div class="v-est-label">Score de sécurité</div><div class="v-est-value" id="vmEstSafety">—</div></div>
 </div>
-<div style="font-size:0.74rem;color:var(--muted);margin-top:10px;">Scores estimés côté navigateur à partir de vos réglages, donnés à titre indicatif. Plafond : 300 variantes au total par opération.</div>
+<div style="font-size:0.74rem;color:var(--muted);margin-top:10px;">Limites du moteur : 300 vidéos sources, 100 variations par vidéo, 900 variantes au total par opération. Temps et coût sont des estimations.</div>
 </div>
 
 <button id="vmLaunchBtn" class="primary-btn" onclick="runVariationMulti()" disabled><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="3.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.6"/><rect x="6.5" y="6.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.6"/><circle cx="11" cy="11" r="1" fill="currentColor"/></svg></span> Générer toutes les variations</button>
@@ -2139,84 +2180,9 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 ══════════════════════════════════════════ -->
 <div id="photoTab" class="tab-content">
 
-<!-- Upload -->
-<div class="card">
-<h2><span class="num">1</span> Photos <span style="font-weight:500;opacity:.7;font-size:.85rem">(1 à 300)</span></h2>
-<div class="drop-zone upcard" id="phZone" style="max-width:420px;margin:0 auto;">
-<input type="file" id="phInput" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple />
-<span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="4" width="13" height="10" rx="1.8" stroke="currentColor" stroke-width="1.6"/><circle cx="6.5" cy="8" r="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 13 L7.5 9.5 L10 11.5 L12.5 9 L14.5 11" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
-<div class="meta">
-<div class="lbl">Photos</div>
-<div class="sub">.jpg .jpeg .png .webp — 500 Mo max</div>
-<div class="fn" id="phName"></div>
-</div>
-</div>
-<div id="phFileList" style="margin-top:12px;"></div>
-</div>
-
-<!-- Settings -->
-<div class="card">
-<h2><span class="num">2</span> Traitement des métadonnées</h2>
-<div class="v-section-label"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.5 5.5 H14.5 M3.5 9 H14.5 M3.5 12.5 H14.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="5.5" r="1.5" fill="currentColor"/><circle cx="11.5" cy="9" r="1.5" fill="currentColor"/><circle cx="6" cy="12.5" r="1.5" fill="currentColor"/></svg></span> Mode</div>
-<div class="v-modeswitch">
-<label><input type="radio" name="phMode" value="rapide" checked> Rapide <span style="font-weight:500;opacity:.8">(strip EXIF, pixels intacts)</span></label>
-<label><input type="radio" name="phMode" value="standard"> Standard <span style="font-weight:500;opacity:.8">(nettoie + réécrit)</span></label>
-<label><input type="radio" name="phMode" value="avance"> Avancé <span style="font-weight:500;opacity:.8">(contrôle total)</span></label>
-</div>
-
-<div id="phModeHint" style="font-size:0.78rem;color:var(--muted);margin:8px 0 4px;"></div>
-
-<!-- Advanced panel -->
-<div id="phAdvancedPanel" style="display:none;">
-<div class="v-group-title"><span class="v-dot" style="background:var(--accent);color:var(--accent)"></span> Métadonnées</div>
-<label class="v-slider-row" style="cursor:pointer;"><span><input type="checkbox" id="phStripAll"> Supprimer tout l'EXIF</span></label>
-<label class="v-slider-row" style="cursor:pointer;"><span><input type="checkbox" id="phStripGps" checked> Supprimer GPS / localisation</span></label>
-<label class="v-slider-row" style="cursor:pointer;"><span><input type="checkbox" id="phRewriteDates" checked> Réécrire dates (EXIF DateTime)</span></label>
-<label class="v-slider-row" style="cursor:pointer;"><span><input type="checkbox" id="phRewriteSoftware" checked> Réécrire software</span></label>
-<label class="v-slider-row" style="cursor:pointer;"><span><input type="checkbox" id="phRewriteAuthor" checked> Réécrire auteur / copyright</span></label>
-<label class="v-slider-row" style="cursor:pointer;"><span><input type="checkbox" id="phRecompress"> Recompression légère (qualité 90)</span></label>
-
-<div class="v-group-title" style="margin-top:12px;"><span class="v-dot" style="background:var(--accent2);color:var(--accent2)"></span> Valeurs réécrites</div>
-<div class="v-preset-row"><input type="text" id="phSoftware" placeholder="Software (ex: ViralScale)" maxlength="120" value="ViralScale"></div>
-<div class="v-preset-row"><input type="text" id="phAuthor" placeholder="Auteur" maxlength="120"></div>
-<div class="v-preset-row"><input type="text" id="phCopyright" placeholder="Copyright (ex: © 2026)" maxlength="160"></div>
-<div class="v-preset-row"><input type="text" id="phDatetime" placeholder="Date EXIF (AAAA:MM:JJ HH:MM:SS)" maxlength="32"></div>
-<div style="font-size:0.74rem;color:var(--muted);margin-top:6px;">Si « Supprimer tout l'EXIF » est coché, les réécritures sont ignorées (tout est effacé).</div>
-</div>
-</div>
-
-<!-- Stats -->
-<div class="card">
-<h2><span class="num">3</span> Statistiques</h2>
-<div class="v-est-grid">
-<div class="v-est-item"><div class="v-est-label">Photos</div><div class="v-est-value" id="phEstCount">0</div></div>
-<div class="v-est-item"><div class="v-est-label">Taille totale</div><div class="v-est-value" id="phEstSize">—</div></div>
-<div class="v-est-item"><div class="v-est-label">Mode</div><div class="v-est-value" id="phEstMode">Rapide</div></div>
-<div class="v-est-item"><div class="v-est-label">Sortie</div><div class="v-est-value" id="phEstOut">Même format</div></div>
-</div>
-<div id="phSizeWarning" style="display:none;color:var(--error);font-size:0.8rem;margin-top:10px;"></div>
-<div style="font-size:0.74rem;color:var(--muted);margin-top:10px;">Traitement Pillow (EXIF). Aucun appel IA, aucun crédit consommé. Le mode Rapide garde les pixels visuellement identiques.</div>
-</div>
-
-<button id="phLaunchBtn" class="primary-btn" onclick="runPhotoProcess()" disabled><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="4" width="13" height="10" rx="1.8" stroke="currentColor" stroke-width="1.6"/><circle cx="6.5" cy="8" r="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 13 L7.5 9.5 L10 11.5 L12.5 9 L14.5 11" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span> Traiter les photos</button>
-
-<!-- Progress -->
-<div class="card" id="phProgressCard" style="display:none;">
-<h2 id="phProgressTitle"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Traitement en cours…</h2>
-<div class="pbar"><div class="pbar-fill" id="phGlobalFill"></div></div>
-<div id="phGlobalStatus" style="font-size:.85rem;color:var(--muted);margin-bottom:14px"></div>
-<div id="phResultsList"></div>
-<button class="zip-btn" id="phZipBtn" onclick="downloadPhotoZip()" style="display:none;"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span> Télécharger tout (.zip)</button>
-</div>
-
-</div><!-- /photoTab -->
-
-<!-- ═══════════ MEDIA OPTIMIZER ═══════════ -->
-<div id="optimizerTab" class="tab-content">
-
 <!-- PHOTO OPTIMIZER -->
 <div class="card">
-<h2><span class="num">1</span> Photo Optimizer</h2>
+<h2><span class="num">1</span> Photo Optimizer <span style="font-weight:500;opacity:.7;font-size:.85rem">(compression · résolution · format)</span></h2>
 <div class="drop-zone upcard" id="optPhZone" style="max-width:420px;margin:0 auto;">
 <input type="file" id="optPhInput" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" />
 <span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="4" width="13" height="10" rx="1.8" stroke="currentColor" stroke-width="1.6"/><circle cx="6.5" cy="8" r="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 13 L7.5 9.5 L10 11.5 L12.5 9 L14.5 11" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
@@ -2267,15 +2233,106 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 <div id="optPhErr" style="display:none;color:var(--error);font-size:.82rem;margin-top:12px;"></div>
 </div>
 
-<!-- VIDEO OPTIMIZER -->
+
+<div class="mt-section-title">Métadonnées photo <span>EXIF · 1 à 300 photos</span></div>
+
+<!-- Upload -->
 <div class="card">
-<h2><span class="num">2</span> Video Optimizer</h2>
-<div class="drop-zone upcard" id="optVdZone" style="max-width:420px;margin:0 auto;">
-<input type="file" id="optVdInput" accept=".mp4,.mov,.m4v,.avi,.mkv,video/*" />
-<span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="4" width="13" height="10" rx="1.8" stroke="currentColor" stroke-width="1.6"/><path d="M7.5 7 L11 9 L7.5 11 Z" fill="currentColor"/></svg></span>
-<div class="meta"><div class="lbl">1 vidéo</div><div class="sub">.mp4 .mov .m4v .avi .mkv — 5 min max</div><div class="fn" id="optVdName"></div></div>
+<h2><span class="num">2</span> Photos <span style="font-weight:500;opacity:.7;font-size:.85rem">(1 à 300)</span></h2>
+<div class="drop-zone upcard" id="phZone" style="max-width:420px;margin:0 auto;">
+<input type="file" id="phInput" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple />
+<span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="4" width="13" height="10" rx="1.8" stroke="currentColor" stroke-width="1.6"/><circle cx="6.5" cy="8" r="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 13 L7.5 9.5 L10 11.5 L12.5 9 L14.5 11" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
+<div class="meta">
+<div class="lbl">Photos</div>
+<div class="sub">.jpg .jpeg .png .webp — 500 Mo max</div>
+<div class="fn" id="phName"></div>
+</div>
+</div>
+<div id="phFileList" style="margin-top:12px;"></div>
 </div>
 
+<!-- Settings -->
+<div class="card">
+<h2><span class="num">3</span> Traitement des métadonnées</h2>
+<div class="v-section-label"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.5 5.5 H14.5 M3.5 9 H14.5 M3.5 12.5 H14.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="5.5" r="1.5" fill="currentColor"/><circle cx="11.5" cy="9" r="1.5" fill="currentColor"/><circle cx="6" cy="12.5" r="1.5" fill="currentColor"/></svg></span> Mode</div>
+<div class="v-modeswitch">
+<label><input type="radio" name="phMode" value="rapide" checked> Rapide <span style="font-weight:500;opacity:.8">(strip EXIF, pixels intacts)</span></label>
+<label><input type="radio" name="phMode" value="standard"> Standard <span style="font-weight:500;opacity:.8">(nettoie + réécrit)</span></label>
+<label><input type="radio" name="phMode" value="avance"> Avancé <span style="font-weight:500;opacity:.8">(contrôle total)</span></label>
+</div>
+
+<div id="phModeHint" style="font-size:0.78rem;color:var(--muted);margin:8px 0 4px;"></div>
+
+<!-- Advanced panel -->
+<div id="phAdvancedPanel" style="display:none;">
+<div class="v-group-title"><span class="v-dot" style="background:var(--accent);color:var(--accent)"></span> Métadonnées</div>
+<label class="v-slider-row" style="cursor:pointer;"><span><input type="checkbox" id="phStripAll"> Supprimer tout l'EXIF</span></label>
+<label class="v-slider-row" style="cursor:pointer;"><span><input type="checkbox" id="phStripGps" checked> Supprimer GPS / localisation</span></label>
+<label class="v-slider-row" style="cursor:pointer;"><span><input type="checkbox" id="phRewriteDates" checked> Réécrire dates (EXIF DateTime)</span></label>
+<label class="v-slider-row" style="cursor:pointer;"><span><input type="checkbox" id="phRewriteSoftware" checked> Réécrire software</span></label>
+<label class="v-slider-row" style="cursor:pointer;"><span><input type="checkbox" id="phRewriteAuthor" checked> Réécrire auteur / copyright</span></label>
+<label class="v-slider-row" style="cursor:pointer;"><span><input type="checkbox" id="phRecompress"> Recompression légère (qualité 90)</span></label>
+
+<div class="v-group-title" style="margin-top:12px;"><span class="v-dot" style="background:var(--accent2);color:var(--accent2)"></span> Valeurs réécrites</div>
+<div class="v-preset-row"><input type="text" id="phSoftware" placeholder="Software (ex: ViralScale)" maxlength="120" value="ViralScale"></div>
+<div class="v-preset-row"><input type="text" id="phAuthor" placeholder="Auteur" maxlength="120"></div>
+<div class="v-preset-row"><input type="text" id="phCopyright" placeholder="Copyright (ex: © 2026)" maxlength="160"></div>
+<div class="v-preset-row"><input type="text" id="phDatetime" placeholder="Date EXIF (AAAA:MM:JJ HH:MM:SS)" maxlength="32"></div>
+<div style="font-size:0.74rem;color:var(--muted);margin-top:6px;">Si « Supprimer tout l'EXIF » est coché, les réécritures sont ignorées (tout est effacé).</div>
+</div>
+</div>
+
+<!-- Stats -->
+<div class="card">
+<h2><span class="num">4</span> Statistiques</h2>
+<div class="v-est-grid">
+<div class="v-est-item"><div class="v-est-label">Photos</div><div class="v-est-value" id="phEstCount">0</div></div>
+<div class="v-est-item"><div class="v-est-label">Taille totale</div><div class="v-est-value" id="phEstSize">—</div></div>
+<div class="v-est-item"><div class="v-est-label">Mode</div><div class="v-est-value" id="phEstMode">Rapide</div></div>
+<div class="v-est-item"><div class="v-est-label">Sortie</div><div class="v-est-value" id="phEstOut">Même format</div></div>
+</div>
+<div id="phSizeWarning" style="display:none;color:var(--error);font-size:0.8rem;margin-top:10px;"></div>
+<div style="font-size:0.74rem;color:var(--muted);margin-top:10px;">Traitement Pillow (EXIF). Aucun appel IA, aucun crédit consommé. Le mode Rapide garde les pixels visuellement identiques.</div>
+</div>
+
+<button id="phLaunchBtn" class="primary-btn" onclick="runPhotoProcess()" disabled><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="4" width="13" height="10" rx="1.8" stroke="currentColor" stroke-width="1.6"/><circle cx="6.5" cy="8" r="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 13 L7.5 9.5 L10 11.5 L12.5 9 L14.5 11" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span> Traiter les photos</button>
+
+<!-- Progress -->
+<div class="card" id="phProgressCard" style="display:none;">
+<h2 id="phProgressTitle"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span> Traitement en cours…</h2>
+<div class="pbar"><div class="pbar-fill" id="phGlobalFill"></div></div>
+<div id="phGlobalStatus" style="font-size:.85rem;color:var(--muted);margin-bottom:14px"></div>
+<div id="phResultsList"></div>
+<button class="zip-btn" id="phZipBtn" onclick="downloadPhotoZip()" style="display:none;"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span> Télécharger tout (.zip)</button>
+</div>
+
+</div><!-- /photoTab -->
+
+<!-- ═══════════ MEDIA OPTIMIZER ═══════════ -->
+<div id="optimizerTab" class="tab-content">
+
+<!-- VIDÉOS : Réexport standard (moteur Batch Video Export) + Optimisation
+     (Video Optimizer pour 1 vidéo, moteur Batch Video Export pour plusieurs). -->
+<!-- BATCH VIDEO EXPORT -->
+<div class="card">
+<h2><span class="num">1</span> Optimisation vidéo</h2>
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-4px 0 14px;">
+<span class="free-badge" title="Aucune API IA — uniquement FFmpeg côté serveur.">⚡ 100% FFmpeg · 0 crédit IA</span>
+<span style="font-size:.78rem;color:var(--muted);">1 à 500 vidéos · traitement serveur en tâche de fond · archives ZIP par groupes de 100</span>
+</div>
+
+<div class="drop-zone upcard" id="veZone" style="max-width:520px;margin:0 auto;">
+<input type="file" id="veInput" accept=".mp4,.mov,.m4v,.avi,.mkv,video/*" multiple />
+<span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="4" width="13" height="10" rx="1.8" stroke="currentColor" stroke-width="1.6"/><path d="M7.5 7 L11 9 L7.5 11 Z" fill="currentColor"/></svg></span>
+<div class="meta"><div class="lbl" id="veLbl">Vidéos (1 à 500)</div><div class="sub">.mp4 .mov .m4v .avi .mkv</div><div class="fn" id="veName"></div></div>
+</div>
+
+
+<div class="vt-modes" role="radiogroup" aria-label="Mode de traitement">
+<label class="vt-mode"><input type="radio" name="vtMode" value="standard" checked onchange="vtOnModeChange()"><span><b>Réexport standard</b><em>MP4 H.264 propre, 1080p max · aucun effet, aucun watermark, aucun recadrage · orientation et proportions conservées</em></span></label>
+<label class="vt-mode"><input type="radio" name="vtMode" value="optimize" onchange="vtOnModeChange()"><span><b>Optimisation</b><em>Réduire le poids : résolution, codec et compression au choix</em></span></label>
+</div>
+<div id="vtOptParams" style="display:none;">
 <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;">
 <div style="flex:1;min-width:160px;">
 <div class="v-est-label" style="margin-bottom:6px;">Résolution</div>
@@ -2305,8 +2362,14 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 <div style="font-size:.72rem;color:var(--muted);margin-top:4px;">0% = qualité max · 25% légère · 50% équilibré · 75% forte · 90%+ extrême</div>
 </div>
 
-<button id="optVdBtn" class="primary-btn" style="margin-top:18px;" onclick="runOptimizeVideo()" disabled>Optimiser la vidéo</button>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;">
+<div id="veCount" style="font-size:.9rem;font-weight:700;color:var(--accent);">0 vidéo sélectionnée</div>
+<div style="font-size:.78rem;color:var(--muted);">Maximum : 500 vidéos par batch</div>
+</div>
+<div id="veLimitErr" style="display:none;color:var(--error);font-size:.82rem;margin-top:8px;"></div>
 
+<button id="veBtn" class="primary-btn" style="margin-top:16px;" onclick="runVideoTools()" disabled>Lancer le réexport</button>
 <div id="optVdProgress" style="display:none;font-size:.85rem;color:var(--muted);margin-top:14px;">⏳ Optimisation en cours… (peut prendre plusieurs minutes selon la durée)</div>
 
 <div id="optVdResult" class="card" style="display:none;background:rgba(124,92,255,0.06);margin-top:16px;">
@@ -2321,29 +2384,7 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 <button class="zip-btn" id="optVdDl" style="margin-top:12px;">Télécharger la vidéo optimisée</button>
 </div>
 <div id="optVdErr" style="display:none;color:var(--error);font-size:.82rem;margin-top:12px;"></div>
-</div>
 
-<!-- BATCH VIDEO EXPORT -->
-<div class="card">
-<h2><span class="num">3</span> Batch Video Export</h2>
-<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:-4px 0 14px;">
-<span class="free-badge" title="Aucune API IA — uniquement FFmpeg côté serveur.">⚡ 100% FFmpeg · 0 crédit IA</span>
-<span style="font-size:.78rem;color:var(--muted);">Réexport MP4 1080p propre (décodage → réencodage), ratio et orientation conservés.</span>
-</div>
-
-<div class="drop-zone upcard" id="veZone" style="max-width:520px;margin:0 auto;">
-<input type="file" id="veInput" accept=".mp4,.mov,.m4v,.avi,.mkv,video/*" multiple />
-<span class="filebox"><svg class="ico-svg lg" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="4" width="13" height="10" rx="1.8" stroke="currentColor" stroke-width="1.6"/><path d="M7.5 7 L11 9 L7.5 11 Z" fill="currentColor"/></svg></span>
-<div class="meta"><div class="lbl" id="veLbl">Vidéos à exporter</div><div class="sub">.mp4 .mov .m4v .avi .mkv</div><div class="fn" id="veName"></div></div>
-</div>
-
-<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;">
-<div id="veCount" style="font-size:.9rem;font-weight:700;color:var(--accent);">0 vidéo sélectionnée</div>
-<div style="font-size:.78rem;color:var(--muted);">Maximum : 500 vidéos par batch</div>
-</div>
-<div id="veLimitErr" style="display:none;color:var(--error);font-size:.82rem;margin-top:8px;"></div>
-
-<button id="veBtn" class="primary-btn" style="margin-top:16px;" onclick="runVideoExport()" disabled>Exporter les vidéos</button>
 
 <div id="veProgressWrap" style="display:none;margin-top:18px;">
 <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
@@ -2483,6 +2524,26 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
       </div>
       <div class="r-genmode-hint" id="rGenModeHint"></div>
       <span class="r-gencount" id="rGenCount">0 vidéo à générer</span>
+    </div>
+    <div class="r-render-opts">
+      <div class="r-ro-row">
+        <label class="r-ro-lbl" for="rRenderPos">Position du texte</label>
+        <select id="rRenderPos" class="r-tool-sel" onchange="rRenderOptsChanged()"><option value="">Position de chaque caption</option></select>
+        <label class="r-chk"><input type="checkbox" id="rRenderOutline" checked onchange="rRenderOptsChanged()"> Contour CapCut</label>
+      </div>
+      <div class="r-ro-row">
+        <label class="r-ro-lbl" for="rRpSelect">Préréglage de rendu</label>
+        <select id="rRpSelect" class="r-tool-sel"><option value="">— Aucun préréglage —</option></select>
+        <button type="button" class="v-ghost-btn" onclick="rRpLoad()">📂 Charger</button>
+        <button type="button" class="v-ghost-btn" onclick="rRpSave(true)">↻ Mettre à jour</button>
+        <button type="button" class="v-ghost-btn ws-danger" onclick="rRpDelete()">🗑</button>
+      </div>
+      <div class="r-ro-row">
+        <input type="text" id="rRpName" class="r-tool-input" placeholder="Nom (nouveau préréglage ou renommage)" maxlength="80">
+        <button type="button" class="v-ghost-btn" onclick="rRpSave(false)">💾 Enregistrer</button>
+        <button type="button" class="v-ghost-btn" onclick="rRpRename()">✏️ Renommer</button>
+      </div>
+      <div class="r-ro-msg" id="rRpMsg">Un préréglage mémorise : captions et musiques (sélection de la bibliothèque, sinon celles assignées), position du texte, contour et mode d'assignation.</div>
     </div>
     <button id="rGenBtn" class="primary-btn ws-gen-btn" onclick="reelsGenerate()" disabled>▶ Générer les reels</button>
     <div class="card ws-progress" id="rProgressCard" style="display:none;">
@@ -2670,6 +2731,24 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
   </div>
 </div>
 
+<!-- Aperçu rapide / aperçu du rendu (dans la page, jamais un nouvel onglet) -->
+<div id="rPvModal" class="r-modal" style="display:none;" onclick="if(event.target===this)rPvClose()">
+  <div class="r-modal-box r-pv-box">
+    <div class="r-modal-head"><span id="rPvTitle">Aperçu</span><button type="button" class="ws-icon-btn r-live" onclick="rPvClose()" title="Fermer">✕</button></div>
+    <div class="r-pv-body">
+      <div class="r-pv-stage" id="rPvStage"><video id="rPvVideo" playsinline controls></video><img id="rPvOverlay" alt="" style="display:none;"></div>
+      <div class="r-pv-side" id="rPvSide">
+        <div class="r-pv-badge">Aperçu du rendu</div>
+        <div class="r-modal-field"><label for="rPvCap">Caption</label><select id="rPvCap" onchange="rPvRefresh()"></select></div>
+        <div class="r-modal-field"><label for="rPvMus">Musique</label><select id="rPvMus" onchange="rPvSetMusic()"></select></div>
+        <div class="r-modal-field"><label for="rPvPos">Position du texte</label><select id="rPvPos" onchange="rPvRefresh()"></select></div>
+        <label class="r-chk"><input type="checkbox" id="rPvOutline" checked onchange="rPvRefresh()"> Contour CapCut</label>
+        <div class="r-pv-hint" id="rPvHint"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 </div><!-- /reelsTab -->
 
 </main>
@@ -2680,6 +2759,22 @@ no credits, no video/audio pipeline. IDs namespaced ph*.
 // ══════════════════════════════════════════
 // SHARED
 // ══════════════════════════════════════════
+// Porte FFmpeg commune : une réponse 503 + « X-VS-Busy » signifie qu'un autre
+// traitement vidéo occupe le créneau du serveur → nouvel essai automatique
+// (jusqu'à ~1 min) au lieu d'une erreur. Toutes les autres réponses passent
+// telles quelles.
+(function(){
+  if (window.__vsBusyRetry) return; window.__vsBusyRetry = true;
+  const _fetch = window.fetch.bind(window);
+  window.fetch = async function(input, init){
+    for (let attempt = 0; ; attempt++) {
+      const r = await _fetch(input, init);
+      if (r.status !== 503 || r.headers.get("X-VS-Busy") !== "1" || attempt >= 11) return r;
+      const wait = Math.min(30, Math.max(1, parseInt(r.headers.get("Retry-After") || "5", 10) || 5));
+      await new Promise(res => setTimeout(res, wait * 1000));
+    }
+  };
+})();
 // ── Architecture V2 : pages fusionnées via sous-navigation ──
 // Chaque onglet appartient à un "groupe" (objectif utilisateur). Le groupe
 // définit l'item de sidebar mis en surbrillance (primary) et les sous-onglets
@@ -2688,11 +2783,11 @@ var TAB_GROUPS = {
   dashboard:       { primary:'dashboard', title:'Dashboard', subtitle:'Vue d’ensemble de votre activité', subs:[] },
   simple:          { primary:'simple', title:'Générateur vidéo', subtitle:'Un moteur, plusieurs modes — la page reste identique', subs:[['simple','Mode Simple'],['batch','Batch']] },
   batch:           { primary:'simple', title:'Générateur vidéo', subtitle:'Un moteur, plusieurs modes — la page reste identique', subs:[['simple','Mode Simple'],['batch','Batch']] },
-  variation:       { primary:'variation', title:'Studio Variations', subtitle:'Générez des dizaines de variantes uniques', subs:[['variation','1 vidéo'],['variation_multi','Plusieurs vidéos']] },
-  variation_multi: { primary:'variation', title:'Studio Variations', subtitle:'Générez des dizaines de variantes uniques', subs:[['variation','1 vidéo'],['variation_multi','Plusieurs vidéos']] },
-  optimizer:       { primary:'optimizer', title:'Media Tools', subtitle:'Optimisation, audio et métadonnées au même endroit', subs:[['optimizer','Optimizer médias'],['audio','Audio'],['photo','Métadonnées']] },
-  audio:           { primary:'optimizer', title:'Media Tools', subtitle:'Optimisation, audio et métadonnées au même endroit', subs:[['optimizer','Optimizer médias'],['audio','Audio'],['photo','Métadonnées']] },
-  photo:           { primary:'optimizer', title:'Media Tools', subtitle:'Optimisation, audio et métadonnées au même endroit', subs:[['optimizer','Optimizer médias'],['audio','Audio'],['photo','Métadonnées']] },
+  variation:       { primary:'variation', title:'Studio Variations', subtitle:'De 1 à 300 vidéos : N variations par vidéo, en une seule opération', subs:[] },
+  variation_multi: { primary:'variation', title:'Studio Variations', subtitle:'De 1 à 300 vidéos : N variations par vidéo, en une seule opération', subs:[] },
+  optimizer:       { primary:'optimizer', title:'Media Tools', subtitle:'Vidéos, photos et audio — 100% FFmpeg / Pillow, 0 crédit IA', subs:[['optimizer','Vidéos'],['photo','Photos'],['audio','Audio']] },
+  photo:           { primary:'optimizer', title:'Media Tools', subtitle:'Vidéos, photos et audio — 100% FFmpeg / Pillow, 0 crédit IA', subs:[['optimizer','Vidéos'],['photo','Photos'],['audio','Audio']] },
+  audio:           { primary:'optimizer', title:'Media Tools', subtitle:'Vidéos, photos et audio — 100% FFmpeg / Pillow, 0 crédit IA', subs:[['optimizer','Vidéos'],['photo','Photos'],['audio','Audio']] },
   reels:           { primary:'reels', title:'Reels Studio', subtitle:'Production de reels à faible coût — 100% FFmpeg', subs:[] }
 };
 function renderSubnav(tab) {
@@ -2729,8 +2824,9 @@ b.classList.toggle('active', b.dataset.tab === info.primary);
 document.getElementById('dashboardTab').classList.toggle('active', tab === 'dashboard');
 document.getElementById('simpleTab').classList.toggle('active', tab === 'simple');
 document.getElementById('batchTab').classList.toggle('active', tab === 'batch');
-document.getElementById('variationTab').classList.toggle('active', tab === 'variation');
-document.getElementById('variationMultiTab').classList.toggle('active', tab === 'variation_multi');
+// Studio Variations : interface UNIQUE (1 à 300 vidéos) ; l'ancien lien « Plusieurs vidéos » y mène aussi.
+document.getElementById('variationTab').classList.remove('active');
+document.getElementById('variationMultiTab').classList.toggle('active', tab === 'variation' || tab === 'variation_multi');
 document.getElementById('audioTab').classList.toggle('active', tab === 'audio');
 document.getElementById('photoTab').classList.toggle('active', tab === 'photo');
 document.getElementById('optimizerTab').classList.toggle('active', tab === 'optimizer');
@@ -2742,7 +2838,7 @@ if (tab === 'reels' && typeof reelsOnOpen === 'function') reelsOnOpen();
 document.addEventListener('DOMContentLoaded', function(){
   var active = document.querySelector('.tab-content.active');
   var id = active ? active.id : 'dashboardTab';
-  var map = { dashboardTab:'dashboard', simpleTab:'simple', batchTab:'batch', variationTab:'variation', variationMultiTab:'variation_multi', audioTab:'audio', photoTab:'photo', optimizerTab:'optimizer', reelsTab:'reels' };
+  var map = { dashboardTab:'dashboard', simpleTab:'simple', batchTab:'batch', variationTab:'variation', variationMultiTab:'variation', audioTab:'audio', photoTab:'photo', optimizerTab:'optimizer', reelsTab:'reels' };
   renderSubnav(map[id] || 'dashboard');
 });
 
@@ -3082,9 +3178,9 @@ helper.innerHTML =
 + `<div style="margin-top:4px;color:var(--muted);">Exemples : 100 A + 100 B = 100 sorties · 300 A + 300 B = 300 sorties · 300 A + 20 B = 20 sorties</div>`;
 } else {
 helper.innerHTML =
-`<div><b>Mode Matrice :</b> chaque vidéo A est combinée avec chaque vidéo B. Maximum 300 sorties au total.</div>`
-+ `<div style="margin-top:4px;"><b>Règle :</b> A × B ≤ 300</div>`
-+ `<div style="margin-top:4px;color:var(--muted);">Exemples : 20 × 15 = 300 ✅ · 50 × 6 = 300 ✅ · 50 × 50 = 2500 ❌</div>`;
+`<div><b>Matrice A × B :</b> chaque vidéo A est combinée avec chaque vidéo B (ex. 20 A × 10 B = 200 vidéos).</div>`
++ `<div style="margin-top:4px;"><b>Limite :</b> ${MAX_BATCH_COMBOS} vidéos générées au maximum · ${MAX_BATCH_A} vidéos A et ${MAX_BATCH_B} vidéos B</div>`
++ `<div style="margin-top:4px;color:var(--muted);">Exemples : 10 × 10 = 100 ✅ · 20 × 15 = 300 ✅ · 50 × 50 = 2500 ❌</div>`;
 }
 }
 }
@@ -3200,7 +3296,9 @@ return;
 const total = nA * nB;
 const over = total > MAX_BATCH_COMBOS;
 const outColor = over ? "var(--error)" : "var(--text)";
-let html = `<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:.85rem;font-weight:600;">`
+let html = `<div class="ws-matrix-total" style="font-size:1.05rem;font-weight:700;margin-bottom:6px;color:${outColor}">`
++ `${nA} vidéo${nA > 1 ? "s" : ""} A × ${nB} vidéo${nB > 1 ? "s" : ""} B = ${total} vidéo${total > 1 ? "s" : ""} ${over ? "— trop de vidéos" : "générée" + (total > 1 ? "s" : "")}</div>`
++ `<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:.85rem;font-weight:600;">`
 + `<span>Vidéos A : <b>${nA}</b> / ${MAX_BATCH_A}</span>`
 + `<span>Vidéos B : <b>${nB}</b> / ${MAX_BATCH_B}</span>`
 + `<span style="color:${outColor}">Sorties prévues : <b>${total}</b> / ${MAX_BATCH_COMBOS}</span>`
@@ -4450,7 +4548,10 @@ const sel = document.getElementById("vmPresetSelect"); const msg = document.getE
 const presets = JSON.parse(sel.dataset.presets || "[]");
 const picked = presets.find(p => String(p.id) === sel.value);
 if (!picked) { msg.textContent = "Sélectionnez un préréglage."; msg.style.color = "var(--error)"; return; }
-try { setVmAdvancedConfig(picked.config || {}); msg.textContent = `📂 "${picked.name}" chargé.`; msg.style.color = "var(--success)"; }
+try {
+const advRadio = document.querySelector('input[name="vmConfigMode"][value="advanced"]');
+if (advRadio && !advRadio.checked) { advRadio.checked = true; advRadio.dispatchEvent(new Event("change")); }
+setVmAdvancedConfig(picked.config || {}); msg.textContent = `📂 "${picked.name}" chargé (mode Avancé).`; msg.style.color = "var(--success)"; }
 catch(e) { msg.textContent = "❌ Préréglage invalide."; msg.style.color = "var(--error)"; }
 });
 document.getElementById("vmDeletePresetBtn").addEventListener("click", async () => {
@@ -5050,7 +5151,7 @@ async function runOptimizePhoto() {
 
 async function runOptimizeVideo() {
   if (!optVdFile) return;
-  const btn = document.getElementById("optVdBtn");
+  const btn = document.getElementById("optVdBtn") || document.getElementById("veBtn");
   const err = document.getElementById("optVdErr");
   const res = document.getElementById("optVdResult");
   const prog = document.getElementById("optVdProgress");
@@ -5080,8 +5181,44 @@ async function runOptimizeVideo() {
     err.textContent = "⚠️ " + e.message; err.style.display = "block";
   } finally {
     prog.style.display = "none";
-    btn.disabled = false; btn.textContent = "Optimiser la vidéo";
+    btn.disabled = false;
+    if (btn.id === "veBtn") vtOnModeChange(); else btn.textContent = "Optimiser la vidéo";
   }
+}
+
+// ── Onglet VIDÉOS : une seule interface, deux modes ──
+// Réexport standard → moteur Batch Video Export (1 à 500, ZIP par 100).
+// Optimisation → 1 vidéo : Video Optimizer (résultat détaillé) ;
+//                plusieurs : moteur Batch Video Export avec le profil
+//                d'optimisation (mêmes réglages que Video Optimizer).
+function vtMode() { const r = document.querySelector('input[name="vtMode"]:checked'); return r ? r.value : "standard"; }
+function vtOnModeChange() {
+  const opt = vtMode() === "optimize";
+  const params = document.getElementById("vtOptParams"); if (params) params.style.display = opt ? "block" : "none";
+  const btn = document.getElementById("veBtn");
+  if (btn && !btn.dataset.busy) btn.textContent = opt ? (veFiles.length > 1 ? `Optimiser les ${veFiles.length} vidéos` : "Optimiser la vidéo") : "Lancer le réexport";
+}
+function veCreateForm() {
+  const fd = new FormData();
+  if (vtMode() === "optimize") {
+    fd.append("mode", "optimize");
+    fd.append("resolution", document.getElementById("optVdRes").value);
+    fd.append("codec", document.getElementById("optVdCodec").value);
+    fd.append("compression", document.getElementById("optVdComp").value);
+  } else {
+    fd.append("mode", "standard");
+  }
+  return fd;
+}
+function runVideoTools() {
+  if (!veFiles.length || veFiles.length > VE_MAX) return;
+  ["optVdResult", "optVdErr"].forEach(id => { const e = document.getElementById(id); if (e) e.style.display = "none"; });
+  if (vtMode() === "optimize" && veFiles.length === 1) {
+    document.getElementById("veProgressWrap").style.display = "none";
+    optVdFile = veFiles[0];
+    return runOptimizeVideo();
+  }
+  return runVideoExport();
 }
 
 // ═══════════ BATCH VIDEO EXPORT — 100% FFmpeg, 0 crédit IA. Upload fichier
@@ -5107,6 +5244,7 @@ let veDlQueue = null;      // « Tout télécharger » guidé (mobile)
     limErr.style.display = over ? "block" : "none";
     if (over) limErr.textContent = `Maximum ${VE_MAX} vidéos par batch. Lance un second batch pour les vidéos restantes.`;
     document.getElementById("veBtn").disabled = (veFiles.length === 0 || over);
+    vtOnModeChange();
     document.getElementById("veName").textContent = veFiles.length ? veFiles.slice(0, 3).map(f => f.name).join(", ") + (veFiles.length > 3 ? "…" : "") : "";
   });
   // Reprise après refresh / réouverture d'onglet.
@@ -5137,14 +5275,15 @@ async function runVideoExport() {
   document.getElementById("veProgressWrap").style.display = "block";
   document.getElementById("veArchives").style.display = "none";
   document.getElementById("veAllNote").style.display = "none";
-  veDlQueue = null;
+  document.getElementById("veArchList").innerHTML = "";   // pas d'archives du batch précédent
+  veDlQueue = null; veLastStatus = null;
   document.getElementById("veSummary").style.display = "none";
   document.getElementById("veNote").style.display = "none";
   document.getElementById("veRetryBtn").style.display = "none";
   document.getElementById("veResultsList").innerHTML = "";
   try {
     // 1) créer le batch
-    const cr = await fetch("/vexport_create", { method: "POST" });
+    const cr = await fetch("/vexport_create", { method: "POST", body: veCreateForm() });
     const cd = await cr.json();
     if (cd.error) throw new Error(cd.error);
     veBatchId = cd.batch_id;
@@ -5591,7 +5730,7 @@ const rIO = ("IntersectionObserver" in window) ? new IntersectionObserver(ents=>
 function rLazyVideo(v,url){ if(rIO){ v.dataset.src=url; rIO.observe(v); } else { v.src=url; } }
 
 async function reelsOnOpen(){
-  await Promise.all([rRefreshFolders(), rRefreshCaptions(), rRefreshMusic(), rPresetRefresh()]);
+  await Promise.all([rRefreshFolders(), rRefreshCaptions(), rRefreshMusic(), rPresetRefresh(), rRpRefresh()]);
   rRenderReels(); rRenderReview(); rUpdateInfo();
   if(!window._rWired){ window._rWired=true; rWireResizers(); rWireShortcuts(); }
 }
@@ -5700,7 +5839,7 @@ function rFolderDrop(ev, kind, fid){
   if(kind==="cap") rCapSetFolder(id, target); else rMusSetFolder(id, target);
   rDragItem=null;
 }
-async function rPresetRefresh(){ try{ const d=await rGet("/reels_pos_preset_list"); rPresets=d.presets||[]; }catch(e){} rPresetRenderBar(); }
+async function rPresetRefresh(){ try{ const d=await rGet("/reels_pos_preset_list"); rPresets=d.presets||[]; }catch(e){} rPresetRenderBar(); if(typeof rRenderPosFill==="function") rRenderPosFill(); }
 
 function rWireResizers(){
   const panels=document.getElementById("rPanels"); if(!panels) return;
@@ -5785,14 +5924,14 @@ function rRenderReels(){
                    <div class="r-asg-line"><span class="r-asg-count">${r.musIds.length} musique${r.musIds.length>1?"s":""}</span>${musChips}</div>`;
     info.appendChild(asg);
     const acts=document.createElement("div"); acts.className="r-reel-acts";
-    acts.innerHTML=`<button type="button" class="r-assign-mini" onclick="event.stopPropagation();rReelPreview(${i})">👁 aperçu${r.musIds.length?" 🎵":""}</button>
+    acts.innerHTML=`<button type="button" class="r-assign-mini" onclick="event.stopPropagation();rPvOpenReel(${i})">👁 aperçu${r.musIds.length?" 🎵":""}</button>
       <button type="button" class="r-assign-mini" onclick="event.stopPropagation();rReelPickCap(${i})">✏️ caption</button>
       <button type="button" class="r-assign-mini" onclick="event.stopPropagation();rReelPickMus(${i})">🎵 musique</button>
       <button type="button" class="r-assign-mini danger" onclick="event.stopPropagation();rDeleteReel(${i})">🗑</button>
       <span class="r-favmark ${r.fav?'':'off'}" onclick="event.stopPropagation();rReelFav(${i})">★</span>`;
     chk.addEventListener("click",ev=>{ ev.stopPropagation(); r.sel=!r.sel; card.classList.toggle("sel",r.sel); chk.textContent=r.sel?"✓":""; rUpdateInfo(); });
-    // Clic sur la carte = preview complète : vidéo (visuel) + musique assignée (Module 2).
-    card.addEventListener("click",()=>{ rReelPreview(i); });
+    // Clic sur la carte = aperçu dans la page : vidéo + rendu des captions + musique.
+    card.addEventListener("click",()=>{ rPvOpenReel(i); });
     card.appendChild(chk); card.appendChild(v); card.appendChild(info); card.appendChild(acts);
     g.appendChild(card);
   });
@@ -6780,6 +6919,9 @@ async function reelsGenerate(){
       const fd=new FormData(); fd.append("job_id",rMixJobId); fd.append("index",job.i);
       if(job.capId) fd.append("caption_id",job.capId); if(job.musId) fd.append("music_id",job.musId);
       fd.append("out_name", job.name);
+      fd.append("capcut_outline", rRenderOutline() ? "1" : "0");
+      const _pos = rPosFromValue(document.getElementById("rRenderPos") ? document.getElementById("rRenderPos").value : "");
+      if(_pos) fd.append("pos_override", JSON.stringify(_pos));
       try{ const d=await rPost("/reels_mix_run",fd,true); if(d.ok){ ok++; rReview.push({job_id:rMixJobId, filename:d.filename}); } else err++; }catch(e){ err++; }
       fill.style.width=(30+Math.round((j+1)/total*70))+"%";
       status.textContent=`${j+1}/${jobs.length} · ✅ ${ok} · ❌ ${err}`;
@@ -6791,6 +6933,213 @@ async function reelsGenerate(){
     await rRefreshCaptions(); await rRefreshMusic();
   }catch(e){ title.textContent="❌ Erreur"; alert("Erreur génération reels : "+e.message); setDot("err","Erreur"); }
   rReelsRunning=false; document.getElementById("rGenBtn").disabled=false;
+}
+
+
+// ═══════════ REELS — Aperçu rapide + aperçu du rendu + préréglages de rendu ═══════════
+// Aperçu : fenêtre dans la page (jamais un nouvel onglet). Les captions y sont
+// les calques PNG du moteur de rendu réel (/reels_preview_overlays : police,
+// contour, position, retours à la ligne), superposés à la vidéo ; la musique
+// est jouée en synchronisation. Aucun encodage, aucune génération.
+let rPv = { i: -1, mode: "reel", segs: [], req: 0, raf: 0, shown: "" };
+let rRenderPresets = [];
+let rRenderPosCustom = null;     // position imposée par un préréglage chargé (sans preset de position équivalent)
+function rPvEl(id){ return document.getElementById(id); }
+function rPosOf(p){ return p ? { cx_pct:+p.cx_pct, cy_pct:+p.cy_pct, width_pct:+p.width_pct, fontsize_pct:+p.fontsize_pct, align:p.align||"center" } : null; }
+function rPosFromValue(val){
+  if(!val) return null;
+  if(val === "__preset__") return rRenderPosCustom;
+  return rPosOf(rPresets.find(p => String(p.id) === String(val)));
+}
+function rPosOptions(selected){
+  let h = `<option value="">Position de chaque caption</option>`;
+  rPresets.forEach(p => { h += `<option value="${p.id}"${String(p.id)===String(selected)?" selected":""}>${rEsc(p.name)}</option>`; });
+  if(rRenderPosCustom) h += `<option value="__preset__"${selected==="__preset__"?" selected":""}>Position du préréglage chargé</option>`;
+  return h;
+}
+function rRenderPosFill(){
+  const s = rPvEl("rRenderPos"); if(!s) return;
+  const cur = s.value; s.innerHTML = rPosOptions(cur);
+  if([...s.options].some(o => o.value === cur)) s.value = cur;
+}
+function rRenderOutline(){ const c = rPvEl("rRenderOutline"); return !c || c.checked; }
+function rRenderOptsChanged(){ const m = rPvEl("rRpMsg"); if(m) m.textContent = ""; }
+
+function rPvOptions(list, assigned, emptyLabel, nameOf){
+  const asg = assigned.filter(id => list.some(x => x.id === id));
+  let h = `<option value="">${emptyLabel}</option>`;
+  if(asg.length){ h += `<optgroup label="Assignées à ce reel">` + asg.map(id => `<option value="${id}">${rEsc(nameOf(id))}</option>`).join("") + `</optgroup>`; }
+  const rest = list.filter(x => !asg.includes(x.id));
+  if(rest.length){ h += `<optgroup label="Bibliothèque">` + rest.map(x => `<option value="${x.id}">${rEsc(x.name)}</option>`).join("") + `</optgroup>`; }
+  return h;
+}
+function rPvAudio(){
+  let a = rPvEl("rPvAudio");
+  if(!a){ a = document.createElement("audio"); a.id = "rPvAudio"; a.preload = "auto"; a.style.display = "none"; document.body.appendChild(a); }
+  return a;
+}
+function rPvShow(){ rPvEl("rPvModal").style.display = "flex"; cancelAnimationFrame(rPv.raf); rPv.raf = requestAnimationFrame(rPvTick); }
+function rPvOpenReel(i){
+  const r = rReels[i]; if(!r) return;
+  if(typeof rStopPreview === "function") rStopPreview();
+  rPv.i = i; rPv.mode = "reel"; rPv.segs = []; rPv.shown = "";
+  rPvEl("rPvTitle").textContent = "Aperçu · " + r.file.name;
+  rPvEl("rPvSide").style.display = "";
+  rPvEl("rPvCap").innerHTML = rPvOptions(rCaptions, r.capIds, "Aucune caption", rCapNameOf);
+  rPvEl("rPvCap").value = r.capIds.find(id => rCaptions.some(c => c.id === id)) || "";
+  rPvEl("rPvMus").innerHTML = rPvOptions(rMusic, r.musIds, "Son d'origine du reel", rMusNameOf);
+  rPvEl("rPvMus").value = r.musIds.find(id => rMusic.some(m => m.id === id)) || "";
+  const gpos = rPvEl("rRenderPos") ? rPvEl("rRenderPos").value : "";
+  rPvEl("rPvPos").innerHTML = rPosOptions(gpos); rPvEl("rPvPos").value = gpos;
+  rPvEl("rPvOutline").checked = rRenderOutline();
+  const ov = rPvEl("rPvOverlay"); ov.style.display = "none"; ov.removeAttribute("src");
+  const v = rPvEl("rPvVideo");
+  v.onloadedmetadata = () => { rPvFitStage(); rPvRefresh(); };
+  v.src = r.url; v.currentTime = 0;
+  rPvSetMusic(true);
+  rPvShow();
+  v.play().catch(() => {});
+}
+function rPvOpenOutput(url, name){
+  if(typeof rStopPreview === "function") rStopPreview();
+  rPv.mode = "output"; rPv.segs = []; rPv.i = -1;
+  rPvEl("rPvTitle").textContent = "Rendu final · " + name;
+  rPvEl("rPvSide").style.display = "none";
+  rPvEl("rPvOverlay").style.display = "none";
+  const a = rPvAudio(); a.pause(); a.removeAttribute("src");
+  const v = rPvEl("rPvVideo"); v.muted = false; v.onloadedmetadata = rPvFitStage; v.src = url;
+  rPvShow();
+  v.play().catch(() => {});
+}
+function rPvFitStage(){
+  const v = rPvEl("rPvVideo"), st = rPvEl("rPvStage");
+  if(v.videoWidth && v.videoHeight) st.style.aspectRatio = `${v.videoWidth} / ${v.videoHeight}`;
+}
+async function rPvRefresh(){
+  if(rPv.mode !== "reel") return;
+  const req = ++rPv.req;
+  const cid = parseInt(rPvEl("rPvCap").value, 10) || 0;
+  const hint = rPvEl("rPvHint");
+  rPv.segs = []; rPv.shown = ""; rPvEl("rPvOverlay").style.display = "none";
+  if(!cid){ hint.textContent = "Aucune caption : la vidéo est affichée telle qu'elle sera rendue."; return; }
+  hint.textContent = "⏳ Rendu des calques de caption…";
+  const v = rPvEl("rPvVideo");
+  try{
+    const d = await rPost("/reels_preview_overlays", { caption_id: cid, width: v.videoWidth || 1080, height: v.videoHeight || 1920,
+      duration: isFinite(v.duration) ? v.duration : 0, capcut_outline: rPvEl("rPvOutline").checked,
+      position: rPosFromValue(rPvEl("rPvPos").value) });
+    if(req !== rPv.req) return;
+    if(d.error) throw new Error(d.error);
+    rPv.segs = (d.segments || []).map(s => ({ start: s.start, end: s.end, src: s.png }));
+    rPv.segs.forEach(s => { const im = new Image(); im.src = s.src; });     // préchargement
+    hint.textContent = `Calques du moteur de rendu réel (${rPv.segs.length} segment${rPv.segs.length > 1 ? "s" : ""}) — aucune vidéo n'est générée.`;
+  }catch(e){ if(req === rPv.req) hint.textContent = "⚠️ Aperçu indisponible : " + e.message; }
+}
+function rPvSetMusic(noSeek){
+  const v = rPvEl("rPvVideo"), a = rPvAudio();
+  const mid = parseInt(rPvEl("rPvMus").value, 10) || 0;
+  if(mid){ a.src = `/reels_music_file/${mid}`; v.muted = true; if(!noSeek){ try{ a.currentTime = v.currentTime; }catch(e){} } if(!v.paused) a.play().catch(()=>{}); }
+  else { a.pause(); a.removeAttribute("src"); v.muted = false; }
+}
+function rPvTick(){
+  const modal = rPvEl("rPvModal");
+  if(!modal || modal.style.display === "none") return;
+  const v = rPvEl("rPvVideo"), ov = rPvEl("rPvOverlay"), a = rPvAudio();
+  if(rPv.mode === "reel"){
+    const t = v.currentTime;
+    const seg = rPv.segs.find(s => t >= s.start && t < s.end);
+    const want = seg ? seg.src : "";
+    if(want !== rPv.shown){ rPv.shown = want; if(want){ ov.src = want; ov.style.display = "block"; } else ov.style.display = "none"; }
+    if(a.getAttribute("src")){
+      if(v.paused && !a.paused) a.pause();
+      if(!v.paused){
+        if(a.paused) a.play().catch(()=>{});
+        if(isFinite(a.duration) && t < a.duration && Math.abs(a.currentTime - t) > 0.3){ try{ a.currentTime = t; }catch(e){} }
+      }
+    }
+  }
+  rPv.raf = requestAnimationFrame(rPvTick);
+}
+function rPvClose(){
+  cancelAnimationFrame(rPv.raf);
+  const v = rPvEl("rPvVideo"); v.pause(); v.removeAttribute("src"); v.load();
+  const a = rPvAudio(); a.pause(); a.removeAttribute("src");
+  rPvEl("rPvModal").style.display = "none"; rPv.req++;
+}
+
+// ── Préréglages de rendu (persistants côté serveur) ──
+function rRpMsg(t, ok){ const m = rPvEl("rRpMsg"); if(m){ m.textContent = t; m.style.color = ok === false ? "var(--error)" : ok ? "var(--success)" : "var(--muted)"; } }
+async function rRpRefresh(selectId){
+  try{ const d = await rGet("/reels_render_preset_list"); rRenderPresets = d.presets || []; }catch(e){ rRenderPresets = []; }
+  const s = rPvEl("rRpSelect"); if(!s) return;
+  const cur = selectId != null ? String(selectId) : s.value;
+  s.innerHTML = `<option value="">— Aucun préréglage —</option>` + rRenderPresets.map(p => `<option value="${p.id}">${rEsc(p.name)}</option>`).join("");
+  if([...s.options].some(o => o.value === cur)) s.value = cur;
+}
+function rRpIds(kind){
+  const sel = kind === "cap" ? rCapSel : rMusSel;
+  if(sel.size) return [...sel].map(Number);
+  const out = []; rReels.forEach(r => (kind === "cap" ? r.capIds : r.musIds).forEach(id => { if(!out.includes(id)) out.push(id); }));
+  return out;
+}
+function rRpCurrentConfig(){
+  const gm = document.querySelector('input[name="rGenMode"]:checked');
+  return { caption_ids: rRpIds("cap"), music_ids: rRpIds("mus"), gen_mode: gm ? gm.value : "one_to_one",
+           capcut_outline: rRenderOutline(), position: rPosFromValue(rPvEl("rRenderPos").value) };
+}
+function rRpSelected(){ const s = rPvEl("rRpSelect"); return rRenderPresets.find(p => String(p.id) === (s ? s.value : "")); }
+async function rRpSave(update){
+  const nameEl = rPvEl("rRpName"); const name = (nameEl.value || "").trim();
+  const cur = rRpSelected();
+  if(update && !cur){ rRpMsg("Choisis le préréglage à mettre à jour.", false); return; }
+  if(!update && !name){ rRpMsg("Donne un nom au nouveau préréglage.", false); return; }
+  const body = { name: update ? (name || cur.name) : name, config: rRpCurrentConfig() };
+  if(update) body.id = cur.id;
+  try{
+    const d = await rPost("/reels_render_preset_save", body);
+    if(d.error) throw new Error(d.error);
+    nameEl.value = ""; await rRpRefresh(d.preset.id);
+    const c = d.preset.config;
+    rRpMsg(`✅ « ${d.preset.name} » ${update ? "mis à jour" : "enregistré"} : ${c.caption_ids.length} caption(s), ${c.music_ids.length} musique(s)${c.position ? ", position fixe" : ""}.`, true);
+  }catch(e){ rRpMsg("❌ " + e.message, false); }
+}
+async function rRpRename(){
+  const cur = rRpSelected(); const name = (rPvEl("rRpName").value || "").trim();
+  if(!cur){ rRpMsg("Choisis le préréglage à renommer.", false); return; }
+  if(!name){ rRpMsg("Saisis le nouveau nom dans le champ.", false); return; }
+  try{ const d = await rPost("/reels_render_preset_rename", { id: cur.id, name }); if(d.error) throw new Error(d.error);
+       rPvEl("rRpName").value = ""; await rRpRefresh(cur.id); rRpMsg(`✅ Renommé en « ${d.preset.name} ».`, true); }
+  catch(e){ rRpMsg("❌ " + e.message, false); }
+}
+async function rRpDelete(){
+  const cur = rRpSelected(); if(!cur){ rRpMsg("Choisis le préréglage à supprimer.", false); return; }
+  if(!confirm(`Supprimer le préréglage « ${cur.name} » ?`)) return;
+  try{ const d = await rPost("/reels_render_preset_delete", { id: cur.id }); if(d.error) throw new Error(d.error);
+       await rRpRefresh(""); rRpMsg("🗑 Préréglage supprimé.", true); }
+  catch(e){ rRpMsg("❌ " + e.message, false); }
+}
+function rRpLoad(){
+  const cur = rRpSelected(); if(!cur){ rRpMsg("Choisis un préréglage à charger.", false); return; }
+  const c = cur.config || {};
+  const caps = (c.caption_ids || []).filter(id => rCaptions.some(x => x.id === id));
+  const mus = (c.music_ids || []).filter(id => rMusic.some(x => x.id === id));
+  const missing = (c.caption_ids || []).length - caps.length + (c.music_ids || []).length - mus.length;
+  rCapSel = new Set(caps); rMusSel = new Set(mus);
+  const targets = rReels.some(r => r.sel) ? rReels.filter(r => r.sel) : rReels;
+  targets.forEach(r => { if(caps.length) r.capIds = caps.slice(); if(mus.length) r.musIds = mus.slice(); });
+  const gm = document.querySelector(`input[name="rGenMode"][value="${c.gen_mode || "one_to_one"}"]`); if(gm) gm.checked = true;
+  const oc = rPvEl("rRenderOutline"); if(oc) oc.checked = c.capcut_outline !== false;
+  rRenderPosCustom = null;
+  let posVal = "";
+  if(c.position){
+    const same = rPresets.find(p => ["cx_pct","cy_pct","width_pct","fontsize_pct"].every(k => Math.abs(+p[k] - +c.position[k]) < 1e-6) && (p.align || "center") === c.position.align);
+    if(same) posVal = String(same.id); else { rRenderPosCustom = c.position; posVal = "__preset__"; }
+  }
+  rRenderPosFill(); rPvEl("rRenderPos").value = posVal;
+  if(typeof rCapRender === "function") rCapRender();
+  if(typeof rMusRender === "function") rMusRender();
+  rRenderReels(); rUpdateInfo();
+  rRpMsg(`📂 « ${cur.name} » appliqué à ${targets.length} reel${targets.length > 1 ? "s" : ""}` + (missing ? ` · ${missing} élément(s) supprimé(s) de la bibliothèque ignoré(s)` : "") + ".", true);
 }
 
 // ── Review (Module 5) ──
@@ -6811,7 +7160,7 @@ function rRenderReview(){
     const dl=document.createElement("div"); dl.className="ws-card-meta"; dl.innerHTML=`<a class="dl-link" href="${url}" download>⬇️ télécharger</a>`;
     info.appendChild(nm); info.appendChild(dl);
     chk.addEventListener("click",ev=>{ ev.stopPropagation(); if(rReviewSel.has(it.filename))rReviewSel.delete(it.filename); else rReviewSel.add(it.filename); card.classList.toggle("sel"); chk.textContent=rReviewSel.has(it.filename)?"✓":""; });
-    card.addEventListener("click",e=>{ if(e.target.closest("a"))return; if(!v.src&&v.dataset.src)v.src=v.dataset.src; if(v.paused){ document.querySelectorAll("#rReview video").forEach(x=>{if(x!==v)x.pause();}); v.play().catch(()=>{}); } else v.pause(); });
+    card.addEventListener("click",e=>{ if(e.target.closest("a"))return; rPvOpenOutput(url, it.filename); });
     card.appendChild(chk); card.appendChild(v); card.appendChild(info);
     g.appendChild(card);
   });

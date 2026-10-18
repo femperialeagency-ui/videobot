@@ -287,8 +287,8 @@ with zipfile.ZipFile(zp) as z:
           and all(i.compress_type == zipfile.ZIP_STORED for i in z.infolist()))
 check("F. ZIP : contient les 11 réussies", len(names) == 11, str(len(names)))
 check("F. ZIP : noms uniques", len(set(names)) == len(names))
-check("F. aucun ZIP temporaire (.part) ni ZIP géant", not list(A.EXPORT_DIR.rglob("*.part"))
-      and not list(A.EXPORT_DIR.glob("_zip_*")))
+check("F. aucun ZIP temporaire (.part) ni ZIP géant", not list((A.EXPORT_DIR / bid).rglob("*.part"))
+      and not list(A.EXPORT_DIR.glob("_zip_*")))     # (le ZIP d'un AUTRE batch peut être en cours de création)
 check("F. archive conservée sur disque après téléchargement", (A.EXPORT_DIR / bid / "zips" / "Batch_001.zip").exists())
 
 # ══ I. Échecs FFmpeg ══════════════════════════════════════════════════
