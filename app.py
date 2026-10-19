@@ -10872,6 +10872,15 @@ def api_admin_settings():
 # les batchs interrompus par un redémarrage. VEXPORT_WORKER=0 le désactive.
 _vexport_ensure_worker()
 
+# Migration vers FEMPERIALE Marketing (ViralScale y est désormais intégré) : si le secret partagé
+# est posé (STUDIO_IMPORT_TOKEN, ou PRODUCTION_API_TOKEN), la base et les fichiers du disque sont
+# envoyés automatiquement à FEMPERIALE, en tâche de fond et en lecture seule (femperiale_migration.py).
+try:
+    import femperiale_migration as _femperiale_migration
+    _femperiale_migration.start_background(str(DATA_DIR))
+except Exception as _exc:
+    print(f"[MIGRATION] démarrage impossible : {_exc}")
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
