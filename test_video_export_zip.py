@@ -67,6 +67,9 @@ sampler = FfmpegSampler(); sampler.start()
 
 def create_batch(cl, n, prefix="clip", bad=()):
     bid = cl.post("/vexport_create").get_json()["batch_id"]
+    if n > A.VEXPORT_MAX_FILES:                         # batch créé avant la limite 300 (sans « max_files ») : limite 500
+        with A._vexport_state_lock(bid):
+            st0 = A._vexport_load_state(bid); st0.pop("max_files", None); A._vexport_save_state(st0)
     for i in range(n):
         r = cl.post("/vexport_upload", data={"batch_id": bid, "file": (io.BytesIO(TINY_BYTES), f"{prefix}_{i + 1:03d}.mp4")},
                     content_type="multipart/form-data").get_json()
@@ -113,7 +116,12 @@ for n in (1, 2, 99, 100, 101, 235, 500):
     if n == 500:
         r501 = c.post("/vexport_upload", data={"batch_id": bid, "file": (io.BytesIO(TINY_BYTES), "extra.mp4")},
                       content_type="multipart/form-data").get_json()
-        check("8. 501e vidéo refusée avec message clair", "error" in r501 and "500" in r501["error"], str(r501))
+        check("8. ancien batch (avant la limite 300) : 501e vidéo refusée avec message clair", "error" in r501 and "500" in r501["error"], str(r501))
+        bnew = create_batch(c, 300, prefix="n300")
+        r301 = c.post("/vexport_upload", data={"batch_id": bnew, "file": (io.BytesIO(TINY_BYTES), "extra.mp4")},
+                      content_type="multipart/form-data").get_json()
+        check("8. nouveau batch : 301e vidéo refusée (limite 300)", "error" in r301 and "300" in r301["error"], str(r301))
+        c.post("/vexport_cancel", data={"batch_id": bnew, "delete": "1"})
     c.post("/vexport_start", data={"batch_id": bid})
     if n in (235, 500):
         # 9–11 : le 1er ZIP doit être prêt et téléchargeable PENDANT le traitement.

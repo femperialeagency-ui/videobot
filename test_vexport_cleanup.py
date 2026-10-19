@@ -14,7 +14,7 @@ Vrai moteur (ordonnanceur + créateur de ZIP + FFmpeg réels), client Flask :
   11. process tué PENDANT le nettoyage → reprise sûre
   12. nettoyage répété → idempotent
   13. disque presque plein → message clair, rien supprimé / nettoyage suffisant
-  15. 500 vidéos puis nouveau batch de 400 après nettoyage
+  15. 500 vidéos (ancien batch) puis nouveau batch de 300 après nettoyage
   + envoi abandonné, état incertain (jamais automatique), action admin ciblée.
 
 Usage : python3 test_vexport_cleanup.py
@@ -346,10 +346,10 @@ real_free = A._disk_free_bytes
 snapI = files(I1)
 sizeI = A._vexport_dir_size(I1)
 A._disk_free_bytes = lambda path=None: 100_000_000
-code, d = create(c, expected=1_000_000_000, count=500)
+code, d = create(c, expected=1_000_000_000, count=300)
 check("13. disque insuffisant même après nettoyage → 507 + message clair",
       code == 507 and d.get("code") == "disk_full" and "insuffisant" in d["error"] and "Go" in d["error"], f"{code} {d}")
-code, d = create(c, confirm=[I1], expected=1_000_000_000, count=500)
+code, d = create(c, confirm=[I1], expected=1_000_000_000, count=300)
 check("13. traitement impossible : rien supprimé (même confirmé)", code == 507 and files(I1) == snapI)
 need = A.VEXPORT_MIN_FREE_CREATE + 2 * 1000
 base = need - sizeI // 2
@@ -380,12 +380,14 @@ r = c.post("/vexport_storage_clean", json={"batch_id": unk, "confirm": 1})
 check("8. action ciblée confirmée → supprimé, rien d'autre", r.status_code == 200 and not (EXP / unk).exists()
       and (EXP / J1).exists() and (EXP / U2).exists())
 
-# ══ 15. 500 vidéos → nettoyage → nouveau batch de 400 ════════════════════
+# ══ 15. 500 vidéos (batch créé avant la limite 300) → nettoyage → nouveau batch de 300 ══
 t0 = time.time()
+with A._vexport_state_lock(J1):                         # ancien batch : pas de « max_files » → limite 500
+    stJ = A._vexport_load_state(J1); stJ.pop("max_files", None); A._vexport_save_state(stJ)
 fill(c, J1, 500, prefix="j")
 r501 = c.post("/vexport_upload", data={"batch_id": J1, "file": (io.BytesIO(TINY_B), "x.mp4")},
               content_type="multipart/form-data").get_json()
-check("15. limite 500 conservée", "500" in (r501.get("error") or ""))
+check("15. ancien batch : limite 500 conservée", "500" in (r501.get("error") or ""))
 start(c, J1)
 dJ = wait(c, J1, settled, timeout=1800, step=1.0)
 check("15. 500 vidéos exportées, 5 ZIP progressifs", dJ["progress"]["done"] == 500
@@ -395,13 +397,13 @@ for g in range(1, 6):
     rz = c.get(f"/vexport_group_zip/{J1}/{g}"); rz.close()
 mark_saved(c, J1)
 sizeJ = A._vexport_dir_size(J1)
-code, d = create(c, expected=400 * len(TINY_B), count=400)
-check("15. nouveau batch de 400 : ancien batch de 500 nettoyé automatiquement",
+code, d = create(c, expected=300 * len(TINY_B), count=300)
+check("15. nouveau batch de 300 : ancien batch de 500 nettoyé automatiquement",
       code == 200 and d["cleaned"]["batches"] == 1 and d["cleaned"]["freed"] >= sizeJ * 0.9 and tomb_only(J1), f"{code} {d}")
 K1 = d["batch_id"]
-fill(c, K1, 400, prefix="k"); start(c, K1)
+fill(c, K1, 300, prefix="k"); start(c, K1)
 dK = wait(c, K1, lambda x: x["progress"]["done"] >= 5, timeout=120)
-check("15. batch de 400 démarré correctement après nettoyage", dK["progress"]["total"] == 400 and dK["progress"]["done"] >= 5)
+check("15. batch de 300 démarré correctement après nettoyage", dK["progress"]["total"] == 300 and dK["progress"]["done"] >= 5)
 c.post("/vexport_cancel", data={"batch_id": K1})
 wait(c, K1, lambda x: x["progress"]["finished"] and x["archives_settled"], timeout=120)
 code, d = create(c, confirm=[K1])

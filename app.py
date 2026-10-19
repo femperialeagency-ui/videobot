@@ -3630,45 +3630,8 @@ def admin_consumption():
 
 @app.route("/history")
 def history():
-    user = request.current_user
-    period = request.args.get("period", "all")
-    if period not in ("all", "today", "7d", "30d"):
-        period = "all"
-    mode_filter = request.args.get("mode", "all")
-    if mode_filter not in ("all", "simple", "batch", "variation", "variation_multi", "audio_converter", "photo_metadata"):
-        mode_filter = "all"
-    try:
-        page = max(1, int(request.args.get("page", 1)))
-    except (ValueError, TypeError):
-        page = 1
-    is_admin = user["role"] == "admin"
-    result = get_history_rows(
-        user_id=user["id"] if not is_admin else None,
-        period=period,
-        mode_filter=mode_filter,
-        page=page,
-        per_page=50,
-        admin=is_admin,
-    )
-    kpis = get_history_kpis(
-        user_id=user["id"] if not is_admin else None,
-        period=period,
-        mode_filter=mode_filter,
-        admin=is_admin,
-    )
-    return render_template(
-        "history.html",
-        current_user=user,
-        rows=result["rows"],
-        total=result["total"],
-        pages=result["pages"],
-        page=result["page"],
-        per_page=result["per_page"],
-        kpis=kpis,
-        period=period,
-        mode_filter=mode_filter,
-        is_admin=is_admin,
-    )
+    """Ancienne page Historique → « Mes productions » (même historique réel)."""
+    return redirect("/productions")
 
 
 @app.route("/history/delete/<int:log_id>", methods=["POST"])
@@ -3680,11 +3643,17 @@ def history_delete(log_id):
             "SELECT user_id FROM usage_logs WHERE id = ?", (log_id,)
         ).fetchone()
         if row is None:
+            if request.headers.get("X-VS-Ajax") == "1":
+                return jsonify({"error": "Ligne introuvable"}), 404
             return redirect(url_for("history"))
         if user["role"] != "admin" and row["user_id"] != user["id"]:
+            if request.headers.get("X-VS-Ajax") == "1":
+                return jsonify({"error": "Accès refusé"}), 403
             return ("Accès refusé.", 403)
         conn.execute("DELETE FROM usage_logs WHERE id = ?", (log_id,))
         conn.commit()
+    if request.headers.get("X-VS-Ajax") == "1":
+        return jsonify({"ok": True})
     return redirect(request.referrer or url_for("history"))
 
 
@@ -3781,39 +3750,110 @@ def admin_users_edit_plan(user_id):
 
 # ── Routes ────────────────────────────────────────────────────────
 
-@app.route("/")
-def index():
+# ── ViralScale 3.0 : une URL stable par module ─────────────────────
+# Toutes ces pages rendent la même application (index.html) : le module et
+# son sous-onglet sont lus dans l'URL côté navigateur → une actualisation
+# garde la page, le bouton Précédent fonctionne. Les anciennes URL restent
+# valides (« / » = Studio, /history → /productions).
+_VS_SUBPAGES = {
+    "generator": {"batch"},
+    "reels": {"captions", "music"},
+    "media/videos": {"optimize"},
+    "media/photos": {"compression", "resize", "convert", "clean", "metadata"},
+    "media/audio": {"optimize"},
+    "productions": {"active", "done", "failed"},
+}
+
+
+_VS_ASSET_V = {}
+
+
+@app.context_processor
+def _vs_template_globals():
+    """Version de la feuille de style partagée (empreinte du fichier) : les
+    ressources /static sont mises en cache 30 jours, l'empreinte force le
+    rechargement après un déploiement qui la modifie."""
+    if "v" not in _VS_ASSET_V:
+        try:
+            import hashlib as _h
+            with open(os.path.join(app.static_folder, "css", "vs3.css"), "rb") as f:
+                _VS_ASSET_V["v"] = _h.md5(f.read()).hexdigest()[:10]
+        except Exception:
+            _VS_ASSET_V["v"] = "0"
+    return {"vs_asset_v": _VS_ASSET_V["v"]}
+
+
+def _vs_init_tab(path: str) -> tuple:
+    """Onglet et sous-onglet affichés dès le rendu serveur (pas de flash)."""
+    p = "/" + path.strip("/")
+    table = [("/generator/batch", "batch"), ("/generator", "simple"), ("/reels", "reels"),
+             ("/variations", "variation"), ("/media/videos", "optimizer"), ("/media/photos", "photo"),
+             ("/media/audio", "audio"), ("/productions", "productions"), ("/admin/settings", "settings")]
+    for prefix, tab in table:
+        if p == prefix or p.startswith(prefix + "/"):
+            sub = p[len(prefix):].strip("/")
+            return tab, sub
+    return "studio", ""
+
+
+def _render_app():
     user = request.current_user
-    # ── Dashboard overview data (additive, read-only): reuses the exact
-    # same helpers /consumption already calls (get_user_usage_summary,
-    # get_usage_by_mode) plus a small new read-only query
-    # (get_recent_activity) that mirrors their WHERE user_id = ? scoping —
-    # so the landing dashboard can show real KPI numbers and a real
-    # recent-activity feed instead of empty space. Wrapped defensively so
-    # a query hiccup can never blank the page (mirrors the try/except
-    # pattern already used around profitability in /consumption).
-    dashboard_summary = None
+    # Statistiques réelles du mode Batch (carte « Tes statistiques Batch »).
     dashboard_usage_by_mode = []
-    dashboard_recent_activity = []
     if user:
         try:
-            dashboard_summary = get_user_usage_summary(user["id"])
             dashboard_usage_by_mode = get_usage_by_mode(scope="user", user_id=user["id"])
-            dashboard_recent_activity = get_recent_activity(user["id"], limit=6)
         except Exception as e:
-            print(f"[dashboard] WARNING: failed to load overview data for user={user.get('email', '?')}: {e}")
-
+            print(f"[app] WARNING: usage_by_mode failed for user={user.get('email', '?')}: {e}")
+    init_tab, init_sub = _vs_init_tab(request.path)
     return render_template(
         "index.html",
         current_user=user,
-        dashboard_summary=dashboard_summary,
         dashboard_usage_by_mode=dashboard_usage_by_mode,
-        dashboard_recent_activity=dashboard_recent_activity,
+        vexport_max_files=VEXPORT_MAX_FILES,
+        vs_init_tab=init_tab,
+        vs_init_sub=init_sub,
         # LOT 3 — point d'accès emoji UNIQUE (route paresseuse Fluent→Twemoji).
         # Picker, preview et export FFmpeg passent tous par /emoji/<name>.png →
         # exactement les mêmes assets partout (WYSIWYG garanti).
         emoji_base="/emoji",
     )
+
+
+@app.route("/")
+def index():
+    return _render_app()
+
+
+@app.route("/studio")
+@app.route("/generator")
+@app.route("/reels")
+@app.route("/variations")
+@app.route("/media/videos")
+@app.route("/media/photos")
+@app.route("/media/audio")
+@app.route("/productions")
+def app_page():
+    return _render_app()
+
+
+@app.route("/generator/<sub>")
+@app.route("/reels/<sub>")
+@app.route("/media/videos/<sub>")
+@app.route("/media/photos/<sub>")
+@app.route("/media/audio/<sub>")
+@app.route("/productions/<sub>")
+def app_subpage(sub):
+    base = request.path.rsplit("/", 1)[0].lstrip("/")
+    if sub not in _VS_SUBPAGES.get(base, ()):
+        return redirect("/" + base)                  # sous-onglet inconnu → page parente
+    return _render_app()
+
+
+@app.route("/admin/settings")
+@admin_required
+def admin_settings():
+    return _render_app()
 
 
 @app.route("/emoji/<name>.png")
@@ -5781,6 +5821,7 @@ AUDIO_DIR = Path("/tmp/videobot_audio")
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_AUDIO_FILES       = 100                       # max files per conversion job
+AUDIO_BITRATES        = ("320", "256", "192", "160", "128", "96", "64")   # débits MP3 proposés (kb/s)
 MAX_AUDIO_TOTAL_BYTES = 500 * 1024 * 1024         # 500 MB total per job
 AUDIO_ALLOWED_EXT     = {".opus", ".ogg", ".m4a", ".aac", ".wav", ".mp3"}
 
@@ -5913,8 +5954,13 @@ def audio_convert():
             out_name = f"{base}_{n}.mp3"; n += 1
         path_out = out_dir / out_name
 
+        # Qualité : sans paramètre → VBR haute qualité d'origine (-q:a 2).
+        # bitrate (kb/s) → débit constant choisi ; mono=1 → 1 canal (plus léger).
+        br = (request.form.get("bitrate") or "").strip()
+        qual = ["-b:a", f"{br}k"] if br in AUDIO_BITRATES else ["-q:a", "2"]
+        chans = ["-ac", "1"] if (request.form.get("mono") or "") == "1" else []
         cmd = ["ffmpeg", "-y", "-i", str(path_in),
-               "-vn", "-codec:a", "libmp3lame", "-q:a", "2",
+               "-vn", "-codec:a", "libmp3lame", *qual, *chans,
                "-loglevel", "error", str(path_out)]
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
@@ -5947,7 +5993,8 @@ def audio_convert():
                 pass
             return jsonify({"error": err, "index": index}), 200
 
-        return jsonify({"index": index, "filename": out_name, "ok": True})
+        return jsonify({"index": index, "filename": out_name, "ok": True,
+                        "orig_size": path_in.stat().st_size, "final_size": path_out.stat().st_size})
     except Exception as e:
         return jsonify({"error": str(e), "index": request.form.get("index")}), 200
 
@@ -6137,6 +6184,74 @@ def _process_one_photo(path_in: str, path_out: str, opts: dict) -> None:
             pass
 
 
+PHOTO_TOOL_OPS = ("compress", "resize", "convert")
+PHOTO_TOOL_MAX_SIDE = 8000                       # garde-fou dimensions demandées
+
+
+def _photo_transform(path_in: str, path_out: str, op: str, opts: dict) -> dict:
+    """Outils Photos 3.0 (Pillow seul), un réglage par onglet :
+      compress → ré-encode avec la QUALITÉ demandée (1–100, plus haut = plus
+                 lourd) ; dimensions inchangées ; format conservé ou JPG/WEBP.
+      resize   → nouvelles dimensions (largeur et/ou hauteur, proportions
+                 conservées ou non) ; format d'origine, qualité 92.
+      convert  → nouveau format (jpg/png/webp), dimensions inchangées.
+    Les métadonnées EXIF et le profil couleur sont CONSERVÉS par défaut
+    (keep_meta) : les supprimer est le rôle de l'onglet Nettoyage. Retourne
+    les dimensions avant/après. Lève une exception en cas d'échec."""
+    from PIL import Image
+
+    img = Image.open(path_in)
+    src_fmt = (img.format or "").upper()
+    ow, oh = img.size
+    exif = img.info.get("exif") if opts.get("keep_meta") else None
+    icc = img.info.get("icc_profile") if opts.get("keep_meta") else None
+
+    if op == "resize":
+        tw, th = int(opts.get("width") or 0), int(opts.get("height") or 0)
+        tw = max(0, min(PHOTO_TOOL_MAX_SIDE, tw)); th = max(0, min(PHOTO_TOOL_MAX_SIDE, th))
+        if not tw and not th:
+            raise ValueError("Indique une largeur ou une hauteur.")
+        if opts.get("keep_ratio", True):
+            if tw and th:                                    # tient dans le cadre demandé
+                k = min(tw / ow, th / oh)
+            else:
+                k = (tw / ow) if tw else (th / oh)
+            nw, nh = max(1, round(ow * k)), max(1, round(oh * k))
+        else:
+            nw, nh = (tw or ow), (th or oh)
+        if (nw, nh) != (ow, oh):
+            img = img.resize((nw, nh), Image.LANCZOS)
+
+    ext = os.path.splitext(path_out)[1].lower()
+    out_fmt = "JPEG" if ext in (".jpg", ".jpeg") else ("PNG" if ext == ".png" else "WEBP")
+    quality = int(opts.get("quality") or 92)
+    quality = max(1, min(100, quality))
+
+    save_img = img
+    kw = {}
+    if out_fmt == "JPEG":
+        if save_img.mode not in ("RGB", "L", "CMYK"):
+            save_img = save_img.convert("RGB")
+        kw = {"quality": quality, "optimize": True}
+    elif out_fmt == "WEBP":
+        kw = {"quality": quality, "method": 6}
+    else:                                                    # PNG : sans perte
+        if save_img.mode == "CMYK":
+            save_img = save_img.convert("RGB")
+        kw = {"optimize": True}
+    if exif:
+        kw["exif"] = exif
+    if icc:
+        kw["icc_profile"] = icc
+    try:
+        save_img.save(path_out, out_fmt, **kw)
+    except Exception:
+        kw.pop("exif", None); kw.pop("icc_profile", None)   # bloc illisible : image seule
+        save_img.save(path_out, out_fmt, **kw)
+    fw, fh = save_img.size
+    return {"orig_w": ow, "orig_h": oh, "final_w": fw, "final_h": fh, "src_format": src_fmt}
+
+
 @app.route("/photo_stage", methods=["POST"])
 def photo_stage():
     """
@@ -6243,21 +6358,53 @@ def photo_process():
         out_dir = jdir / "out"
         out_dir.mkdir(parents=True, exist_ok=True)
 
+        # Outils Photos 3.0 (op = compress / resize / convert) ; sans « op » :
+        # moteur de métadonnées d'origine, inchangé (onglets Nettoyage + Métadonnées).
+        op = (request.form.get("op") or "").strip().lower()
+        if op and op not in PHOTO_TOOL_OPS:
+            return jsonify({"error": "Opération inconnue"}), 400
         in_ext = os.path.splitext(stored_name)[1].lower()
         if in_ext not in PHOTO_ALLOWED_EXT:
             in_ext = ".jpg"
+        out_ext = in_ext
+        topts = {}
+        if op:
+            fmt = (request.form.get("format") or "same").strip().lower()
+            if op == "convert" and fmt not in ("jpg", "png", "webp"):
+                return jsonify({"error": "Format de sortie invalide"}), 400
+            if op == "compress" and fmt not in ("same", "jpg", "webp"):
+                fmt = "same"
+            if op == "resize":
+                fmt = "same"
+            if fmt in ("jpg", "png", "webp"):
+                out_ext = ".jpg" if fmt == "jpg" else f".{fmt}"
+            def _int(key, dflt=0):
+                try:
+                    return int(float(request.form.get(key, dflt) or dflt))
+                except Exception:
+                    return dflt
+            topts = {"quality": _int("quality", 92) if op == "compress" else 92,
+                     "width": _int("width"), "height": _int("height"),
+                     "keep_ratio": (request.form.get("keep_ratio", "1") or "1") not in ("0", "false", "off"),
+                     "keep_meta": (request.form.get("keep_meta", "1") or "1") not in ("0", "false", "off")}
+            if op == "compress" and out_ext == ".png":
+                return jsonify({"error": "PNG est sans perte : choisis JPG ou WEBP pour réduire le poids.", "index": index}), 200
         base = _photo_sanitize_name(request.form.get("out_name") or os.path.splitext(stored_name)[0])
         base = os.path.splitext(base)[0] or f"photo{index + 1}"
-        out_name = f"{base}{in_ext}"
+        out_name = f"{base}{out_ext}"
         n = 2
         while (out_dir / out_name).exists():
-            out_name = f"{base}_{n}{in_ext}"; n += 1
+            out_name = f"{base}_{n}{out_ext}"; n += 1
         path_out = out_dir / out_name
 
         ok = True
         err = ""
+        dims = {}
         try:
-            _process_one_photo(str(path_in), str(path_out), opts)
+            if op:
+                dims = _photo_transform(str(path_in), str(path_out), op, topts)
+            else:
+                _process_one_photo(str(path_in), str(path_out), opts)
             ok = path_out.exists()
         except Exception as e:
             ok = False
@@ -6270,7 +6417,7 @@ def photo_process():
                 produced = [p for p in out_dir.glob("*") if p.is_file()]
                 success_count = len(produced)
                 log_usage_event(
-                    request.current_user, "photo_metadata",
+                    request.current_user, "media_optimizer_photo" if op else "photo_metadata",
                     source_seconds=None, output_seconds=None,
                     source_count=count, output_count=success_count,
                     success=(success_count > 0),
@@ -6286,7 +6433,10 @@ def photo_process():
                 pass
             return jsonify({"error": err or "Échec du traitement", "index": index}), 200
 
-        return jsonify({"index": index, "filename": out_name, "ok": True})
+        res = {"index": index, "filename": out_name, "ok": True,
+               "orig_size": path_in.stat().st_size, "final_size": path_out.stat().st_size}
+        res.update({k: v for k, v in dims.items() if k != "src_format"})
+        return jsonify(res)
     except Exception as e:
         return jsonify({"error": str(e), "index": request.form.get("index")}), 200
 
@@ -7979,7 +8129,8 @@ def _vexport_env_int(name: str, default: int, lo: int, hi: int) -> int:
         return default
 
 
-VEXPORT_MAX_FILES     = 500                           # limite STRICTE par batch (front + back)
+VEXPORT_MAX_FILES     = 300                           # limite STRICTE par NOUVEAU batch (front + back)
+VEXPORT_LEGACY_MAX_FILES = 500                        # batchs créés avant la limite 300 : reprise inchangée
 VEXPORT_ALLOWED_EXT   = {".mp4", ".mov", ".m4v", ".avi", ".mkv"}
 VEXPORT_TARGET_SHORT  = 1080                          # côté court cible (1080p en conservant le ratio)
 VEXPORT_CRF           = _vexport_env_int("VEXPORT_CRF", 20, 0, 51)
@@ -8336,6 +8487,16 @@ _VEXPORT_SCALE = (
 
 
 _VEXPORT_OPT_CODECS = {"h264": "h264", "h265": "hevc", "webm": "vp9"}   # réglage → codec attendu en sortie
+
+
+def _vexport_max_files(st: dict) -> int:
+    """Limite du batch fixée à sa création (300 aujourd'hui). Un batch créé
+    avant (sans « max_files ») garde son ancienne limite de 500 : il se
+    reprend, se termine et se télécharge sans changement."""
+    try:
+        return int(st.get("max_files") or VEXPORT_LEGACY_MAX_FILES)
+    except Exception:
+        return VEXPORT_LEGACY_MAX_FILES
 
 
 def _vexport_sanitize_profile(form) -> dict:
@@ -9617,7 +9778,11 @@ def _vexport_clean_batch(batch_id: str, user_id=None, confirmed: bool = False, s
         _vexport_save_state(tomb)
     _vexport_clean_log({"t": time.time(), "batch_id": bid, "user_id": tomb["user_id"],
                         "reason": tomb["clean_reason"], "auth": tomb["clean_auth"],
-                        "freed_bytes": tomb["freed_bytes"], "summary": tomb["summary"]})
+                        "freed_bytes": tomb["freed_bytes"], "summary": tomb["summary"],
+                        # pour « Mes productions » (historique après suppression du dossier)
+                        "created": tomb.get("created"), "started": tomb.get("started"),
+                        "cancelled": tomb.get("cancelled"),
+                        "kind": (tomb.get("profile") or {}).get("kind") or "standard"})
     _vexport_log(f"cleanup batch={bid[:8]} user={tomb['user_id']} reason={tomb['clean_reason']} "
                  f"auth={tomb['clean_auth']} freed={tomb['freed_bytes'] / 1e9:.2f}GB")
     return {"ok": True, "cleaned": True, "freed": tomb["freed_bytes"]}
@@ -9722,6 +9887,9 @@ def vexport_create():
             exp_max = max(0, int(float(request.form.get("expected_max") or 0)))
         except Exception:
             expected, exp_n, exp_max = 0, 0, 0
+        if exp_n > VEXPORT_MAX_FILES:
+            return jsonify({"error": f"Maximum {VEXPORT_MAX_FILES} vidéos par batch. Lance un second batch pour les vidéos restantes.",
+                            "code": "too_many", "max_files": VEXPORT_MAX_FILES}), 400
         est = _vexport_estimate(expected, exp_n, exp_max) if expected else None
         need = est["need"] if est else VEXPORT_MIN_FREE_CREATE
         cleaned = {"batches": 0, "freed": 0}
@@ -9793,7 +9961,8 @@ def vexport_create():
             profile = _vexport_sanitize_profile(request.form)
             st = {"batch_id": batch_id, "user_id": uid,
                   "created": time.time(), "updated": time.time(),
-                  "started": False, "items": [], "profile": profile}
+                  "started": False, "items": [], "profile": profile,
+                  "max_files": VEXPORT_MAX_FILES}
             _vexport_save_state(st)
         return jsonify({"batch_id": batch_id, "max_files": VEXPORT_MAX_FILES, "profile": profile,
                         "cleaned": cleaned})
@@ -9805,7 +9974,7 @@ def vexport_create():
 def vexport_upload():
     """Ajoute UNE vidéo au batch (upload fichier par fichier, écrit sur disque
     par blocs — jamais chargé en RAM). Valide extension ET flux vidéo réel
-    (ffprobe). Limite stricte de 500 côté serveur, indépendamment du client."""
+    (ffprobe). Limite stricte (300 par nouveau batch) côté serveur, indépendamment du client."""
     try:
         st, err = _vexport_owner_state(request.form.get("batch_id"))
         if err:
@@ -9830,8 +9999,8 @@ def vexport_upload():
             st = _vexport_load_state(batch_id)
             if not st or st.get("started") or _vexport_closed(st):
                 return jsonify({"error": "Batch indisponible"}), 400
-            if len(st["items"]) >= VEXPORT_MAX_FILES:
-                return jsonify({"error": f"Maximum {VEXPORT_MAX_FILES} vidéos par batch. Lance un second batch pour les vidéos restantes."}), 400
+            if len(st["items"]) >= _vexport_max_files(st):
+                return jsonify({"error": f"Maximum {_vexport_max_files(st)} vidéos par batch. Lance un second batch pour les vidéos restantes."}), 400
             idx = len(st["items"])
             in_name = f"{idx:04d}{ext}"
             jdir = _vexport_dir(batch_id)
@@ -9875,8 +10044,8 @@ def vexport_start():
             return jsonify({"error": "Batch annulé ou nettoyé : relance un nouvel export.", "code": "cleaned"}), 410
         if not st["items"]:
             return jsonify({"error": "Aucune vidéo à exporter"}), 400
-        if len(st["items"]) > VEXPORT_MAX_FILES:
-            return jsonify({"error": f"Maximum {VEXPORT_MAX_FILES} vidéos par batch. Lance un second batch pour les vidéos restantes."}), 400
+        if len(st["items"]) > _vexport_max_files(st):
+            return jsonify({"error": f"Maximum {_vexport_max_files(st)} vidéos par batch. Lance un second batch pour les vidéos restantes."}), 400
         with _vexport_state_lock(batch_id):
             st = _vexport_load_state(batch_id)
             if not st or _vexport_closed(st):
@@ -10340,6 +10509,363 @@ def vexport_storage_clean():
     _vexport_log(f"cleanup batch={bid[:8]} reason=admin_incertain freed={size / 1e9:.2f}GB")
     _vexport_wake()
     return jsonify({"ok": True, "freed": size, "free": _disk_free_bytes(EXPORT_DIR)})
+
+
+# ══════════════════════════════════════════════════════════════════
+# VIRALSCALE 3.0 — « Mes productions », stockage, estimation, paramètres.
+# Lecture seule : uniquement des données réellement persistées
+# (usage_logs, états des batchs d'export, journal de nettoyage). Aucun
+# chiffre inventé ; aucun fichier n'est supprimé ici.
+# ══════════════════════════════════════════════════════════════════
+import calendar as _vs_calendar
+
+_PROD_MODES = {
+    "simple": ("Générateur vidéo · Simple", "/generator"),
+    "batch": ("Générateur vidéo · Batch", "/generator/batch"),
+    "variation": ("Studio Variations", "/variations"),
+    "variation_multi": ("Studio Variations", "/variations"),
+    "reels_mixer": ("Reels Studio", "/reels"),
+    "audio_converter": ("Media Tools · Audio", "/media/audio"),
+    "photo_metadata": ("Media Tools · Photos", "/media/photos/metadata"),
+    "media_optimizer_photo": ("Media Tools · Photos", "/media/photos"),
+    "media_optimizer_video": ("Media Tools · Vidéos", "/media/videos/optimize"),
+}
+_PROD_LOG_NOTE = "Fichiers temporaires — historique conservé."
+_PROD_CLEANED_NOTE = "Fichiers supprimés — historique conservé."
+_PROD_STATUS_LABEL = {"active": "En cours", "done": "Terminé", "failed": "Échoué", "cancelled": "Annulé"}
+
+
+def _prod_epoch(ts) -> float:
+    try:
+        return float(_vs_calendar.timegm(time.strptime(str(ts), "%Y-%m-%d %H:%M:%S UTC")))
+    except Exception:
+        return 0.0
+
+
+def _prod_email(uid, cache: dict) -> str:
+    if uid not in cache:
+        try:
+            cache[uid] = (get_user_by_id(int(uid)) or {})["email"]
+        except Exception:
+            cache[uid] = ""
+    return cache[uid]
+
+
+def _prod_vx_kind(kind) -> str:
+    return "Optimisation" if (kind or "standard") == "optimize" else "Réexport standard"
+
+
+def _prod_from_vexport(st: dict, mine: bool, owner: str) -> dict:
+    """Un batch Batch Video Export (état réel sur le disque)."""
+    bid = st["batch_id"]
+    kind = (st.get("profile") or {}).get("kind") or "standard"
+    row = {"id": "vx:" + bid, "kind": "vexport", "batch_id": bid, "module": "Media Tools · Vidéos",
+           "module_url": "/media/videos" + ("/optimize" if kind == "optimize" else ""),
+           "date": float(st.get("created") or st.get("updated") or 0), "owner": owner, "mine": mine,
+           "size": None, "progress": None, "note": "", "downloads": [], "actions": []}
+    if st.get("cleaned") or st.get("cleaning"):
+        summ = st.get("summary") or {}
+        n, done = int(summ.get("total") or 0), int(summ.get("done") or 0)
+        status = "cancelled" if st.get("cancelled") else ("done" if done > 0 else "failed")
+        row.update(name=f"Export vidéo · {_prod_vx_kind(kind)}", files=n, status=status,
+                   status_label=_PROD_STATUS_LABEL[status], note=_PROD_CLEANED_NOTE, files_deleted=True)
+        if status == "done" and int(summ.get("error") or 0):
+            row["status_label"] = f"Terminé · {int(summ['error'])} erreur(s)"
+        return row
+    items = st.get("items") or []
+    prog = _vexport_progress(st)
+    n = len(items)
+    first = items[0]["orig_name"] if items else ""
+    row["name"] = f"Export vidéo · {_prod_vx_kind(kind)}"
+    row["detail"] = first + (f" + {n - 1} autre(s)" if n > 1 else "")
+    row["files"] = n
+    groups = _vexport_groups_view(st) if items else []
+    ready = [g for g in groups if g["zip"]["status"] == "ready"]
+    if ready:
+        row["size"] = sum(int(g["zip"]["size"] or 0) for g in ready)
+    if mine:
+        row["downloads"] = [{"label": g["zip"]["name"], "url": g["zip"]["url"], "size": g["zip"]["size"]} for g in ready]
+    active = _vexport_is_active(st)
+    if not st.get("started"):
+        busy = _vexport_busy_reasons(st)
+        if "uploading" in busy:
+            status, label = "active", "Envoi en cours"
+        elif st.get("cancelled"):
+            status, label = "cancelled", "Annulé"
+        else:
+            status, label = "failed", "Envoi interrompu"
+    elif active and not st.get("cancelled"):
+        status = "active"
+        if prog["pending"] + prog["processing"] == 0:
+            label = "Création des ZIP"
+        else:
+            label = "En cours"
+    elif st.get("paused") and not st.get("cancelled"):
+        status, label = "active", "En pause"
+        row["note"] = st.get("pause_reason") or ""
+    elif st.get("cancelled"):
+        status, label = "cancelled", "Annulé" + (" · suppression en attente" if st.get("delete_requested") else "")
+    elif prog["done"] > 0:
+        status, label = "done", "Terminé" + (f" · {prog['error']} erreur(s)" if prog["error"] else "")
+    else:
+        status, label = "failed", "Échoué"
+    row["status"], row["status_label"] = status, label
+    if status == "active" and n:
+        row["progress"] = {"done": prog["done"] + prog["error"], "total": n, "percent": prog["percent"]}
+    if mine:
+        acts = [{"type": "view", "url": "/media/videos?batch=" + bid}]
+        if status == "active" and st.get("started") and not st.get("cancelled") and not st.get("paused"):
+            acts.append({"type": "cancel"})
+        in_dir = _vexport_dir(bid) / "input"
+        retryable = any(it.get("status") == "error" and (in_dir / it["in_name"]).exists() for it in items)
+        if st.get("started") and not st.get("cancelled") and (st.get("paused") or (retryable and not active)):
+            acts.append({"type": "resume"})
+        if not st.get("delete_requested"):
+            acts.append({"type": "delete"})
+        row["actions"] = acts
+    return row
+
+
+_PROD_LOG_CACHE = {}
+
+
+def _prod_clean_log_entries() -> list:
+    """Batchs dont le dossier a été supprimé : dernière trace persistée
+    (journal de nettoyage, borné à ~2 Mo + 1 rotation). Relu seulement si le
+    fichier a changé (taille / date) ; seuls les champs utiles sont gardés."""
+    out = []
+    keep = ("batch_id", "user_id", "summary", "created", "t", "started", "cancelled", "kind")
+    for p in (str(_VEXPORT_CLEAN_LOG) + ".1", str(_VEXPORT_CLEAN_LOG)):
+        try:
+            stt = os.stat(p)
+        except OSError:
+            _PROD_LOG_CACHE.pop(p, None)
+            continue
+        sig = (stt.st_size, stt.st_mtime_ns)
+        hit = _PROD_LOG_CACHE.get(p)
+        if not hit or hit[0] != sig:
+            rows = []
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    for line in f:
+                        try:
+                            e = json.loads(line)
+                        except Exception:
+                            continue
+                        if isinstance(e, dict) and e.get("batch_id") and e.get("user_id") is not None:
+                            rows.append({k: e.get(k) for k in keep})
+            except Exception:
+                rows = []
+            hit = (sig, rows)
+            _PROD_LOG_CACHE[p] = hit
+        out.extend(hit[1])
+    return out
+
+
+def _prod_vexport_rows(uid: int, include_all: bool, with_history: bool = True) -> list:
+    rows, seen, emails = [], set(), {}
+    try:
+        names = [d.name for d in EXPORT_DIR.iterdir() if d.is_dir() and _vexport_safe_id(d.name)]
+    except Exception:
+        names = []
+    for bid in names:
+        st = _vexport_load_state(bid)
+        if not st or st.get("user_id") is None:
+            continue
+        try:
+            owner = int(st["user_id"])
+        except Exception:
+            continue
+        if not include_all and owner != uid:
+            continue
+        seen.add(bid)
+        try:
+            rows.append(_prod_from_vexport(st, owner == uid, _prod_email(owner, emails) if include_all else ""))
+        except Exception as e:
+            print(f"[productions] WARNING: batch {bid[:8]} illisible: {e}")
+    for e in (reversed(_prod_clean_log_entries()) if with_history else ()):
+        bid = e.get("batch_id")
+        if bid in seen:
+            continue
+        try:
+            owner = int(e["user_id"])
+        except Exception:
+            continue
+        if not include_all and owner != uid:
+            continue
+        seen.add(bid)
+        summ = e.get("summary") or {}
+        n, done = int(summ.get("total") or 0), int(summ.get("done") or 0)
+        status = "cancelled" if e.get("cancelled") else ("done" if done > 0 else "failed")
+        if status == "failed" and n and not e.get("started") and e.get("created") is None:
+            status = "cancelled"                          # ancien envoi abandonné, jamais lancé
+        kind = e.get("kind") or "standard"
+        rows.append({"id": "vx:" + bid, "kind": "vexport", "batch_id": bid,
+                     "name": f"Export vidéo · {_prod_vx_kind(kind)}", "module": "Media Tools · Vidéos",
+                     "module_url": "/media/videos", "files": n, "size": None,
+                     "status": status, "status_label": _PROD_STATUS_LABEL[status],
+                     "date": float(e.get("created") or e.get("t") or 0),
+                     "owner": _prod_email(owner, emails) if include_all else "", "mine": owner == uid,
+                     "progress": None, "note": _PROD_CLEANED_NOTE, "files_deleted": True,
+                     "downloads": [], "actions": []})
+    return rows
+
+
+def _prod_log_rows(uid: int, include_all: bool, status: str, q: str, upto: int):
+    """Lignes usage_logs (générations réellement enregistrées)."""
+    if status in ("active", "cancelled"):
+        return [], 0
+    where, params = [], []
+    if not include_all:
+        where.append("user_id = ?"); params.append(uid)
+    if status == "done":
+        where.append("generation_success = 1")
+    elif status == "failed":
+        where.append("generation_success = 0")
+    if q:
+        like = f"%{q}%"
+        modes = [m for m, (lbl, _u) in _PROD_MODES.items() if q in lbl.lower()]
+        cond = "(LOWER(COALESCE(source_filename, '')) LIKE ? OR LOWER(mode) LIKE ?"
+        params += [like, like]
+        if include_all:
+            cond += " OR LOWER(user_email) LIKE ?"; params.append(like)
+        if modes:
+            cond += " OR mode IN (" + ",".join("?" * len(modes)) + ")"; params += modes
+        where.append(cond + ")")
+    wsql = ("WHERE " + " AND ".join(where)) if where else ""
+    with _users_db() as conn:
+        total = conn.execute(f"SELECT COUNT(*) FROM usage_logs {wsql}", params).fetchone()[0]
+        rs = conn.execute(
+            f"""SELECT id, user_id, user_email, timestamp, mode, generation_success,
+                       source_video_count, output_video_count, source_filename
+                FROM usage_logs {wsql} ORDER BY timestamp DESC, id DESC LIMIT ?""",
+            params + [max(1, upto)]).fetchall()
+    rows = []
+    for r in rs:
+        r = dict(r)
+        label, url = _PROD_MODES.get(r["mode"], (str(r["mode"]).replace("_", " ").capitalize(), "/studio"))
+        ok = bool(r["generation_success"])
+        st = "done" if ok else "failed"
+        mine = int(r["user_id"]) == uid
+        rows.append({"id": f"log:{r['id']}", "kind": "log", "log_id": r["id"],
+                     "name": r.get("source_filename") or label, "module": label, "module_url": url,
+                     "files": int(r.get("output_video_count") or 0),
+                     "sources": int(r.get("source_video_count") or 0), "size": None,
+                     "status": st, "status_label": _PROD_STATUS_LABEL[st], "date": _prod_epoch(r["timestamp"]),
+                     "owner": r.get("user_email") if include_all else "", "mine": mine,
+                     "progress": None, "note": _PROD_LOG_NOTE, "downloads": [],
+                     "actions": [{"type": "view", "url": url}] + ([{"type": "delete_log"}] if (mine or include_all) else [])})
+    return rows, int(total)
+
+
+@app.route("/api/productions", methods=["GET"])
+def api_productions():
+    user = request.current_user
+    uid = int(user["id"])
+    is_admin = user["role"] == "admin"
+    include_all = is_admin and request.args.get("scope") == "all"
+    status = request.args.get("status", "all")
+    if status not in ("all", "active", "done", "failed", "cancelled"):
+        status = "all"
+    q = (request.args.get("q") or "").strip().lower()[:80]
+    try:
+        limit = max(1, min(200, int(request.args.get("limit", 50))))
+        offset = max(0, min(100000, int(request.args.get("offset", 0))))
+    except Exception:
+        limit, offset = 50, 0
+    try:
+        vx_all = _prod_vexport_rows(uid, include_all, with_history=(status != "active"))
+        vx = [r for r in vx_all if (status == "all" or r["status"] == status)
+              and (not q or q in (r["name"] + " " + r["module"] + " " + (r.get("detail") or "")
+                                  + " " + (r.get("owner") or "")).lower())]
+        logs, n_logs = _prod_log_rows(uid, include_all, status, q, offset + limit)
+        merged = sorted(vx + logs, key=lambda r: r.get("date") or 0, reverse=True)
+        return jsonify({"items": merged[offset:offset + limit], "total": len(vx) + n_logs,
+                        "offset": offset, "limit": limit, "is_admin": is_admin,
+                        "scope": "all" if include_all else "mine",
+                        "active_count": sum(1 for r in vx_all if r["status"] == "active" and r["mine"])})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/storage_summary", methods=["GET"])
+def api_storage_summary():
+    """Disque persistant (DATA_DIR) : total / utilisé / disponible, mesurés."""
+    try:
+        du = shutil.disk_usage(str(DATA_DIR))
+        return jsonify({"total": du.total, "used": du.used, "free": du.free,
+                        "can_clean": request.current_user["role"] == "admin"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/vexport_estimate", methods=["GET"])
+def vexport_estimate():
+    """Estimation AVANT lancement (même formule que /vexport_create) :
+    sources, ZIP estimés, pic nécessaire, espace disponible (+ espace que le
+    lancement récupérerait sur les anciens exports terminés de l'utilisateur)."""
+    try:
+        uid = int(request.current_user["id"])
+        try:
+            expected = max(0, int(float(request.args.get("bytes") or 0)))
+            exp_n = max(0, int(request.args.get("count") or 0))
+            exp_max = max(0, int(float(request.args.get("max") or 0)))
+        except Exception:
+            return jsonify({"error": "Paramètres invalides"}), 400
+        est = _vexport_estimate(expected, exp_n, exp_max) if expected else None
+        free = _disk_free_bytes(EXPORT_DIR)
+        reclaim = 0
+        for st in _vexport_user_states(uid):
+            if not _vexport_is_active(st) and not _vexport_busy_reasons(st):
+                reclaim += _vexport_dir_size(st["batch_id"])
+        avail = None if free is None else free + reclaim
+        need = est["need"] if est else VEXPORT_MIN_FREE_CREATE
+        max_videos = None
+        if est and exp_n and avail is not None:
+            per = max(1.0, VEXPORT_OUT_RATIO) * expected / exp_n
+            room = avail - VEXPORT_MIN_FREE_CREATE - est["transit"]
+            max_videos = max(0, min(exp_n, int(room // per))) if per > 0 else 0
+        return jsonify({"sources": expected, "zips": est["zips"] if est else 0,
+                        "peak": est["peak"] if est else 0, "need": need,
+                        "free": free, "reclaimable": reclaim,
+                        "fits": avail is None or avail >= need, "max_videos": max_videos,
+                        "max_files": VEXPORT_MAX_FILES, "count_ok": exp_n <= VEXPORT_MAX_FILES,
+                        "out_ratio": VEXPORT_OUT_RATIO})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/admin/settings", methods=["GET"])
+@admin_required
+def api_admin_settings():
+    """(Admin) Configuration RÉELLE du serveur, en lecture seule : ces
+    valeurs viennent du code ou des variables d'environnement."""
+    try:
+        du = shutil.disk_usage(str(DATA_DIR))
+        disk = {"total": du.total, "used": du.used, "free": du.free}
+    except Exception:
+        disk = {}
+    try:
+        n_users = len(list_users())
+        n_admins = sum(1 for u in list_users() if u["role"] == "admin")
+    except Exception:
+        n_users, n_admins = None, None
+    return jsonify({
+        "disk": disk, "data_dir": str(DATA_DIR),
+        "accounts": {"users": n_users, "admins": n_admins},
+        "ocr": {"vision_configured": bool(os.environ.get("ANTHROPIC_API_KEY")),
+                "local_available": bool(shutil.which("tesseract"))},
+        "export": {"max_files": VEXPORT_MAX_FILES, "group_size": VEXPORT_GROUP_SIZE,
+                   "retention_hours": VEXPORT_RETENTION_HOURS, "crf": VEXPORT_CRF,
+                   "preset": VEXPORT_PRESET, "audio": VEXPORT_AAC_BITRATE, "target_short": VEXPORT_TARGET_SHORT,
+                   "out_ratio": VEXPORT_OUT_RATIO},
+        "limits": {"batch_files": MAX_BATCH_FILES, "batch_combos": MAX_BATCH_COMBOS,
+                   "variation_videos": MAX_MULTI_VIDEOS, "variation_per_video": MAX_VARIATIONS,
+                   "variation_total": MAX_MULTI_TOTAL, "photo_files": MAX_PHOTO_FILES,
+                   "photo_total_mb": MAX_PHOTO_TOTAL_BYTES // (1024 * 1024),
+                   "audio_files": MAX_AUDIO_FILES, "audio_total_mb": MAX_AUDIO_TOTAL_BYTES // (1024 * 1024),
+                   "reels_files": REELS_MAX_MIX_FILES},
+    })
 
 
 # Ordonnanceur lancé dès l'import (worker Gunicorn) : reprend automatiquement

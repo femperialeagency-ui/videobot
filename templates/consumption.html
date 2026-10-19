@@ -17,7 +17,7 @@
       --glass: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.015));
       --shadow-card: 0 10px 36px rgba(0,0,0,.40);
       --shadow-glow: 0 0 0 1px rgba(67,105,255,.14), 0 16px 46px rgba(67,105,255,.12);
-      --sidebar-w: 218px;
+      --sidebar-w: 232px;
     }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background:
@@ -34,57 +34,7 @@
 
     /* ── App shell: fixed sidebar + main column ── */
     .app-shell { display: flex; min-height: 100vh; width: 100%; }
-    .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar-w);
-      display: flex; flex-direction: column; padding: 12px 9px;
-      background: linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.008)), rgba(21,21,26,.8);
-      border-right: 1px solid var(--border); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-      z-index: 20; }
-    .sidebar-logo { display: flex; align-items: center; padding: 8px 10px 18px; }
-    .sidebar-logo-img { display: block; width: 100%; height: auto; object-fit: contain; }
-    .sidebar-nav { display: flex; flex-direction: column; gap: 3px; flex: 1; overflow-y: auto;
-      scrollbar-width: thin; padding-right: 2px; }
-    .sidebar-nav::-webkit-scrollbar { width: 4px; }
-    .sidebar-nav::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
-    .sidebar-cta { display: flex; align-items: center; justify-content: center; gap: 6px;
-      width: 100%; padding: 9px 10px; margin-bottom: 10px; border: 1px solid rgba(255,255,255,.13);
-      border-radius: 8px; cursor: pointer; font-size: 0.8rem; font-weight: 700; color: #fff; text-align: center;
-      background: var(--accent); text-decoration: none; transition: opacity .22s; }
-    .sidebar-cta:hover { opacity: .92; }
-    .nav-item { position: relative; display: flex; align-items: center; gap: 10px; padding: 7px 10px;
-      border-radius: 7px; color: var(--muted); font-size: 0.8rem; font-weight: 600; text-decoration: none;
-      border: 1px solid transparent; cursor: pointer; transition: background .15s, color .15s, border-color .15s, transform .15s;
-      background: transparent; width: 100%; text-align: left; }
-    .nav-item:hover:not(.active):not(.soon) { background: rgba(255,255,255,.045); color: var(--text);
-      border-color: var(--border); transform: translateX(2px); }
-    .nav-item.active { color: #fff; background: var(--accent-soft, rgba(67,105,255,.16));
-      border-color: transparent; }
-    .nav-item.active::before { content: ""; position: absolute; left: -11px; top: 50%; transform: translateY(-50%);
-      width: 3px; height: 16px; border-radius: 0 4px 4px 0; background: var(--accent); }
-    .nav-item.soon { opacity: .42; cursor: default; }
-    .nav-item.soon:hover { transform: none; background: transparent; }
-    .nav-badge { margin-left: auto; font-size: 0.64rem; font-weight: 800; letter-spacing: .03em;
-      padding: 2px 8px; border-radius: 999px; flex-shrink: 0; }
-    .nav-badge.soon { text-transform: uppercase; background: rgba(255,255,255,.06); color: var(--muted); }
-    .nav-group { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
-    .nav-group:first-child { margin-top: 0; padding-top: 0; border-top: none; }
-    .nav-group-label { display: flex; align-items: center; gap: 6px; font-size: 0.65rem; font-weight: 800;
-      text-transform: uppercase; letter-spacing: .09em; color: var(--muted); opacity: .6; padding: 0 10px 6px; }
-    .sidebar-profile { display: flex; align-items: center; gap: 10px; padding: 9px; border-radius: 9px;
-      background: rgba(255,255,255,.03); border: 1px solid var(--border); margin-top: 6px;
-      transition: border-color .15s, background .15s; }
-    .sidebar-profile:hover { border-color: var(--border-strong); background: rgba(255,255,255,.04); }
-    .sidebar-avatar { width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
-      display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .86rem; color: #fff;
-      background: var(--accent); }
-    .sidebar-profile-info { min-width: 0; flex: 1; }
-    .sidebar-profile-email { font-size: 0.78rem; font-weight: 700; color: var(--text);
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .sidebar-profile-role { font-size: 0.72rem; color: var(--muted); margin-top: 1px; }
-    .sidebar-logout { display: flex; align-items: center; justify-content: center; gap: 6px; text-align: center;
-      margin-top: 6px; padding: 8px; border-radius: 9px; font-size: 0.76rem; font-weight: 700;
-      color: var(--muted); text-decoration: none; border: 1px solid var(--border);
-      transition: color .15s, border-color .15s, background .15s; }
-    .sidebar-logout:hover { color: var(--error); border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.06); }
+    /* Sidebar : partagée (_vs_sidebar.html + static/css/vs3.css). */
 
     .app-main { flex: 1; margin-left: var(--sidebar-w); display: flex; flex-direction: column; min-height: 100vh; }
     .app-header { position: sticky; top: 0; z-index: 15; display: flex; align-items: center; justify-content: space-between;
@@ -96,16 +46,6 @@
     .plan-pill { font-size: 0.76rem; font-weight: 800; letter-spacing: .02em; padding: 6px 13px; border-radius: 999px;
       background: linear-gradient(135deg, rgba(124,92,255,.25), rgba(47,107,255,.18)); color: #fff;
       border: 1px solid rgba(124,92,255,.32); white-space: nowrap; }
-    .icon-btn { width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center;
-      background: rgba(255,255,255,.03); border: 1px solid var(--border); color: var(--muted); font-size: 1rem;
-      cursor: default; transition: border-color .15s, color .15s; }
-    .icon-btn:hover { border-color: var(--border-strong); color: var(--text); }
-    .credit-pill { display: flex; flex-direction: column; gap: 5px; padding: 8px 14px; border-radius: 12px;
-      background: rgba(255,255,255,.03); border: 1px solid var(--border); font-size: 0.76rem; font-weight: 700;
-      color: var(--text); min-width: 132px; }
-    .credit-track { display: block; height: 5px; border-radius: 999px; background: rgba(255,255,255,.07); overflow: hidden; }
-    .credit-fill { display: block; height: 100%; border-radius: 999px;
-      background: linear-gradient(90deg, var(--accent), var(--accent2)); }
     .app-content { flex: 1; padding: 18px 24px 42px; display: flex; flex-direction: column; align-items: center; }
     .page-wrap { width: 100%; max-width: 920px; display: flex; flex-direction: column; }
 
@@ -149,13 +89,10 @@
     .badge { display: inline-block; padding: 3px 11px; border-radius: 999px; font-size: 0.74rem; font-weight: 700; }
     .badge.plan { background: rgba(124,92,255,.18); color: #cdc3ff; border: 1px solid rgba(124,92,255,.28); }
     .muted { color: var(--muted); font-size: 0.82rem; }
-    .credit-bar-track { background: rgba(255,255,255,.06); border: 1px solid var(--border); border-radius: 999px;
-      height: 10px; overflow: hidden; margin-top: 10px; }
-    .credit-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
-      border-radius: 999px; transition: width .4s; box-shadow: 0 0 14px rgba(124,92,255,.5); }
-    .stat.profit-good .val { color: var(--success); }
-    .stat.profit-warn .val { color: var(--warn); }
-    .stat.profit-bad .val { color: var(--error); }
+    .stat .sub { font-size: 0.68rem; color: var(--muted); font-weight: 600; margin-top: 6px; line-height: 1.35; }
+    .stat .val.na { font-size: 0.95rem; font-style: italic; background: none; color: var(--muted); -webkit-text-fill-color: var(--muted); }
+    .notes { margin-top: 14px; display: flex; flex-direction: column; gap: 5px; }
+    .notes p { color: var(--muted); font-size: 0.76rem; line-height: 1.5; }
     @media (max-width: 640px) {
       .stat-grid { grid-template-columns: repeat(2, 1fr); }
     }
@@ -168,22 +105,6 @@
         radial-gradient(600px  400px at 60% 100%,  rgba(217,70,239,.08), transparent 50%),
         var(--bg);
     }
-    /* Sidebar */
-    .sidebar { border-right-color: rgba(67,105,255,.26); }
-    .sidebar-cta {
-      background: var(--vs-gradient);
-      box-shadow: 0 0 0 1px rgba(58,111,255,.35), 0 8px 28px rgba(123,92,240,.25), 0 0 40px rgba(217,70,239,.15);
-      border-color: rgba(58,111,255,.22);
-    }
-    .sidebar-cta:hover {
-      opacity: 1;
-      box-shadow: 0 0 0 1px rgba(58,111,255,.50), 0 10px 34px rgba(123,92,240,.34), 0 0 50px rgba(217,70,239,.22);
-    }
-    .nav-item:hover:not(.active):not(.soon) { background: rgba(67,105,255,.14); color: #b8c8ff; border-color: rgba(67,105,255,.30); }
-    .nav-item.active { background: rgba(67,105,255,.18); border-color: rgba(67,105,255,.26); }
-    .nav-item.active::before { background: var(--vs-gradient); }
-    .nav-group { border-top-color: rgba(67,105,255,.18); }
-    .sidebar-avatar { background: var(--vs-gradient); }
     /* Header */
     .app-header { border-bottom-color: rgba(67,105,255,.24); }
     .app-header h1 {
@@ -217,111 +138,29 @@
       background: linear-gradient(115deg, #fff 18%, #7FB0FF 52%, #C07BFF 90%);
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     }
-    /* Credit bar */
-    .credit-bar-fill { background: var(--vs-gradient); }
   </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/vs3.css') }}?v={{ vs_asset_v }}">
 </head>
 <body>
+  {#- Libellés des outils (valeur brute de usage_logs.mode affichée si inconnue). -#}
+  {%- set MODE_LABELS = {
+        'simple': 'Générateur — Simple', 'batch': 'Générateur — Batch',
+        'variation': 'Studio Variations', 'variation_multi': 'Studio Variations (multi)',
+        'reels_mixer': 'Reels Studio', 'media_optimizer_video': 'Media Tools — Vidéos',
+        'media_optimizer_photo': 'Media Tools — Photos', 'photo_metadata': 'Photo Metadata Studio',
+        'audio_converter': 'Media Tools — Audio'} -%}
+  {%- set COST_NOTE = 'Estimation théorique — non facturée' -%}
   <div class="app-shell">
-    <aside class="sidebar">
-      <div class="sidebar-logo">
-        <img src="{{ url_for('static', filename='img/viralscale-logo.png') }}" alt="ViralScale" class="sidebar-logo-img">
-      </div>
-
-      <a href="{{ url_for('index') }}" class="sidebar-cta">
-        <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 3.5 V14.5 M3.5 9 H14.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
-        Nouvelle génération
-      </a>
-
-      <nav class="sidebar-nav">
-        <div class="nav-group">
-          <a class="nav-item" href="{{ url_for('index') }}">
-            <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="2.5" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="2.5" y="10" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/><rect x="10" y="10" width="5.5" height="5.5" rx="1.4" stroke="currentColor" stroke-width="1.6"/></svg></span>
-            Dashboard
-          </a>
-        </div>
-
-        <div class="nav-group">
-          <div class="nav-group-label">Création</div>
-          <a class="nav-item" href="{{ url_for('index') }}">
-            <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="6" width="13" height="9.5" rx="1.6" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 6 L4.2 2.5 L7 2.5 L5.6 6 Z M7.4 6 L9 2.7 L11.8 2.7 L10.4 6 Z M11.9 6 L13.4 2.7 L15.2 2.7 L14.5 6 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
-            Mode Simple
-          </a>
-          <a class="nav-item" href="{{ url_for('index') }}">
-            <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
-            Mode Batch
-          </a>
-          <a class="nav-item" href="{{ url_for('index') }}">
-            <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span>
-            Variation Studio
-          </a>
-        </div>
-
-        <div class="nav-group">
-          <div class="nav-group-label">Analytics</div>
-          {% if current_user.role == 'admin' %}
-          <a class="nav-item active" href="{{ url_for('admin_consumption') }}">
-          {% else %}
-          <a class="nav-item active" href="{{ url_for('consumption') }}">
-          {% endif %}
-            <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 15.5 V8.5 M8 15.5 V4 M13 15.5 V11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M2.5 15.5 H15.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
-            Consommation
-          </a>
-          <a class="nav-item" href="{{ url_for('history') }}">
-            <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 5.5 V9 L11.5 10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-            Historique
-          </a>
-        </div>
-
-        {% if current_user.role == 'admin' %}
-        <div class="nav-group">
-          <div class="nav-group-label">Administration</div>
-          <a class="nav-item" href="{{ url_for('admin_users') }}">
-            <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="6.7" cy="6" r="2.4" stroke="currentColor" stroke-width="1.6"/><path d="M2.6 15 c0-2.5 1.9-4 4.1-4 s4.1 1.5 4.1 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12.6" cy="6.6" r="1.9" stroke="currentColor" stroke-width="1.5" opacity=".75"/><path d="M11.4 9.3 c1.9-.15 3.5 1.15 3.9 3.35" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".75"/></svg></span>
-            Gestion équipe
-          </a>
-        </div>
-        {% endif %}
-
-        <div class="nav-group">
-          <div class="nav-group-label">Paramètres</div>
-          <a class="nav-item soon">
-            <span class="ico-svg"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M9 2.6 V4.3 M9 13.7 V15.4 M15.4 9 H13.7 M4.3 9 H2.6 M13.5 4.5 L12.3 5.7 M5.7 12.3 L4.5 13.5 M13.5 13.5 L12.3 12.3 M5.7 5.7 L4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
-            Paramètres <span class="nav-badge soon">Bientôt</span>
-          </a>
-        </div>
-      </nav>
-
-      <div class="sidebar-profile">
-        <div class="sidebar-avatar">{{ current_user.email[0]|upper }}</div>
-        <div class="sidebar-profile-info">
-          <div class="sidebar-profile-email">{{ current_user.email }}</div>
-          <div class="sidebar-profile-role">{{ 'Administrateur' if current_user.role == 'admin' else 'Membre' }}{% if current_user.plan_name %} · {{ current_user.plan_name|capitalize }}{% endif %}</div>
-        </div>
-      </div>
-      <a class="sidebar-logout" href="{{ url_for('logout') }}">
-        <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.2 2.6 H4 a1.4 1.4 0 0 0-1.4 1.4 v10 a1.4 1.4 0 0 0 1.4 1.4 h3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 9 H15.4 M12.4 6 L15.4 9 L12.4 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-        Se déconnecter
-      </a>
-    </aside>
+    {% set vs_active = '' %}{% include "_vs_sidebar.html" %}
 
     <div class="app-main">
       <header class="app-header">
         <div>
           <h1>Ma consommation</h1>
-          <div class="subtitle">Suivi de votre usage, vos crédits et votre rentabilité</div>
+          <div class="subtitle">Votre usage réellement enregistré : générations, réussites, échecs et fichiers traités</div>
         </div>
         <div class="header-right">
           {% if current_user.plan_name %}<span class="plan-pill"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.4 L10.2 6.6 L14.4 7.8 L10.2 9 L9 13.2 L7.8 9 L3.6 7.8 L7.8 6.6 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></span> {{ current_user.plan_name|capitalize }}</span>{% endif %}
-          <span class="icon-btn" title="Aucune notification"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.6 c-2.1 0-3.4 1.6-3.4 3.7 v1.9 c0 .9-.4 1.7-1 2.4l-.6.6 h10 l-.6-.6 c-.6-.7-1-1.5-1-2.4 V6.3 c0-2.1-1.3-3.7-3.4-3.7 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M7.5 13.6 a1.7 1.7 0 0 0 3 0" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span></span>
-          {% set _limit = current_user.monthly_generation_limit or 0 %}
-          {% if _limit > 0 %}
-          {% set _pct_h = ((current_user.credits_used / _limit) * 100) | round(0) %}
-          <div class="credit-pill" title="{{ current_user.credits_used }} / {{ _limit }} générations utilisées ce mois">
-            <span>{{ current_user.credits_remaining }} crédits</span>
-            <span class="credit-track"><span class="credit-fill" style="width:{{ [_pct_h, 100] | min }}%;"></span></span>
-          </div>
-          {% endif %}
         </div>
       </header>
 
@@ -333,98 +172,39 @@
           </div>
 
           <div class="card">
-            <h2>Mon abonnement</h2>
+            <h2>Mon forfait &amp; mes crédits</h2>
             <div class="stat-grid">
               <div class="stat">
                 <div class="lbl">Plan</div>
-                <div class="val"><span class="badge plan">{{ current_user.plan_name|capitalize }}</span></div>
-              </div>
-              <div class="stat">
-                <div class="lbl">Crédits utilisés</div>
-                <div class="val">{{ current_user.credits_used }}</div>
-              </div>
-              <div class="stat">
-                <div class="lbl">Crédits restants</div>
-                <div class="val">{{ current_user.credits_remaining }}</div>
+                <div class="val"><span class="badge plan">{{ (current_user.plan_name or 'starter')|capitalize }}</span></div>
               </div>
               <div class="stat">
                 <div class="lbl">Limite mensuelle</div>
+                {% if current_user.monthly_generation_limit is not none %}
                 <div class="val">{{ current_user.monthly_generation_limit }}</div>
+                <div class="sub">Valeur configurée</div>
+                {% else %}
+                <div class="val na">Donnée indisponible</div>
+                {% endif %}
+              </div>
+              <div class="stat">
+                <div class="lbl">Solde de crédits</div>
+                {% if current_user.credits_remaining is not none %}
+                <div class="val">{{ current_user.credits_remaining }}</div>
+                <div class="sub">Valeur configurée par un administrateur</div>
+                {% else %}
+                <div class="val na">Donnée indisponible</div>
+                {% endif %}
+              </div>
+              <div class="stat">
+                <div class="lbl">Crédits consommés</div>
+                <div class="val na">Donnée indisponible</div>
+                <div class="sub">Décompte non relié aux générations</div>
               </div>
             </div>
-            {% set _limit = current_user.monthly_generation_limit or 0 %}
-            {% if _limit > 0 %}
-            {% set _pct = ((current_user.credits_used / _limit) * 100) | round(1) %}
-            <div class="credit-bar-track">
-              <div class="credit-bar-fill" style="width: {{ [_pct, 100] | min }}%;"></div>
+            <div class="notes">
+              <p>Le décompte automatique des crédits n'est pas encore actif : vos crédits consommés ne sont pas enregistrés et vos générations ne sont pas limitées. La limite et le solde affichés sont les valeurs configurées pour votre compte.</p>
             </div>
-            <p class="muted" style="margin-top:8px;">{{ _pct }}% de votre limite mensuelle utilisée</p>
-            {% endif %}
-            <p class="muted" style="margin-top:14px;">
-              Le système de crédits est une fondation pour de futurs plans tarifaires — vos générations ne sont pas
-              actuellement limitées.
-            </p>
-          </div>
-
-          {% set _cur_sym = currency_symbols.get(currency, currency) %}
-          <div class="card">
-            <h2>Mon plan &amp; ma rentabilité</h2>
-            {% if monthly_price <= 0 %}
-              <p class="muted">Compte interne / sans facturation — aucun prix mensuel n'est associé à ce compte.</p>
-              <div class="stat-grid" style="margin-top:16px;">
-                <div class="stat">
-                  <div class="lbl">Plan</div>
-                  <div class="val"><span class="badge plan">{{ current_user.plan_name|capitalize }}</span></div>
-                </div>
-                <div class="stat">
-                  <div class="lbl">Coût estimé généré</div>
-                  <div class="val">{{ "%.2f"|format(profitability.cost) }} {{ _cur_sym }}</div>
-                </div>
-              </div>
-            {% else %}
-              <div class="stat-grid">
-                <div class="stat">
-                  <div class="lbl">Plan</div>
-                  <div class="val"><span class="badge plan">{{ current_user.plan_name|capitalize }}</span></div>
-                </div>
-                <div class="stat">
-                  <div class="lbl">Prix mensuel</div>
-                  <div class="val">{{ "%.2f"|format(monthly_price) }} {{ _cur_sym }}</div>
-                </div>
-                <div class="stat">
-                  <div class="lbl">Crédits utilisés</div>
-                  <div class="val">{{ current_user.credits_used }}</div>
-                </div>
-                <div class="stat">
-                  <div class="lbl">Crédits restants</div>
-                  <div class="val">{{ current_user.credits_remaining }}</div>
-                </div>
-                <div class="stat">
-                  <div class="lbl">Limite mensuelle</div>
-                  <div class="val">{{ current_user.monthly_generation_limit }}</div>
-                </div>
-                <div class="stat">
-                  <div class="lbl">Coût estimé généré</div>
-                  <div class="val">{{ "%.2f"|format(profitability.cost) }} {{ _cur_sym }}</div>
-                </div>
-                <div class="stat profit-{{ profitability_state }}">
-                  <div class="lbl">Marge restante (buffer)</div>
-                  <div class="val">{{ "%.2f"|format(profitability.profit) }} {{ _cur_sym }}</div>
-                </div>
-                <div class="stat profit-{{ profitability_state }}">
-                  <div class="lbl">Marge %</div>
-                  <div class="val">{{ (("%.1f"|format(profitability.margin_percent)) ~ "%") if profitability.margin_percent is not none else "N/A" }}</div>
-                </div>
-              </div>
-              <p class="muted" style="margin-top:16px;">
-                Exemple de lecture : Plan {{ current_user.plan_name|capitalize }} · Prix mensuel {{ "%.2f"|format(monthly_price) }} {{ _cur_sym }} ·
-                Coût estimé généré {{ "%.2f"|format(profitability.cost) }} {{ _cur_sym }} · Marge restante {{ "%.2f"|format(profitability.profit) }} {{ _cur_sym }}.
-              </p>
-            {% endif %}
-            <p class="muted" style="margin-top:14px;">
-              Ces chiffres sont des estimations basées sur la durée des vidéos traitées et l'usage de Claude Vision —
-              ils servent à comprendre la rentabilité de votre compte, pas à établir une facture.
-            </p>
           </div>
 
           <div class="card">
@@ -433,10 +213,10 @@
               <button class="period-btn active" data-period="all_time" onclick="showPeriod('all_time', this)">Total</button>
               <button class="period-btn" data-period="today" onclick="showPeriod('today', this)">Aujourd'hui</button>
               <button class="period-btn" data-period="week" onclick="showPeriod('week', this)">7 derniers jours</button>
-              <button class="period-btn" data-period="month" onclick="showPeriod('month', this)">30 derniers jours</button>
+              <button class="period-btn" data-period="month" onclick="showPeriod('month', this)">Ce mois-ci</button>
             </div>
 
-            {% for key, label in [('all_time','Total'), ('today',"Aujourd'hui"), ('week','7 derniers jours'), ('month','30 derniers jours')] %}
+            {% for key in ['all_time', 'today', 'week', 'month'] %}
             <div class="period-panel {% if loop.first %}active{% endif %}" data-period="{{ key }}">
               {% set s = summary[key] %}
               <div class="stat-grid">
@@ -455,64 +235,59 @@
                 {% if s.total > 0 %}
                 <div class="stat">
                   <div class="lbl"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.4" stroke="currentColor" stroke-width="1.4"/><circle cx="9" cy="9" r="3.7" stroke="currentColor" stroke-width="1.4"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/></svg></span> Taux de réussite</div>
-                  <div class="val success">{{ ((s.successes / s.total) * 100) | round(0) }}%</div>
+                  <div class="val success">{{ ((s.successes / s.total) * 100) | round(0) | int }}%</div>
                 </div>
                 {% endif %}
                 <div class="stat">
-                  <div class="lbl"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9.6" r="6" stroke="currentColor" stroke-width="1.4"/><path d="M9 6.6 V9.6 L11.2 11.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M7.2 2.4 H10.8 M9 3.6 V2.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span> Minutes générées</div>
-                  <div class="val">{{ (s.total_seconds / 60) | round(1) }}</div>
-                </div>
-                <div class="stat">
-                  <div class="lbl"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.4"/><path d="M9 5.4 V12.6 M11 6.7 c0-.9-.9-1.5-2-1.5 c-1.2 0-2.1.6-2.1 1.5 c0 2 4.1.9 4.1 2.9 c0 1-.9 1.6-2 1.6 c-1.2 0-2.1-.6-2.1-1.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span> Coût estimé</div>
-                  <div class="val">${{ "%.2f"|format(s.total_cost) }}</div>
-                </div>
-                <div class="stat">
-                  <div class="lbl"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.4" y="5.2" width="9.6" height="7.6" rx="1.8" stroke="currentColor" stroke-width="1.4"/><path d="M12 8 L15.6 5.8 V12.2 L12 10 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></span> Vidéos sources</div>
+                  <div class="lbl"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.4" y="5.2" width="9.6" height="7.6" rx="1.8" stroke="currentColor" stroke-width="1.4"/><path d="M12 8 L15.6 5.8 V12.2 L12 10 Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></span> Fichiers sources</div>
                   <div class="val">{{ s.total_source_videos }}</div>
                 </div>
                 <div class="stat">
-                  <div class="lbl"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="5.2" width="13" height="10.3" rx="1.8" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 5.2 L4.3 2.4 H6.6 L5.4 5.2 Z M7.1 5.2 L8.9 2.4 H11.2 L10 5.2 Z M11.7 5.2 L13.5 2.4 H15.2 L14.3 5.2 Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg></span> Vidéos générées</div>
+                  <div class="lbl"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="5.2" width="13" height="10.3" rx="1.8" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 5.2 L4.3 2.4 H6.6 L5.4 5.2 Z M7.1 5.2 L8.9 2.4 H11.2 L10 5.2 Z M11.7 5.2 L13.5 2.4 H15.2 L14.3 5.2 Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg></span> Fichiers générés</div>
                   <div class="val">{{ s.total_output_videos }}</div>
                 </div>
                 <div class="stat">
-                  <div class="lbl"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.7 3 c-1.7 0-2.9 1.3-2.7 2.9 c-1.1.5-1.7 1.7-1.4 2.9 c-.5 1-.3 2.2.5 3 c-.2 1.4.8 2.7 2.3 2.9 c.4 1 1.5 1.6 2.6 1.4 V3.4 C7.6 3.1 7.2 3 6.7 3 Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/><path d="M11.3 3 c1.7 0 2.9 1.3 2.7 2.9 c1.1.5 1.7 1.7 1.4 2.9 c.5 1 .3 2.2-.5 3 c.2 1.4-.8 2.7-2.3 2.9 c-.4 1-1.5 1.6-2.6 1.4 V3.4 c.4-.3.8-.4 1.3-.4 Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></svg></span> Requêtes Claude</div>
+                  <div class="lbl"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9.6" r="6" stroke="currentColor" stroke-width="1.4"/><path d="M9 6.6 V9.6 L11.2 11.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M7.2 2.4 H10.8 M9 3.6 V2.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span> Minutes vidéo‡</div>
+                  <div class="val">{{ (s.total_seconds / 60) | round(1) }}</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.7 3 c-1.7 0-2.9 1.3-2.7 2.9 c-1.1.5-1.7 1.7-1.4 2.9 c-.5 1-.3 2.2.5 3 c-.2 1.4.8 2.7 2.3 2.9 c.4 1 1.5 1.6 2.6 1.4 V3.4 C7.6 3.1 7.2 3 6.7 3 Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/><path d="M11.3 3 c1.7 0 2.9 1.3 2.7 2.9 c1.1.5 1.7 1.7 1.4 2.9 c.5 1 .3 2.2-.5 3 c.2 1.4-.8 2.7-2.3 2.9 c-.4 1-1.5 1.6-2.6 1.4 V3.4 c.4-.3.8-.4 1.3-.4 Z" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"/></svg></span> Requêtes Claude†</div>
                   <div class="val">{{ s.total_claude_requests }}</div>
+                  <div class="sub">Nombre estimé</div>
+                </div>
+                <div class="stat">
+                  <div class="lbl"><span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.4"/><path d="M9 5.4 V12.6 M11 6.7 c0-.9-.9-1.5-2-1.5 c-1.2 0-2.1.6-2.1 1.5 c0 2 4.1.9 4.1 2.9 c0 1-.9 1.6-2 1.6 c-1.2 0-2.1-.6-2.1-1.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span> Coût théorique*</div>
+                  <div class="val">${{ "%.2f"|format(s.total_cost) }}</div>
+                  <div class="sub">{{ COST_NOTE }}</div>
                 </div>
               </div>
             </div>
             {% endfor %}
 
-            <p class="muted" style="margin-top:18px;">
-              Les coûts affichés sont des estimations approximatives basées sur la durée des vidéos traitées
-              et l'utilisation de l'API Claude Vision — elles ne reflètent pas une facturation réelle.
-            </p>
+            <div class="notes">
+              <p>* {{ COST_NOTE }} : calcul à partir de constantes internes (≈ 0,01 $ par requête Claude estimée + 0,002 $ par seconde de vidéo source). Ce n'est ni une dépense réelle ni un montant facturé.</p>
+              <p>† Requêtes Claude : nombre estimé (1 par génération utilisant la détection Claude), pas un relevé de l'API.</p>
+              <p>‡ Durée des vidéos enregistrée à chaque génération ; pour Studio Variations, une seule durée est enregistrée par lot. Les outils photo et audio n'enregistrent pas de durée.</p>
+            </div>
           </div>
 
           {% if usage_by_mode %}
           <div class="card">
-            <h2>Par mode de génération</h2>
+            <h2>Par outil</h2>
             <div class="stat-grid">
               {% for m in usage_by_mode %}
               <div class="stat">
-                <div class="lbl">
-                  {% if m.mode == 'simple' %}<span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="5.2" width="13" height="10.3" rx="1.8" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 5.2 L4.3 2.4 H6.6 L5.4 5.2 Z M7.1 5.2 L8.9 2.4 H11.2 L10 5.2 Z M11.7 5.2 L13.5 2.4 H15.2 L14.3 5.2 Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg></span> Mode Simple
-                  {% elif m.mode == 'batch' %}<span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.2 L15.5 5.6 L9 9 L2.5 5.6 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M2.5 9 L9 12.4 L15.5 9 M2.5 12.4 L9 15.8 L15.5 12.4" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"/></svg></span> Mode Batch
-                  {% elif m.mode == 'variation' %}<span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="13" rx="3" stroke="currentColor" stroke-width="1.4"/><circle cx="6.3" cy="6.3" r="1.05" fill="currentColor"/><circle cx="11.7" cy="6.3" r="1.05" fill="currentColor"/><circle cx="9" cy="9" r="1.05" fill="currentColor"/><circle cx="6.3" cy="11.7" r="1.05" fill="currentColor"/><circle cx="11.7" cy="11.7" r="1.05" fill="currentColor"/></svg></span> Variation Studio
-                  {% elif m.mode == 'variation_multi' %}<span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="3.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.4"/><rect x="6.5" y="6.5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.4" fill="var(--card,#1a1a1a)"/><circle cx="11" cy="11" r="1" fill="currentColor"/></svg></span> Variation Studio Multi
-                  {% elif m.mode == 'audio_converter' %}<span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2 V11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M9 2 L13 3.5 V6 L9 4.5 Z" fill="currentColor"/><circle cx="6.5" cy="11.5" r="2.5" stroke="currentColor" stroke-width="1.5"/></svg></span> Audio Converter
-                  {% elif m.mode == 'photo_metadata' %}<span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="4" width="13" height="10" rx="1.8" stroke="currentColor" stroke-width="1.4"/><circle cx="6.5" cy="8" r="1.4" stroke="currentColor" stroke-width="1.2"/><path d="M3.5 13 L7.5 9.5 L10 11.5 L12.5 9 L14.5 11" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></span> Photo Metadata Studio
-                  {% else %}{{ m.mode }}
-                  {% endif %}
-                </div>
+                <div class="lbl">{{ MODE_LABELS.get(m.mode, m.mode) }}</div>
                 <div class="val">{{ m.total }}</div>
                 <div class="muted" style="margin-top:6px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
-                  <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.4"/><path d="M6 9.2 L8.2 11.4 L12.2 6.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span> {{ m.successes }} réussies ·
-                  <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.6 L15.8 14.6 H2.2 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M9 7.4 V10.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="9" cy="12.6" r=".95" fill="currentColor"/></svg></span> {{ m.failures }} échouées ·
-                  <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.4"/><path d="M9 5.4 V12.6 M11 6.7 c0-.9-.9-1.5-2-1.5 c-1.2 0-2.1.6-2.1 1.5 c0 2 4.1.9 4.1 2.9 c0 1-.9 1.6-2 1.6 c-1.2 0-2.1-.6-2.1-1.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span> ${{ "%.2f"|format(m.total_cost) }}
+                  <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.4"/><path d="M6 9.2 L8.2 11.4 L12.2 6.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span> {{ m.successes }} réussie{{ "s" if m.successes > 1 else "" }} ·
+                  <span class="ico-svg sm"><svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.6 L15.8 14.6 H2.2 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M9 7.4 V10.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="9" cy="12.6" r=".95" fill="currentColor"/></svg></span> {{ m.failures }} échouée{{ "s" if m.failures > 1 else "" }}
                 </div>
+                <div class="sub" title="{{ COST_NOTE }}">Coût théorique* ${{ "%.2f"|format(m.total_cost) }} — non facturé</div>
               </div>
               {% endfor %}
             </div>
+            <div class="notes"><p>* {{ COST_NOTE }}.</p></div>
           </div>
           {% endif %}
         </div>

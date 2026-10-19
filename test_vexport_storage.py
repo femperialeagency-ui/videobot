@@ -4,11 +4,11 @@ test_vexport_storage.py — Stockage tournant du Batch Video Export.
 
 Vrai moteur (ordonnanceur + archivage + FFmpeg réels), fichiers de test légers :
   1/4/5/6/7. 100 vidéos : 1 ZIP intègre, MP4 intermédiaires supprimés, sources supprimées
-  2. 311 vidéos : ZIP progressifs (100/100/100/11), au plus quelques MP4 sur disque à la fois
-  3. 500 petites vidéos : 5 ZIP, aucun MP4 restant
+  2. 311 vidéos (batch créé avant la limite 300) : ZIP progressifs (100/100/100/11), au plus quelques MP4 sur disque à la fois
+  3. 500 petites vidéos (batch créé avant la limite 300) : 5 ZIP, aucun MP4 restant
   8. téléchargement individuel d'une vidéo archivée (archive en cours ET finalisée)
   9. reprise d'un ajout interrompu (état de crash) : archive réparée, complète, intègre
-  11. disque presque plein : estimation détaillée (311 vidéos / 8,7 Go), archivage en attente sans perte
+  11. limite 300 par nouveau batch ; disque presque plein : estimation détaillée (300 vidéos / 8,4 Go), archivage en attente sans perte
   12. isolation entre utilisateurs
   14. téléchargement actif : MP4 jamais supprimé pendant l'envoi
   15. mesure de l'espace par module + nettoyage des seuls temporaires abandonnés
@@ -50,6 +50,9 @@ real_free = A._disk_free_bytes
 
 def new_batch(n, prefix):
     bid = c.post("/vexport_create").get_json()["batch_id"]
+    if n > A.VEXPORT_MAX_FILES:              # batch créé avant la limite 300 (sans « max_files ») : limite 500
+        with A._vexport_state_lock(bid):
+            st = A._vexport_load_state(bid); st.pop("max_files", None); A._vexport_save_state(st)
     for i in range(n):
         r = c.post("/vexport_upload", data={"batch_id": bid, "file": (io.BytesIO(TINY_B), f"{prefix}_{i + 1:03d}.mp4")},
                    content_type="multipart/form-data").get_json()
@@ -147,7 +150,7 @@ def cond(d):
         seen_progressive["ok"] = True
     return settled(d)
 d = wait(b311, cond, probe=probe, step=0.1)
-check("2. 311 vidéos traitées", d["progress"]["done"] == 311, str(d["progress"]))
+check("2. 311 vidéos traitées (ancien batch, limite 500 conservée)", d["progress"]["done"] == 311, str(d["progress"]))
 check("4. ZIP 1 prêt pendant que le traitement continue (progressif)", seen_progressive.get("ok") is True)
 check("5. stockage tournant : au plus quelques MP4 sur le disque à la fois", 0 < peak["mp4"] <= 4, f"max={peak['mp4']}")
 g311 = full_check(b311, [100, 100, 100, 11], "2. 311 vidéos")
@@ -164,7 +167,7 @@ t0 = time.time()
 b500 = new_batch(500, "f")
 start(b500)
 d = wait(b500, settled, step=1.0)
-check("3. 500 vidéos traitées", d["progress"]["done"] == 500, str(d["progress"]))
+check("3. 500 vidéos traitées (ancien batch, limite 500 conservée)", d["progress"]["done"] == 500, str(d["progress"]))
 full_check(b500, [100] * 5, "3. 500 vidéos")
 print(f"   ⏱️  500 vidéos : {time.time() - t0:.0f} s")
 
@@ -210,18 +213,25 @@ check("9. reprise : archive réparée puis complétée (3 vidéos, CRC OK)", gz 
       str(gz and gz[0]))
 
 # ══ 11. Disque presque plein ══════════════════════════════════════════
-A._disk_free_bytes = lambda path=None: 8_800_000_000
 r = c2.post("/vexport_create", data={"clean_previous": "1", "expected_bytes": "8700000000", "expected_count": "311",
                                     "expected_max": "60000000"})
+check("11. 311 vidéos : refusé par la limite de 300 vidéos par nouveau batch", r.status_code == 400
+      and r.get_json().get("code") == "too_many" and "300" in r.get_json().get("error", ""), str(r.get_json()))
+A._disk_free_bytes = lambda path=None: 8_800_000_000
+r = c2.post("/vexport_create", data={"clean_previous": "1", "expected_bytes": "8390000000", "expected_count": "300",
+                                    "expected_max": "60000000"})
 dd = r.get_json()
-print("   📐 311 vidéos / 8,7 Go, 8,8 Go libres →", dd.get("error"))
-check("11. 311 vidéos / 8,7 Go avec 8,8 Go libres : refus clair et détaillé", r.status_code == 507
-      and all(k in dd["error"] for k in ("Sources : 8,7 Go", "ZIP estimés : 8,7 Go", "Pic nécessaire", "Espace disponible : 8,8 Go", "Limite réaliste")),
+print("   📐 300 vidéos / 8,4 Go, 8,8 Go libres →", dd.get("error"))
+check("11. 300 vidéos / 8,4 Go avec 8,8 Go libres : refus clair et détaillé", r.status_code == 507
+      and all(k in dd["error"] for k in ("Sources : 8,4 Go", "ZIP estimés : 8,4 Go", "Pic nécessaire", "Espace disponible : 8,8 Go", "Limite réaliste")),
       dd.get("error"))
-check("11. nouvelle estimation ≈ 9,6 Go (au lieu de 18,2 Go), limite réaliste ≈ 280 vidéos",
-      9.4e9 < dd["need"] < 9.8e9 and 270 <= dd["max_videos"] <= 290, f"need={dd.get('need')} max={dd.get('max_videos')}")
+check("11. estimation ≈ 9,3 Go, limite réaliste ≈ 280 vidéos",
+      9.1e9 < dd["need"] < 9.5e9 and 270 <= dd["max_videos"] <= 290, f"need={dd.get('need')} max={dd.get('max_videos')}")
+ve = c2.get("/vexport_estimate?bytes=8390000000&count=300&max=60000000").get_json()
+check("11. /vexport_estimate : même pic et même limite réaliste qu'au lancement", abs(ve["need"] - dd["need"]) < 1
+      and ve["fits"] is False and ve["max_videos"] == dd["max_videos"], str(ve))
 A._disk_free_bytes = lambda path=None: 10_500_000_000
-r = c2.post("/vexport_create", data={"clean_previous": "1", "expected_bytes": "8700000000", "expected_count": "311",
+r = c2.post("/vexport_create", data={"clean_previous": "1", "expected_bytes": "8390000000", "expected_count": "300",
                                     "expected_max": "60000000"})
 check("11. même batch avec 10,5 Go libres : accepté", r.status_code == 200, str(r.get_json()))
 bok = r.get_json().get("batch_id")

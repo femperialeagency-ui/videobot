@@ -181,7 +181,7 @@ txt = os.path.join(tmp, "notes.txt"); open(txt, "w").write("hello")
 cd = c.post("/vexport_create").get_json()
 bid = cd["batch_id"]
 check("B. create : batch_id retourné", bool(bid))
-check("B. create : max_files = 500", cd.get("max_files") == 500)
+check("B. create : max_files = 300 (nouveaux batchs)", cd.get("max_files") == 300 and A._vexport_load_state(bid).get("max_files") == 300)
 uploaded = rejected = 0
 for name, p in files:
     d = upload(c, bid, p, name).json
@@ -438,30 +438,44 @@ check("Concurrence : tourniquet — le petit batch passe avant la fin du gros",
       done_big_after_small >= 3, f"vidéos du gros batch traitées après le petit : {done_big_after_small}")
 check("Concurrence : les 2 batchs terminés", fS["progress"]["done"] == 1 and fB["progress"]["done"] == 5)
 
-# ══ G / H. 500 vidéos RÉELLES acceptées, 501e refusée ═════════════════
+# ══ G / H. Nouveau batch : 300 vidéos RÉELLES acceptées, 301e refusée ══
+#    puis batch ANTÉRIEUR à la limite (sans « max_files ») : 500 traitées.
 tiny = os.path.join(tmp, "tiny.mp4"); mkvid(tiny, 64, 64, dur=0.4, audio=False, fps=10)
+r_many = c.post("/vexport_create", data={"expected_count": "301", "expected_bytes": "1000"})
+check("H. création annoncée à 301 vidéos refusée (limite 300)", r_many.status_code == 400
+      and r_many.get_json().get("code") == "too_many", str(r_many.get_json()))
 if os.environ.get("VEXPORT_TEST_SKIP_500") == "1":
     print("⚠️  G. test réel 500 vidéos SAUTÉ (VEXPORT_TEST_SKIP_500=1)")
     bid500 = c.post("/vexport_create").get_json()["batch_id"]
     with A._vexport_lock(bid500):
         st5 = A._vexport_load_state(bid500)
         st5["items"] = [{"idx": i, "orig_name": f"v{i}", "in_name": f"{i:04d}.mp4", "out_name": f"v{i}.mp4",
-                         "status": "pending", "error": "", "in_size": 0, "out_size": 0} for i in range(500)]
+                         "status": "pending", "error": "", "in_size": 0, "out_size": 0} for i in range(300)]
         A._vexport_save_state(st5)
 else:
     t0 = time.time()
     bid500 = c.post("/vexport_create").get_json()["batch_id"]
     tiny_bytes = open(tiny, "rb").read()
-    ok500 = 0
-    for i in range(500):
+    ok300 = 0
+    for i in range(300):
         rr5 = c.post("/vexport_upload", data={"batch_id": bid500, "file": (io.BytesIO(tiny_bytes), f"clip_{i:03d}.mp4")},
                      content_type="multipart/form-data").get_json()
-        ok500 += 1 if rr5.get("ok") else 0
-    check("G. 500 vidéos réelles acceptées", ok500 == 500, str(ok500))
-    t_up = time.time() - t0
-r501 = upload(c, bid500, tiny, "extra.mp4").get_json()
-check("H. 501e vidéo refusée avec message clair", "error" in r501 and "500" in r501["error"], str(r501))
+        ok300 += 1 if rr5.get("ok") else 0
+    check("G. 300 vidéos réelles acceptées (nouveau batch)", ok300 == 300, str(ok300))
+r301 = upload(c, bid500, tiny, "extra.mp4").get_json()
+check("H. 301e vidéo refusée avec message clair", "error" in r301 and "300" in r301["error"], str(r301))
 if os.environ.get("VEXPORT_TEST_SKIP_500") != "1":
+    # Batch créé AVANT la limite 300 (état sans « max_files ») : sa limite reste 500.
+    with A._vexport_lock(bid500):
+        st5 = A._vexport_load_state(bid500); st5.pop("max_files", None); A._vexport_save_state(st5)
+    for i in range(300, 500):
+        rr5 = c.post("/vexport_upload", data={"batch_id": bid500, "file": (io.BytesIO(tiny_bytes), f"clip_{i:03d}.mp4")},
+                     content_type="multipart/form-data").get_json()
+        ok300 += 1 if rr5.get("ok") else 0
+    check("G. ancien batch (créé avant la limite 300) : 500 vidéos acceptées", ok300 == 500, str(ok300))
+    r501 = upload(c, bid500, tiny, "extra.mp4").get_json()
+    check("H. ancien batch : 501e vidéo refusée", "error" in r501 and "500" in r501["error"], str(r501))
+    t_up = time.time() - t0
     c.post("/vexport_start", data={"batch_id": bid500})
     f500 = wait_finished(c, bid500, timeout=900, step=2)
     t_all = time.time() - t0

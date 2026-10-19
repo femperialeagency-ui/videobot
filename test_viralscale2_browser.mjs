@@ -147,7 +147,9 @@ fcntl.flock(fd, fcntl.LOCK_EX); print("held", flush=True); time.sleep(7)`], { st
 
   // ══ MEDIA TOOLS ═════════════════════════════════════════════════════
   await tab(page, "optimizer");
-  check("Media Tools : onglets Vidéos / Photos / Audio", JSON.stringify(await page.locator("#subnav .subnav-pill").allInnerTexts()) === JSON.stringify(["Vidéos", "Photos", "Audio"]));
+  check("Media Tools : entrées Vidéos / Photos / Audio dans la sidebar, sous-onglets Réexport standard / Optimisation",
+        JSON.stringify(await page.locator('#vsSidebar [data-nav="videos"], #vsSidebar [data-nav="photos"], #vsSidebar [data-nav="audio"]').allInnerTexts()) === JSON.stringify(["Vidéos", "Photos", "Audio"])
+        && JSON.stringify(await page.locator("#subnav .subnav-pill").allInnerTexts()) === JSON.stringify(["Réexport standard", "Optimisation"]));
   check("Vidéos : deux modes, réglages d'optimisation masqués en réexport", await page.locator("#optimizerTab .vt-mode").count() === 2 && await page.locator("#vtOptParams").isHidden());
   await page.setInputFiles("#veInput", [V1, V2]);
   check("Vidéos : « Lancer le réexport » (2 vidéos)", (await txt(page, "#veBtn")) === "Lancer le réexport" && await page.locator("#veBtn").isEnabled());
@@ -160,7 +162,7 @@ fcntl.flock(fd, fcntl.LOCK_EX); print("held", flush=True); time.sleep(7)`], { st
   await page.click("#veSavedBtn");
   await page.waitForFunction(() => /Sauvegarde confirmée/.test(document.getElementById("veSaveInfo").innerText), null, { timeout: 15000 });
   check("« J'ai sauvegardé mes ZIP » : validation enregistrée", (await txt(page, "#veSaveInfo")).includes("Sauvegarde confirmée"));
-  await page.locator('label:has(input[name="vtMode"][value="optimize"])').click();
+  await page.click('#subnav a[data-sub="optimize"]');
   check("Optimisation : réglages (résolution, codec, compression) affichés", await page.locator("#vtOptParams").isVisible() && await page.locator("#optVdCodec").isVisible());
   await page.setInputFiles("#veInput", [V1080]);
   await page.selectOption("#optVdRes", "720");
@@ -178,10 +180,10 @@ fcntl.flock(fd, fcntl.LOCK_EX); print("held", flush=True); time.sleep(7)`], { st
   check("Optimisation multiple : profil d'optimisation appliqué au batch", await page.evaluate(() => veLastStatus.profile.kind === "optimize"));
   check("Optimisation multiple : 2 vidéos traitées par le moteur Batch Video Export", (await txt(page, "#veResultsList")).match(/Terminée/g)?.length === 2);
   await tab(page, "photo");
-  check("Photos : Photo Optimizer + métadonnées", await page.locator("#optPhZone").isVisible() && await page.locator("#phZone").isVisible());
-  await page.setInputFiles("#optPhInput", PNG); await page.selectOption("#optPhFmt", "webp"); await page.click("#optPhBtn");
-  await page.waitForSelector("#optPhResult", { state: "visible", timeout: 60000 });
-  check("Photos : Photo Optimizer fonctionnel", (await txt(page, "#optPhReduction")).length > 0);
+  check("Photos : import + onglet Compression", await page.locator("#phZone").isVisible() && await page.locator('[data-vsub][data-sub=\"compression\"] .vs-ph-run').isVisible());
+  await page.setInputFiles("#phInput", PNG); await page.selectOption("#phqFormat", "webp"); await page.click('[data-vsub][data-sub=\"compression\"] .vs-ph-run');
+  await page.waitForFunction(() => /terminée/.test(document.getElementById("phProgressTitle").innerText), null, { timeout: 60000 });
+  check("Photos : compression fonctionnelle (taille avant → après mesurée)", /→/.test(await txt(page, "#phResultsList")) && /\.webp/.test(await txt(page, "#phResultsList")));
   await tab(page, "audio");
   check("Audio : conversion audio accessible", await page.locator("#auZone").isVisible());
   await page.setInputFiles("#auInput", WAV); await page.click("#auLaunchBtn");
@@ -246,15 +248,14 @@ fcntl.flock(fd, fcntl.LOCK_EX); print("held", flush=True); time.sleep(7)`], { st
     check(`Mobile 390 px : pas de débordement horizontal dans la mise en page (${t})`, w[0] <= w[1] + 1, JSON.stringify(w));
   }
   await tab(m, "optimizer");
-  await m.locator('label:has(input[name="vtMode"][value="optimize"])').click();
-  // NB : sur téléphone, le cadre global (barre latérale de 218 px, inchangé) réduit la zone de contenu ;
-  // on vérifie que les écrans modifiés s'y adaptent (une colonne, pleine largeur de la carte).
+  // ViralScale 3.0 : la sidebar devient un tiroir sur téléphone, les deux modes sont des sous-onglets.
   const lay = await m.evaluate(() => {
     const card = document.querySelector("#optimizerTab .card").getBoundingClientRect();
-    return { card: card.width, modes: [...document.querySelectorAll("#optimizerTab .vt-mode")].map(e => { const b = e.getBoundingClientRect(); return [b.x, b.y, b.width]; }) };
+    const side = document.getElementById("vsSidebar").getBoundingClientRect();
+    return { card: card.width, sideRight: side.right, pills: document.querySelectorAll("#subnav .subnav-pill").length };
   });
-  check("Mobile : les deux modes s'empilent sur une colonne, pleine largeur de la carte",
-        lay.modes[0][0] === lay.modes[1][0] && lay.modes[1][1] > lay.modes[0][1] && lay.modes.every(x => x[2] > lay.card * 0.8), JSON.stringify(lay));
+  check("Mobile : sidebar repliée (tiroir), carte pleine largeur, 2 sous-onglets de mode",
+        lay.sideRight <= 0 && lay.card > 330 && lay.pills === 2, JSON.stringify(lay));
   await m.context().close();
 } catch (e) {
   FAIL++; console.log("❌ Exception : " + (e && e.stack || e));

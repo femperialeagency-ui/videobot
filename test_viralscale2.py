@@ -71,6 +71,15 @@ def ffprobe(path):
     r = subprocess.run(["ffprobe", "-v", "quiet", "-print_format", "json", "-show_streams", "-show_format", str(path)],
                        capture_output=True, text=True)
     return json.loads(r.stdout or "{}")
+def delivered(bid, out_name):
+    """Vidéo exportée telle que livrée (stockage tournant : lue dans l'archive
+    via /vexport_file, le MP4 intermédiaire n'existe plus sur le disque)."""
+    r = c.get(f"/vexport_file/{bid}/{out_name}")
+    p = os.path.join(tmp, f"livree_{bid[:8]}_{out_name}")
+    with open(p, "wb") as f:
+        f.write(r.data)
+    r.close()
+    return p
 def vs(meta): return next((s for s in meta.get("streams", []) if s.get("codec_type") == "video"), None)
 def au(meta): return next((s for s in meta.get("streams", []) if s.get("codec_type") == "audio"), None)
 def fdur(meta): return float(meta.get("format", {}).get("duration") or 0)
@@ -338,8 +347,7 @@ def export_batch(form, files):
 b, s_ = export_batch({"mode": "optimize", "codec": "h265", "resolution": "720", "compression": "40"}, [V1080, VH])
 check("Optimisation multiple : profil enregistré sur le batch", b.get("profile", {}).get("kind") == "optimize"
       and s_["profile"]["codec"] == "h265", str(b.get("profile")))
-outd = A.EXPORT_DIR / b["batch_id"] / "output"
-metas = {it["name"]: ffprobe(outd / it["out_name"]) for it in s_["items"] if it["status"] == "done"}
+metas = {it["name"]: ffprobe(delivered(b["batch_id"], it["out_name"])) for it in s_["items"] if it["status"] == "done"}
 check("Optimisation multiple : 2 vidéos H.265 (moteur Batch Video Export)", len(metas) == 2
       and all(vs(m)["codec_name"] == "hevc" for m in metas.values()), str(s_["progress"]))
 check("Optimisation multiple : résolution 720p sur le côté court, orientation conservée",
@@ -350,14 +358,15 @@ check("Optimisation multiple : archive ZIP du groupe", zr.status_code == 200 and
 b2, s2 = export_batch({"mode": "optimize", "codec": "webm", "resolution": "original", "compression": "60"}, [VH])
 it2 = s2["items"][0]
 check("Optimisation WebM : sortie .webm VP9", it2["status"] == "done" and it2["out_name"].endswith(".webm")
-      and vs(ffprobe(A.EXPORT_DIR / b2["batch_id"] / "output" / it2["out_name"]))["codec_name"] == "vp9", str(it2))
+      and vs(ffprobe(delivered(b2["batch_id"], it2["out_name"])))["codec_name"] == "vp9", str(it2))
 rr = c.get(f"/vexport_file/{b2['batch_id']}/{it2['out_name']}")
 check("Optimisation WebM : téléchargement individuel (video/webm)", rr.status_code == 200 and rr.mimetype == "video/webm"); rr.close()
 b3, s3 = export_batch({"mode": "standard"}, [VH])
-m3 = ffprobe(A.EXPORT_DIR / b3["batch_id"] / "output" / s3["items"][0]["out_name"])
+p3 = delivered(b3["batch_id"], s3["items"][0]["out_name"])
+m3 = ffprobe(p3)
 check("Réexport standard inchangé : H.264, CRF 20, preset veryfast",
       b3["profile"] == {"kind": "standard"} and vs(m3)["codec_name"] == "h264"
-      and b"crf=20.0" in (A.EXPORT_DIR / b3["batch_id"] / "output" / s3["items"][0]["out_name"]).read_bytes())
+      and b"crf=20.0" in open(p3, "rb").read())
 check("Isolation : un autre utilisateur ne voit pas ces exports", c2.get(f"/vexport_status/{b['batch_id']}").status_code == 403)
 
 # ══ MEDIA TOOLS — PHOTOS / AUDIO ═════════════════════════════════════
@@ -480,16 +489,19 @@ h = c.get("/").get_data(as_text=True)
 check("Page : rendu 200", "Studio Variations" in h and "Media Tools" in h)
 check("Générateur : Matrice A × B seule (sélecteurs Pairing / Variations retirés)",
       "Matrice A × B" in h and 'value="pairing"' not in h and 'value="variations"' not in h and 'id="bVarCount"' not in h)
-check("Studio Variations : interface unique, modes Automatique / Avancé, sans score inventé",
-      "subs:[] }" in h and "Automatique" in h and 'id="vmEstUniqueness"' not in h and '<div id="variationTab" class="tab-content" hidden' in h)
-check("Media Tools : onglets Vidéos / Photos / Audio", "['optimizer','Vidéos'],['photo','Photos'],['audio','Audio']" in h)
+check("Studio Variations : interface unique (sans sous-onglets), modes Automatique / Avancé, sans score inventé",
+      'variation:   { el: "variationMultiTab", nav: "variations", path: "/variations"' in h and "Automatique" in h
+      and 'id="vmEstUniqueness"' not in h and '<div id="variationTab" class="tab-content" hidden' in h)
+check("Media Tools : entrées Vidéos / Photos / Audio (sidebar 3.0)",
+      all(f'data-nav="{k}"' in h for k in ("videos", "photos", "audio")))
 check("Media Tools : Optimisation vidéo (Réexport standard + Optimisation) + archives",
       'name="vtMode" value="standard"' in h and 'name="vtMode" value="optimize"' in h and "Archives disponibles" in h)
 photo_tab = h[h.index('<div id="photoTab"'):h.index('<div id="optimizerTab"')]
-check("Media Tools : Photo Optimizer + métadonnées dans l'onglet Photos", 'id="optPhInput"' in photo_tab and 'id="phInput"' in photo_tab)
+check("Media Tools : Photos — compression, redimensionnement, conversion, nettoyage, métadonnées",
+      all(f'data-vsub="photo" data-sub="{k}"' in photo_tab for k in ("compression", "resize", "convert", "clean", "metadata")) and 'id="phInput"' in photo_tab)
 check("Reels : aperçu + options de rendu + préréglages", 'id="rPvModal"' in h and 'id="rRpSelect"' in h and 'id="rRenderPos"' in h)
-for pg in ("/history", "/consumption"):
-    check(f"Non-régression : {pg} 200", c.get(pg).status_code == 200)
+check("Non-régression : /history → Mes productions", c.get("/history").status_code == 302)
+check("Non-régression : /consumption 200", c.get("/consumption").status_code == 200)
 
 sampler.ev.set()
 shutil.rmtree(tmp, ignore_errors=True)
