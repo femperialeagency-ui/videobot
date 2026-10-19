@@ -21,10 +21,7 @@ COPY . .
 ENV PORT=10000
 EXPOSE 10000
 
-CMD ["gunicorn", "app:app", \
-     "--bind", "0.0.0.0:10000", \
-     "--workers", "1", \
-     "--threads", "4", \
-     "--timeout", "0", \
-     "--keep-alive", "65", \
-     "--log-level", "info"]
+# serve.py : sans PRODUCTION_WORKER_ENABLED=1, remplacé par EXACTEMENT la commande d'avant
+#   gunicorn app:app --bind 0.0.0.0:10000 --workers 1 --threads 4 --timeout 0 --keep-alive 65 --log-level info
+# avec PRODUCTION_WORKER_ENABLED=1 : Gunicorn + worker de production FEMPERIALE (processus séparés).
+CMD ["python", "serve.py"]
